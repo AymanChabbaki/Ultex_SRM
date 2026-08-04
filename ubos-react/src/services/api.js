@@ -63,3 +63,17 @@ export async function loginBackend(identifiant, motDePasse) {
     throw e;
   }
 }
+
+export async function parsePdfBackend(base64) {
+  try {
+    const res = await fetch(`${API_URL}/ocr/pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base64 })
+    });
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('⚠️ Erreur lecture PDF backend:', e);
+  }
+  return null;
+}

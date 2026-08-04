@@ -2,7 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
+import pdfParse from 'pdf-parse';
 
 dotenv.config();
 
@@ -334,6 +336,24 @@ app.post('/api/genCode', async (req, res) => {
   } catch (error) {
     console.error('GenCode error:', error);
     res.status(500).json({ error: 'Erreur génération code PostgreSQL' });
+// Real PDF Text Extraction & OCR Parsing Endpoint
+app.post('/api/ocr/pdf', async (req, res) => {
+  try {
+    const { base64 } = req.body;
+    if (!base64) return res.status(400).json({ error: 'Payload base64 manquant' });
+
+    const buffer = Buffer.from(base64.replace(/^data:application\/pdf;base64,/, ''), 'base64');
+    const data = await pdfParse(buffer);
+
+    res.json({
+      success: true,
+      numPages: data.numpages,
+      text: data.text || '',
+      info: data.info || {}
+    });
+  } catch (error) {
+    console.error('PDF parsing error:', error);
+    res.status(500).json({ error: 'Erreur lors de la lecture du fichier PDF' });
   }
 });
 

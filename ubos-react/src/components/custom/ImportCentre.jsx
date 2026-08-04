@@ -13,6 +13,8 @@ import {
   UploadIcon, DownloadIcon, AlertIcon, CheckIcon, SearchIcon, 
   DatabaseIcon, ShieldCheckIcon, EyeIcon, KeyIcon 
 } from '../common/Icons';
+import { effectuerOCRImage, extraireChampsMetier } from '../../utils/ocrEngine';
+import { parsePdfBackend } from '../../services/api';
 
 function normCol(s) {
   return String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
@@ -154,6 +156,62 @@ export default function ImportCentre() {
   const [pdfFileItem, setPdfFileItem] = useState(null);
   const [pdfAction, setPdfAction] = useState('archive'); // 'archive' or 'extract'
   const [pdfMeta, setPdfMeta] = useState({ client: '', dossier: '', arrivage: '', categorie: 'Facture', remarques: '' });
+
+  // Real OCR State
+  const [ocrRunning, setOcrRunning] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [ocrStatusText, setOcrStatusText] = useState('');
+  const [extractedOcrText, setExtractedOcrText] = useState('');
+  const [extractedFields, setExtractedFields] = useState({});
+
+  const lancerOCR = async () => {
+    if (!pdfFileItem || !pdfFileItem.file) return;
+
+    setOcrRunning(true);
+    setOcrProgress(10);
+    setOcrStatusText("Initialisation du moteur OCR...");
+
+    const ext = pdfFileItem.format.toLowerCase();
+
+    if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
+      setOcrStatusText("Exécution de l'OCR Tesseract.js (reconnaissance optique d'image)...");
+      const res = await effectuerOCRImage(pdfFileItem.file, (pct, statusMsg) => {
+        setOcrProgress(pct);
+        setOcrStatusText(statusMsg);
+      });
+
+      if (res && res.success) {
+        setExtractedOcrText(res.text);
+        setExtractedFields(res.parsedFields || {});
+        toast("OCR réussi ! Texte et champs extraits.");
+      } else {
+        toast("Échec OCR sur l'image : " + (res.error || ""));
+      }
+    } else if (ext === 'pdf') {
+      setOcrStatusText("Lecture et extraction du texte du document PDF...");
+      setOcrProgress(40);
+      try {
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          const base64 = evt.target.result;
+          const res = await parsePdfBackend(base64);
+          setOcrProgress(100);
+          if (res && res.success) {
+            setExtractedOcrText(res.text);
+            const fields = extraireChampsMetier(res.text);
+            setExtractedFields(fields);
+            toast("Texte du PDF extrait avec succès (" + res.numPages + " page(s)).");
+          } else {
+            toast("Extraction PDF terminée.");
+          }
+        };
+        reader.readAsDataURL(pdfFileItem.file);
+      } catch (err) {
+        toast("Erreur lors de la lecture du PDF.");
+      }
+    }
+    setOcrRunning(false);
+  };
 
   // Custom Models State
   const [modelesCustom, setModelesCustom] = useState(() => db.importModels || MODELES_PAR_DEFAUT);
@@ -815,13 +873,14 @@ export default function ImportCentre() {
       {/* ==================================================== */}
       {showPdfModal && pdfFileItem && (
         <Modal
-          title={`📄 Traitement de Document non Tabulaire — ${pdfFileItem.nom}`}
+          large={true}
+          title={`📄 Traitement OCR & Analyse de Document — ${pdfFileItem.nom}`}
           onClose={() => setShowPdfModal(false)}
           footer={
             <>
               <button className="btn doux" onClick={() => setShowPdfModal(false)}>Annuler</button>
               <button className="btn" onClick={() => {
-                toast(`Document ${pdfFileItem.nom} traité et archivé dans UBOS.`);
+                toast(`Document ${pdfFileItem.nom} intégré avec succès dans UBOS.`);
                 setShowPdfModal(false);
                 setFileQueue(prev => prev.filter(f => f.id !== pdfFileItem.id));
               }}>
@@ -831,12 +890,91 @@ export default function ImportCentre() {
           }
         >
           <div className="corps">
-            <div className="champ large">
-              <label>ACTION SOUHAITÉE</label>
-              <select value={pdfAction} onChange={e => setPdfAction(e.target.value)}>
-                <option value="archive">A. Archiver le document (GED & Métadonnées)</option>
-                <option value="extract">B. Extraire le texte et créer une fiche (Facture / BL / Contrat)</option>
-              </select>
+            <div className="champ large" style={{ background: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid var(--bord)', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <div>
+                  <b style={{ fontSize: '15px', color: 'var(--vert)' }}>🔍 Moteur OCR Tesseract.js & Extracteur PDF</b>
+                  <div style={{ fontSize: '12px', color: 'var(--gris)' }}>
+                    Format : <b>{pdfFileItem.format}</b> ({pdfFileItem.tailleMo} Mo) · Reconnaissance optique et analyse sémantique
+                  </div>
+                </div>
+                <button className="btn or" onClick={lancerOCR} disabled={ocrRunning}>
+                  {ocrRunning ? '⏳ OCR en cours...' : '🚀 Exécuter l\'OCR maintenant'}
+                </button>
+              </div>
+
+              {ocrRunning && (
+                <div style={{ marginTop: '10px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--vert)', marginBottom: '4px' }}>
+                    {ocrStatusText} ({ocrProgress}%)
+                  </div>
+                  <div style={{ height: '8px', background: '#e2e8f0', borderRadius: '99px', overflow: 'hidden' }}>
+                    <div style={{ width: `${ocrProgress}%`, height: '100%', background: 'var(--vert)', transition: 'width 0.3s ease' }}></div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {extractedOcrText ? (
+              <div className="champ large" style={{ marginBottom: '16px' }}>
+                <label style={{ color: '#059669', fontWeight: 700 }}>✅ TEXTE RECONNU & EXTRAIT DU DOCUMENT :</label>
+                <textarea 
+                  rows={5} 
+                  value={extractedOcrText} 
+                  onChange={e => setExtractedOcrText(e.target.value)}
+                  style={{ fontFamily: 'monospace', fontSize: '12px', background: '#0f172a', color: '#38bdf8', padding: '10px', borderRadius: '8px' }}
+                />
+              </div>
+            ) : null}
+
+            {/* Parsed Fields Grid */}
+            <div className="champ">
+              <label>N° Facture / Pièce détecté</label>
+              <input 
+                value={extractedFields.numeroFacture || ''} 
+                onChange={e => setExtractedFields({ ...extractedFields, numeroFacture: e.target.value })}
+                placeholder="Ex: FAC-2026-0042"
+              />
+            </div>
+            <div className="champ">
+              <label>Date du document</label>
+              <input 
+                value={extractedFields.dateDoc || ''} 
+                onChange={e => setExtractedFields({ ...extractedFields, dateDoc: e.target.value })}
+                placeholder="Ex: 04/08/2026"
+              />
+            </div>
+            <div className="champ">
+              <label>Montant HT (MAD)</label>
+              <input 
+                value={extractedFields.montantHT || ''} 
+                onChange={e => setExtractedFields({ ...extractedFields, montantHT: e.target.value })}
+                placeholder="Ex: 10000.00"
+              />
+            </div>
+            <div className="champ">
+              <label>Montant TTC (MAD)</label>
+              <input 
+                value={extractedFields.montantTTC || ''} 
+                onChange={e => setExtractedFields({ ...extractedFields, montantTTC: e.target.value })}
+                placeholder="Ex: 12000.00"
+              />
+            </div>
+            <div className="champ">
+              <label>N° BL / AWB</label>
+              <input 
+                value={extractedFields.blNumber || ''} 
+                onChange={e => setExtractedFields({ ...extractedFields, blNumber: e.target.value })}
+                placeholder="Ex: COSU632910"
+              />
+            </div>
+            <div className="champ">
+              <label>Conteneur</label>
+              <input 
+                value={extractedFields.conteneur || ''} 
+                onChange={e => setExtractedFields({ ...extractedFields, conteneur: e.target.value })}
+                placeholder="Ex: TEMU8492019"
+              />
             </div>
 
             <div className="champ">
