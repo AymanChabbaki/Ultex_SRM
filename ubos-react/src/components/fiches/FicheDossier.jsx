@@ -7,6 +7,7 @@ import Pill from '../common/Pill';
 import CheminDossier from '../common/CheminDossier';
 import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
+import * as Actions from '../../utils/businessActions';
 
 const FicheDossier = ({ codeProp, code: codeFromProp }) => {
   const { db, updateDB, genCode, audit, userCourant, notifier } = useDB();
@@ -85,9 +86,7 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
           <span style={{flex:1}}></span>
           <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
           <button className="btn vert" onClick={() => {
-            import('../../utils/businessActions').then(Actions => {
               Actions.avancerDossier(code, db, genCode, audit, userCourant, updateDB, (msg) => alert(msg), notifier);
-            });
           }}>Étape suivante</button>
           <button className="btn or" onClick={() => window.print()}>🖨 Imprimer</button>
         </div>
