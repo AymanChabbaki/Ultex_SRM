@@ -62,43 +62,43 @@ const CHAMPS_COMPORTEMENTAL = [
   {k:"pourquoiAchat",l:"Pourquoi il achète"}, {k:"pourquoiRefus",l:"Pourquoi il refuse"}
 ];
 
-const FicheClient = ({ codeProp }) => {
+const FicheClient = ({ codeProp, code: codeFromProp }) => {
   const { db } = useDB();
-  const [code, setCode] = useState(codeProp || '');
+  const initialCode = codeProp || codeFromProp || '';
+  const [code, setCode] = useState(initialCode);
   const [onglet, setOnglet] = useState('identite');
 
   useEffect(() => {
-    if (codeProp) return;
-    const handleHashChange = () => {
+    const c = codeProp || codeFromProp;
+    if (c) {
+      setCode(c);
+    } else {
       const hash = window.location.hash;
       if (hash.startsWith('#ficheClient:')) {
         setCode(hash.split(':')[1]);
       }
-    };
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [codeProp]);
+    }
+  }, [codeProp, codeFromProp, window.location.hash]);
 
-  const client = db?.clients?.find(c => c.code === code);
+  const client = (db?.clients || []).find(c => c.code === code);
   
   if (!client) {
     return (
       <div>
         <Topbar titre="Profil Client 360°" />
         <div className="panneau">
-          <div className="vide"><b>Client introuvable</b> {code} n'existe pas.</div>
+          <div className="vide"><b>Client introuvable</b> {code ? `(${code})` : ''} n'existe pas.</div>
         </div>
       </div>
     );
   }
 
-  const doss = db.dossiers.filter(d => d.client === code);
-  const commandes = db.commandes?.filter(c => c.client === code) || [];
-  const demandes = db.demandes?.filter(d => d.client === code) || [];
-  const contacts = db.contacts?.filter(c => c.codeClientAssocie === code) || [];
-  const docs = db.documents?.filter(d => d.client === code) || [];
-  const audit = db.audit?.filter(a => a.ref === code) || [];
+  const doss = (db?.dossiers || []).filter(d => d.client === code);
+  const commandes = (db?.commandes || []).filter(c => c.client === code);
+  const demandes = (db?.demandes || []).filter(d => d.client === code);
+  const contacts = (db?.contacts || []).filter(c => c.codeClientAssocie === code || c.client === code);
+  const docs = (db?.documents || []).filter(d => d.client === code);
+  const audit = (db?.audit || []).filter(a => a.ref === code);
 
   return (
     <div>

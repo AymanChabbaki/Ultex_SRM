@@ -6,31 +6,31 @@ import DataTable from '../common/DataTable';
 import Pill from '../common/Pill';
 import CheminDossier from '../common/CheminDossier';
 
-const FicheDossier = ({ codeProp }) => {
+const FicheDossier = ({ codeProp, code: codeFromProp }) => {
   const { db } = useDB();
-  const [code, setCode] = useState(codeProp || '');
+  const initialCode = codeProp || codeFromProp || '';
+  const [code, setCode] = useState(initialCode);
 
   useEffect(() => {
-    if (codeProp) return;
-    const handleHashChange = () => {
+    const c = codeProp || codeFromProp;
+    if (c) {
+      setCode(c);
+    } else {
       const hash = window.location.hash;
       if (hash.startsWith('#ficheDossier:')) {
         setCode(hash.split(':')[1]);
       }
-    };
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [codeProp]);
+    }
+  }, [codeProp, codeFromProp, window.location.hash]);
 
-  const dossier = db?.dossiers?.find(d => d.code === code);
+  const dossier = (db?.dossiers || []).find(d => d.code === code);
   
   if (!dossier) {
     return (
       <div>
         <Topbar titre="Fiche Dossier" />
         <div className="panneau">
-          <div className="vide"><b>Dossier introuvable</b> {code} n'existe pas.</div>
+          <div className="vide"><b>Dossier introuvable</b> {code ? `(${code})` : ''} n'existe pas.</div>
         </div>
       </div>
     );

@@ -4,31 +4,31 @@ import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
 
-const FicheArrivage = ({ codeProp }) => {
+const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   const { db } = useDB();
-  const [code, setCode] = useState(codeProp || '');
+  const initialCode = codeProp || codeFromProp || '';
+  const [code, setCode] = useState(initialCode);
 
   useEffect(() => {
-    if (codeProp) return;
-    const handleHashChange = () => {
+    const c = codeProp || codeFromProp;
+    if (c) {
+      setCode(c);
+    } else {
       const hash = window.location.hash;
       if (hash.startsWith('#ficheArrivage:')) {
         setCode(hash.split(':')[1]);
       }
-    };
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [codeProp]);
+    }
+  }, [codeProp, codeFromProp, window.location.hash]);
 
-  const arrivage = db?.arrivages?.find(a => a.code === code);
+  const arrivage = (db?.arrivages || []).find(a => a.code === code);
   
   if (!arrivage) {
     return (
       <div>
         <Topbar titre="Fiche Arrivage" />
         <div className="panneau">
-          <div className="vide"><b>Arrivage introuvable</b> {code} n'existe pas.</div>
+          <div className="vide"><b>Arrivage introuvable</b> {code ? `(${code})` : ''} n'existe pas.</div>
         </div>
       </div>
     );

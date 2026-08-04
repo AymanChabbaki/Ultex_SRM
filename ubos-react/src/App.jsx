@@ -54,12 +54,12 @@ const Router = () => {
 
     switch (route) {
       case 'dashboard': return <Dashboard />;
-      case 'ficheClient': return <FicheClient code={params} />;
-      case 'ficheDossier': return <FicheDossier code={params} />;
-      case 'ficheDemande': return <FicheDemande code={params} />;
-      case 'ficheCommande': return <FicheCommande code={params} />;
-      case 'ficheArrivage': return <FicheArrivage code={params} />;
-      case 'ficheDocument': return <FicheDocument code={params} />;
+      case 'ficheClient': return <FicheClient codeProp={params} code={params} />;
+      case 'ficheDossier': return <FicheDossier codeProp={params} code={params} />;
+      case 'ficheDemande': return <FicheDemande codeProp={params} code={params} />;
+      case 'ficheCommande': return <FicheCommande codeProp={params} code={params} />;
+      case 'ficheArrivage': return <FicheArrivage codeProp={params} code={params} />;
+      case 'ficheDocument': return <FicheDocument codeProp={params} code={params} />;
       
       case 'notifications': return <Notifications />;
       case 'monAgenda': return <MonAgenda />;

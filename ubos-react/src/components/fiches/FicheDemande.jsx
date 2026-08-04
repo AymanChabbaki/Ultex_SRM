@@ -5,31 +5,31 @@ import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
 import Pill from '../common/Pill';
 
-const FicheDemande = ({ codeProp }) => {
+const FicheDemande = ({ codeProp, code: codeFromProp }) => {
   const { db } = useDB();
-  const [code, setCode] = useState(codeProp || '');
+  const initialCode = codeProp || codeFromProp || '';
+  const [code, setCode] = useState(initialCode);
 
   useEffect(() => {
-    if (codeProp) return;
-    const handleHashChange = () => {
+    const c = codeProp || codeFromProp;
+    if (c) {
+      setCode(c);
+    } else {
       const hash = window.location.hash;
       if (hash.startsWith('#ficheDemande:')) {
         setCode(hash.split(':')[1]);
       }
-    };
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [codeProp]);
+    }
+  }, [codeProp, codeFromProp, window.location.hash]);
 
-  const demande = db?.demandes?.find(d => d.code === code);
+  const demande = (db?.demandes || []).find(d => d.code === code);
   
   if (!demande) {
     return (
       <div>
         <Topbar titre="Fiche Demande" />
         <div className="panneau">
-          <div className="vide"><b>Demande introuvable</b> {code} n'existe pas.</div>
+          <div className="vide"><b>Demande introuvable</b> {code ? `(${code})` : ''} n'existe pas.</div>
         </div>
       </div>
     );
