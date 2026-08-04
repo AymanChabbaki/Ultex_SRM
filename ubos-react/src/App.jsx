@@ -14,6 +14,7 @@ import FicheDemande from './components/fiches/FicheDemande';
 import FicheCommande from './components/fiches/FicheCommande';
 import FicheArrivage from './components/fiches/FicheArrivage';
 import FicheDocument from './components/fiches/FicheDocument';
+import FicheFF from './components/fiches/FicheFF';
 
 // Custom Modules
 import Notifications from './components/custom/Notifications';
@@ -60,6 +61,7 @@ const Router = () => {
       case 'ficheCommande': return <FicheCommande codeProp={params} code={params} />;
       case 'ficheArrivage': return <FicheArrivage codeProp={params} code={params} />;
       case 'ficheDocument': return <FicheDocument codeProp={params} code={params} />;
+      case 'ficheFF': return <FicheFF codeProp={params} code={params} />;
       
       case 'notifications': return <Notifications />;
       case 'monAgenda': return <MonAgenda />;
