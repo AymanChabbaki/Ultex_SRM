@@ -5,11 +5,14 @@ import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
 import Pill from '../common/Pill';
 import CheminDossier from '../common/CheminDossier';
+import ModuleForm from '../modules/ModuleForm';
+import { MODS } from '../../data/modules';
 
 const FicheDossier = ({ codeProp, code: codeFromProp }) => {
   const { db } = useDB();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
+  const [showEdit, setShowEdit] = useState(false);
 
   useEffect(() => {
     const c = codeProp || codeFromProp;
@@ -54,17 +57,21 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
   ];
 
   const mainFields = [
-    {k: 'client', l: 'Client', render: () => <a href={`#ficheClient:${dossier.client}`}>{client.nom || dossier.client}</a>},
-    {k: 'fournisseur', l: 'Fournisseur'},
-    {k: 'produit', l: 'Produit'},
-    {k: 'incoterm', l: 'Incoterm'},
-    {k: 'portDepart', l: 'Port de départ'},
-    {k: 'portArrivee', l: 'Port d\'arrivée'},
-    {k: 'modeTransport', l: 'Mode de Transport'},
-    {k: 'montantAchat', l: 'Valeur Achat'},
-    {k: 'montantVente', l: 'Valeur Vente'},
-    {k: 'responsable', l: 'Responsable'},
-    {k: 'actionSuivante', l: 'Action Suivante'}
+    {k: "client", l: "Client"},
+    {k: "produit", l: "Produit"},
+    {k: "fournisseur", l: "Fournisseur"},
+    {k: "incoterm", l: "Incoterm"},
+    {k: "paysOrigine", l: "Pays d'origine"},
+    {k: "portDepart", l: "Port de départ"},
+    {k: "portArrivee", l: "Port d'arrivée"},
+    {k: "modeTransport", l: "Mode de transport"},
+    {k: "montantVente", l: "Montant de vente (MAD)"},
+    {k: "montantAchat", l: "Coût d'achat (MAD)"},
+    {k: "cbm", l: "Volume (CBM)"},
+    {k: "poids", l: "Poids (kg)"},
+    {k: "responsable", l: "Responsable"},
+    {k: "statut", l: "Statut"},
+    {k: "remarque", l: "Remarques"}
   ];
 
   return (
@@ -76,10 +83,18 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
         <div className="outils" style={{marginTop: '15px'}}>
           <b style={{fontSize:'16px', color:'var(--vert)'}}>{code} - {dossier.produit}</b>
           <span style={{flex:1}}></span>
-          <button className="btn">Modifier</button>
-          <button className="btn vert">Étape suivante</button>
+          <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
+          <button className="btn vert" onClick={() => alert("Implémentation de l'avancement d'étape à venir")}>Étape suivante</button>
           <button className="btn or" onClick={() => window.print()}>🖨 Imprimer</button>
         </div>
+        {showEdit && (
+          <ModuleForm 
+            moduleId="dossiers" 
+            MODS={MODS}
+            recordCode={code} 
+            onClose={() => setShowEdit(false)} 
+          />
+        )}
 
         <div className="bloc-fiche large">
           <h4>Informations Principales</h4>

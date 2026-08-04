@@ -27,10 +27,12 @@ export function importerJSON(file, setDB) {
 }
 
 export function exporterExcel(modId, db, mods, userCourant) {
-  const M = mods[modId];
-  if (!M || !M.coll) return;
-  
-  let lignes = [...(db[M.coll] || [])].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  try {
+    const xlsxLib = XLSX.default || XLSX;
+    const M = mods[modId];
+    if (!M || !M.coll) return;
+    
+    let lignes = [...(db[M.coll] || [])].sort((a, b) => (b.ts || 0) - (a.ts || 0));
   
   const refLabel = (coll, k, cle) => {
     if (!db[coll]) return k;
@@ -50,9 +52,13 @@ export function exporterExcel(modId, db, mods, userCourant) {
     return row;
   });
 
-  const ws = XLSX.utils.json_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Données");
+  const ws = xlsxLib.utils.json_to_sheet(data);
+  const wb = xlsxLib.utils.book_new();
+  xlsxLib.utils.book_append_sheet(wb, ws, "Données");
   
-  XLSX.writeFile(wb, `ubos_${modId}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  xlsxLib.writeFile(wb, `ubos_${modId}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  } catch (err) {
+    console.error("Export Error:", err);
+    alert("Erreur lors de l'exportation: " + err.message);
+  }
 }

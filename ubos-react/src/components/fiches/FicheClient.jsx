@@ -4,6 +4,8 @@ import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
 import Pill from '../common/Pill';
+import ModuleForm from '../modules/ModuleForm';
+import { MODS } from '../../data/modules';
 
 const ONGLETS_360 = [
   ["identite", "1. Identité"],
@@ -67,6 +69,7 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
   const [onglet, setOnglet] = useState('identite');
+  const [showEdit, setShowEdit] = useState(false);
 
   useEffect(() => {
     const c = codeProp || codeFromProp;
@@ -109,8 +112,18 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
           <b style={{fontSize:'16px', color:'var(--vert)'}}>{client.nom}</b>
           <Pill type={client.segment} texte={client.segment} />
           <span style={{flex:1}}></span>
+          <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
           <button className="btn or" onClick={() => window.print()}>🖨 Imprimer / PDF</button>
         </div>
+
+        {showEdit && (
+          <ModuleForm 
+            moduleId="clients" 
+            MODS={MODS}
+            recordCode={code} 
+            onClose={() => setShowEdit(false)} 
+          />
+        )}
 
         <div style={{display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'14px'}}>
           {ONGLETS_360.map(([id, lbl]) => (

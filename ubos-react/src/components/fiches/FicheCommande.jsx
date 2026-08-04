@@ -4,11 +4,14 @@ import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
 import Pill from '../common/Pill';
+import ModuleForm from '../modules/ModuleForm';
+import { MODS } from '../../data/modules';
 
 const FicheCommande = ({ codeProp, code: codeFromProp }) => {
   const { db } = useDB();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
+  const [showEdit, setShowEdit] = useState(false);
 
   useEffect(() => {
     const c = codeProp || codeFromProp;
@@ -41,8 +44,8 @@ const FicheCommande = ({ codeProp, code: codeFromProp }) => {
     {k: 'client', l: 'Client', render: () => <a href={`#ficheClient:${commande.client}`}>{client.nom || commande.client}</a>},
     {k: 'demande', l: 'Demande', render: () => <a href={`#ficheDemande:${commande.demande}`}>{commande.demande}</a>},
     {k: 'condition', l: 'Condition'},
-    {k: 'formule', l: 'Formule'},
-    {k: 'devis', l: 'Devis'},
+    {k: 'formuleUltex', l: 'Formule'},
+    {k: 'devisAccepte', l: 'Devis'},
     {k: 'statut', l: 'Statut', render: (s) => <Pill type={s} texte={s} />}
   ];
 
@@ -56,8 +59,16 @@ const FicheCommande = ({ codeProp, code: codeFromProp }) => {
         <div className="outils">
           <b style={{fontSize:'16px', color:'var(--vert)'}}>{code}</b>
           <span style={{flex:1}}></span>
-          <button className="btn">Modifier</button>
+          <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
         </div>
+        {showEdit && (
+          <ModuleForm 
+            moduleId="commandes" 
+            MODS={MODS}
+            recordCode={code} 
+            onClose={() => setShowEdit(false)} 
+          />
+        )}
 
         <div className="bloc-fiche large">
           <h4>Informations Principales</h4>
