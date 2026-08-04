@@ -259,22 +259,50 @@ export default function ImportCentre() {
 
     const logId = 'IMP-' + String(Date.now()).slice(-6);
     const newDocCode = genCode("DOC");
+    const clientSelected = (db.clients || []).find(c => c.code === pdfMeta.client);
+    const clientNom = clientSelected ? `${clientSelected.nom} (${clientSelected.code})` : pdfMeta.client;
 
     const newDocObj = {
       code: newDocCode,
       nom: pdfFileItem.nom,
       categorie: pdfMeta.categorie || 'Facture',
       client: pdfMeta.client || '',
+      clientNom: clientNom,
       dossier: pdfMeta.dossier || '',
       statut: 'Validé',
-      numeroPiece: extractedFields.numeroFacture || '',
+      numeroPiece: extractedFields.numeroFacture || newDocCode,
       dateDoc: extractedFields.dateDoc || new Date().toLocaleDateString('fr-FR'),
-      montantTTC: extractedFields.montantTTC || '',
+      montantHT: extractedFields.montantHT || '0.00',
+      montantTTC: extractedFields.montantTTC || '0.00',
       contenuExtrait: extractedOcrText || '',
       remarques: pdfMeta.remarques || 'Intégré via OCR Centre d\'importation',
       par: userCourant,
       ts: Date.now()
     };
+
+    const nextDb = JSON.parse(JSON.stringify(db));
+    nextDb.documents = nextDb.documents || [];
+    nextDb.documents.unshift(newDocObj);
+
+    // If category is Facture, register in facturesFinales module as well!
+    if (['Facture', 'Proforma Invoice'].includes(pdfMeta.categorie || 'Facture')) {
+      nextDb.facturesFinales = nextDb.facturesFinales || [];
+      const newFactureCode = genCode("FAC");
+      nextDb.facturesFinales.unshift({
+        code: newFactureCode,
+        numeroFacture: extractedFields.numeroFacture || newDocCode,
+        date: extractedFields.dateDoc || new Date().toLocaleDateString('fr-FR'),
+        client: pdfMeta.client || '',
+        clientNom: clientNom,
+        dossier: pdfMeta.dossier || '',
+        ht: parseFloat(extractedFields.montantHT || 0),
+        ttc: parseFloat(extractedFields.montantTTC || 0),
+        statut: 'Non payée',
+        type: pdfMeta.categorie,
+        remarque: `Facture issue de l'import OCR (${pdfFileItem.nom})`,
+        ts: Date.now()
+      });
+    }
 
     const newHistoryItem = {
       id: logId,
@@ -292,10 +320,6 @@ export default function ImportCentre() {
       statut: 'Importé (OCR)'
     };
 
-    const nextDb = JSON.parse(JSON.stringify(db));
-    nextDb.documents = nextDb.documents || [];
-    nextDb.documents.push(newDocObj);
-
     const nextHist = [newHistoryItem, ...(nextDb.importHistory || [])];
     nextDb.importHistory = nextHist;
     setHistorique(nextHist);
@@ -303,7 +327,7 @@ export default function ImportCentre() {
     updateDB(nextDb);
     audit("CentreImportation", "Import OCR Document", logId, pdfFileItem.nom, "—", `Document ${newDocCode} créé pour client ${pdfMeta.client || 'Général'}`);
 
-    toast(`Document ${pdfFileItem.nom} intégré avec succès (${logId}).`);
+    toast(`Document ${pdfFileItem.nom} intégré avec succès ! (Code: ${newDocCode}, Client: ${clientNom || 'Non spécifié'})`);
     setShowPdfModal(false);
     setFileQueue(prev => prev.filter(f => f.id !== pdfFileItem.id));
   };
