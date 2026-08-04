@@ -7,9 +7,10 @@ import ModuleForm from './ModuleForm';
 import { MODS as MODS_DATA } from '../../data/modules';
 import { exporterExcel } from '../../utils/export';
 import { DownloadIcon } from '../common/Icons';
+import * as Actions from '../../utils/businessActions';
 
 export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
-  const { db, updateDB, audit } = useDB();
+  const { db, updateDB, audit, genCode, sauver, notifier, userCourant } = useDB();
   const { peut, moduleVisible } = useAuth();
   const { toast } = useToast();
   
@@ -68,7 +69,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
       const nextCollection = collection.filter(x => x.code !== code);
       const nextDb = { ...db, [M.coll]: nextCollection };
       updateDB(nextDb);
-      audit(M.label, "Suppression", code, "—", obj ? (obj[M.champs?.[0]?.k] || code) : code, "supprimé");
+      audit(M.label, "Suppression", code, "—", "—", JSON.stringify(obj || {}));
       toast(`${code} supprimé`);
     }
   };
@@ -85,6 +86,9 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
         const type = a.fn.replace('ouvrirFiche', '');
         const target = 'fiche' + type;
         window.location.hash = `#${target}:${code}`;
+      } else if (Actions[a.fn]) {
+        // Appelle la logique métier réelle
+        Actions[a.fn](code, db, genCode, audit, userCourant, updateDB, toast, notifier);
       } else {
         toast(`Action « ${a.txt} » exécutée sur ${code}`);
       }

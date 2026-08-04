@@ -8,7 +8,7 @@ import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
 
 const FicheCommande = ({ codeProp, code: codeFromProp }) => {
-  const { db } = useDB();
+  const { db, updateDB, genCode, audit, userCourant } = useDB();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
   const [showEdit, setShowEdit] = useState(false);
@@ -76,7 +76,11 @@ const FicheCommande = ({ codeProp, code: codeFromProp }) => {
         </div>
 
         <div className="bloc-fiche large">
-          <h4>Dossiers Liés <button className="btn mini vert" style={{float:'right'}}>+ Créer Dossier depuis Commande</button></h4>
+          <h4>Dossiers Liés <button className="btn mini vert" style={{float:'right'}} onClick={() => {
+            import('../../utils/businessActions').then(Actions => {
+              Actions.creerDossierDepuisCommande(code, db, genCode, audit, userCourant, updateDB, (msg) => alert(msg));
+            });
+          }}>+ Créer Dossier depuis Commande</button></h4>
           <DataTable 
             columns={[
               {key: 'code', label: 'Code', render: (val) => <a href={`#ficheDossier:${val}`}>{val}</a>},

@@ -9,7 +9,7 @@ import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
 
 const FicheDossier = ({ codeProp, code: codeFromProp }) => {
-  const { db } = useDB();
+  const { db, updateDB, genCode, audit, userCourant, notifier } = useDB();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
   const [showEdit, setShowEdit] = useState(false);
@@ -84,7 +84,11 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
           <b style={{fontSize:'16px', color:'var(--vert)'}}>{code} - {dossier.produit}</b>
           <span style={{flex:1}}></span>
           <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
-          <button className="btn vert" onClick={() => alert("Implémentation de l'avancement d'étape à venir")}>Étape suivante</button>
+          <button className="btn vert" onClick={() => {
+            import('../../utils/businessActions').then(Actions => {
+              Actions.avancerDossier(code, db, genCode, audit, userCourant, updateDB, (msg) => alert(msg), notifier);
+            });
+          }}>Étape suivante</button>
           <button className="btn or" onClick={() => window.print()}>🖨 Imprimer</button>
         </div>
         {showEdit && (

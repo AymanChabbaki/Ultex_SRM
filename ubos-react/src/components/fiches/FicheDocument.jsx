@@ -74,6 +74,31 @@ const FicheDocument = ({ codeProp, code: codeFromProp }) => {
         </div>
 
         <div className="bloc-fiche large">
+          <h4>Aperçu</h4>
+          <div style={{ padding: '14px' }}>
+            {document.url && /\.(pdf|jpg|jpeg|png|webp|gif)(\?|$)/i.test(document.url) ? (
+              /\.pdf(\?|$)/i.test(document.url) ? (
+                <iframe 
+                  src={document.url} 
+                  title="Aperçu PDF"
+                  style={{ width: '100%', height: '420px', border: '1px solid var(--bord)', borderRadius: '9px' }} 
+                />
+              ) : (
+                <img 
+                  src={document.url} 
+                  alt="Aperçu du document" 
+                  style={{ maxWidth: '100%', maxHeight: '420px', borderRadius: '9px' }} 
+                />
+              )
+            ) : (
+              <div className="vide">
+                Aucun aperçu - ce document est enregistré comme référence (métadonnées) sans fichier ni lien attaché. Ajoutez une URL pour activer l'aperçu.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bloc-fiche large">
           <h4>Historique des versions <button className="btn mini" style={{float:'right'}}>+ Nouvelle Version</button></h4>
           <DataTable 
             columns={[
