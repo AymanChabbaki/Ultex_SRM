@@ -2,7 +2,11 @@ import React from 'react';
 import EmptyState from './EmptyState';
 
 const DataTable = ({ columns, data, actions, onRowClick }) => {
-  if (!data || data.length === 0) {
+  const listData = Array.isArray(data) ? data : [];
+  const listCols = Array.isArray(columns) ? columns : [];
+  const listActions = Array.isArray(actions) ? actions : [];
+
+  if (listData.length === 0) {
     return <EmptyState />;
   }
 
@@ -12,23 +16,23 @@ const DataTable = ({ columns, data, actions, onRowClick }) => {
         <table>
           <thead>
             <tr>
-              {columns.map((col, i) => (
+              {listCols.map((col, i) => (
                 <th key={i}>{col.label}</th>
               ))}
-              {actions && actions.length > 0 && <th>Actions</th>}
+              {listActions.length > 0 && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
-            {data.map((row, rowIndex) => (
-              <tr key={row.code || rowIndex} onClick={onRowClick ? () => onRowClick(row) : undefined} style={{ cursor: onRowClick ? 'pointer' : 'default' }}>
-                {columns.map((col, colIndex) => (
+            {listData.map((row, rowIndex) => (
+              <tr key={row.code || row.id || rowIndex} onClick={onRowClick ? () => onRowClick(row) : undefined} style={{ cursor: onRowClick ? 'pointer' : 'default' }}>
+                {listCols.map((col, colIndex) => (
                   <td key={colIndex}>
-                    {col.render ? col.render(row[col.key], row) : (row[col.key] || "—")}
+                    {col.render ? col.render(row[col.key], row) : (row[col.key] !== undefined && row[col.key] !== null && row[col.key] !== "" ? row[col.key] : "—")}
                   </td>
                 ))}
-                {actions && actions.length > 0 && (
+                {listActions.length > 0 && (
                   <td onClick={(e) => e.stopPropagation()}>
-                    {actions.map((act, actIndex) => (
+                    {listActions.map((act, actIndex) => (
                       <button 
                         key={actIndex} 
                         className={`btn mini ${act.danger ? 'rouge' : ''}`} 
