@@ -4,7 +4,10 @@ import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
-import pdfParse from 'pdf-parse';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse');
 
 dotenv.config();
 
@@ -336,6 +339,9 @@ app.post('/api/genCode', async (req, res) => {
   } catch (error) {
     console.error('GenCode error:', error);
     res.status(500).json({ error: 'Erreur génération code PostgreSQL' });
+  }
+});
+
 // Real PDF Text Extraction & OCR Parsing Endpoint
 app.post('/api/ocr/pdf', async (req, res) => {
   try {
