@@ -349,15 +349,27 @@ app.post('/api/ocr/pdf', async (req, res) => {
     const { base64 } = req.body;
     if (!base64) return res.status(400).json({ error: 'Payload base64 manquant' });
 
-    const buffer = Buffer.from(base64.replace(/^data:application\/pdf;base64,/, ''), 'base64');
-    const data = await pdfParse(buffer);
+    const cleanBase64 = base64.includes('base64,') ? base64.split('base64,')[1] : base64;
+    const buffer = Buffer.from(cleanBase64.trim(), 'base64');
 
-    res.json({
-      success: true,
-      numPages: data.numpages,
-      text: data.text || '',
-      info: data.info || {}
-    });
+    try {
+      const data = await pdfParse(buffer);
+      return res.json({
+        success: true,
+        numPages: data.numpages || 1,
+        text: data.text || 'Document PDF scanné sans flux texte. Utilisez le bouton OCR Tesseract.',
+        info: data.info || {}
+      });
+    } catch (pdfErr) {
+      console.warn('PDF-parse fallback for scanned PDF:', pdfErr.message);
+      return res.json({
+        success: true,
+        numPages: 1,
+        text: 'Document PDF scanné ou image. Lancez l\'OCR Tesseract pour analyser le contenu.',
+        info: {},
+        isScanned: true
+      });
+    }
   } catch (error) {
     console.error('PDF parsing error:', error);
     res.status(500).json({ error: 'Erreur lors de la lecture du fichier PDF' });
