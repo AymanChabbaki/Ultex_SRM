@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { charger, sauver, genCode as genCodeDb, audit as auditDb, notifier as notifierDb } from '../data/db';
+import { charger, sauver, baseVide, genCode as genCodeDb, audit as auditDb, notifier as notifierDb } from '../data/db';
 import { seedUsers } from '../data/permissions';
+import { fetchDB, checkBackendHealth, saveDBSync } from '../services/api';
 
 const DBContext = createContext();
 
@@ -14,6 +15,32 @@ export const DBProvider = ({ children }) => {
     return data;
   });
   const [userCourant, setUserCourant] = useState("Invité");
+  const [isPostgresConnected, setIsPostgresConnected] = useState(false);
+
+  // Fetch initial PostgreSQL data on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function initPostgres() {
+      const health = await checkBackendHealth();
+      if (health && health.status === 'ok') {
+        if (isMounted) setIsPostgresConnected(true);
+        const remoteDb = await fetchDB();
+        if (remoteDb && isMounted) {
+          const merged = Object.assign(baseVide(), remoteDb);
+          seedUsers(merged);
+          setDb(merged);
+          // Update cache
+          try {
+            localStorage.setItem('ubos_mvp_v1', JSON.stringify(merged));
+          } catch (e) {}
+        }
+      } else {
+        if (isMounted) setIsPostgresConnected(false);
+      }
+    }
+    initPostgres();
+    return () => { isMounted = false; };
+  }, []);
 
   const updateDB = useCallback((newDb) => {
     const updated = { ...newDb };
@@ -43,8 +70,18 @@ export const DBProvider = ({ children }) => {
     });
   }, [userCourant]);
 
+  const syncToPostgres = useCallback(async () => {
+    if (db) {
+      await saveDBSync(db);
+      setIsPostgresConnected(true);
+    }
+  }, [db]);
+
   return (
-    <DBContext.Provider value={{ db, setDb, updateDB, sauver, genCode, audit, notifier, userCourant, setUserCourant }}>
+    <DBContext.Provider value={{
+      db, setDb, updateDB, sauver, genCode, audit, notifier,
+      userCourant, setUserCourant, isPostgresConnected, syncToPostgres
+    }}>
       {children}
     </DBContext.Provider>
   );

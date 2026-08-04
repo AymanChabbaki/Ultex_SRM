@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useDB } from './DBContext';
 import { estDirection as estDirectionPerm, peut as peutPerm, moduleVisible as moduleVisiblePerm } from '../data/permissions';
+import { loginBackend } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -49,7 +50,19 @@ export const AuthProvider = ({ children }) => {
     audit("Sécurité", "Connexion", user.code || user.identifiant, "—", "—", user.identifiant);
   }, [setUserCourant, audit]);
 
-  const connecter = useCallback((id, mdp) => {
+  const connecter = useCallback(async (id, mdp) => {
+    // 1. Try PostgreSQL Backend Login
+    try {
+      const res = await loginBackend(id, mdp);
+      if (res && res.user) {
+        login(res.user);
+        return true;
+      }
+    } catch (e) {
+      console.warn("Backend login fail, fallback local check:", e.message);
+    }
+
+    // 2. Local fallback check
     if (!db || !db.utilisateurs) return false;
     const user = db.utilisateurs.find(u => (u.identifiant === id || u.code === id) && u.motDePasse === mdp && u.actif);
     if (user) {

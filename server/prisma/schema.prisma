@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String   @id @default(uuid())
+  code              String   @unique
+  identifiant       String   @unique
+  nomComplet        String
+  role              String   @default("Utilisateur")
+  service           String   @default("Général")
+  email             String?
+  motDePasse        String
+  actif             Boolean  @default(true)
+  modulesAutorises  Json?
+  permissions       Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("users")
+}
+
+model CollectionItem {
+  id         String   @id @default(uuid())
+  collection String
+  code       String?
+  dossier    String?
+  data       Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([collection, id])
+  @@index([collection])
+  @@index([collection, code])
+  @@index([collection, dossier])
+  @@map("collection_items")
+}
+
+model SequenceCounter {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  val       Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("sequence_counters")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  ts          BigInt
+  date        String
+  heure       String
+  utilisateur String
+  module      String
+  action      String
+  objet       String
+  champ       String
+  avant       String
+  apres       String
+  dossier     String
+  createdAt   DateTime @default(now())
+
+  @@index([dossier])
+  @@index([utilisateur])
+  @@map("audit_logs")
+}
+
+model NotificationItem {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  dest      String
+  de        String
+  texte     String
+  module    String?
+  lu        Boolean  @default(false)
+  ts        BigInt
+  date      String
+  createdAt DateTime @default(now())
+
+  @@index([dest, lu])
+  @@map("notification_items")
+}
