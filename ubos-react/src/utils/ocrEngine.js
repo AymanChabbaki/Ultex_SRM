@@ -39,8 +39,10 @@ export function extraireChampsMetier(text) {
   if (matchDevis) fields.numeroFacture = matchDevis[1].trim();
 
   // 2. Nom du Client (e.g. Salaheddin el hajjaji) & Code Client (e.g. 0826IM9402)
-  const matchCodeClient = text.match(/(?:client\s*n[°o]|code\s*client)[^\:\n]*\:\s*([A-Z0-9\-\/]{4,22})/i);
-  if (matchCodeClient) fields.codeClient = matchCodeClient[1].trim();
+  const matchCodeClient = text.match(/(?:client\s*n[°o]|code\s*client)[^\:\n]*\:\s*([A-Z0-9]{4,16})/i);
+  if (matchCodeClient) {
+    fields.codeClient = matchCodeClient[1].replace(/(?:DATE|CIN|SERVICE).*$/i, '').trim();
+  }
 
   const matchClient = text.match(/(?:nom\s*du\s*client|client)[^\:\n]*\:\s*([^\n\r]+)/i);
   if (matchClient) {

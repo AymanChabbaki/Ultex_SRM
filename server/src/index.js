@@ -234,18 +234,34 @@ app.post('/api/db/sync', async (req, res) => {
       }
     }
 
-    // 3. Sync Collections
+    // 3. Sync Collections & Purge Deleted Records from PostgreSQL
     for (const col of COLLS) {
       if (Array.isArray(fullState[col])) {
+        const currentIds = fullState[col].map(item => String(item.id || item.code)).filter(Boolean);
+        
+        // Delete items from PostgreSQL that were deleted in frontend
+        if (currentIds.length > 0) {
+          await prisma.collectionItem.deleteMany({
+            where: {
+              collection: col,
+              id: { notIn: currentIds }
+            }
+          });
+        } else {
+          await prisma.collectionItem.deleteMany({
+            where: { collection: col }
+          });
+        }
+
         for (const item of fullState[col]) {
-          const itemId = item.id || item.code || String(Math.random());
+          const itemId = String(item.id || item.code || Math.random());
           const code = item.code || null;
           const dossier = item.dossier || null;
 
           await prisma.collectionItem.upsert({
-            where: { collection_id: { collection: col, id: String(itemId) } },
+            where: { collection_id: { collection: col, id: itemId } },
             update: { code, dossier, data: item },
-            create: { collection: col, id: String(itemId), code, dossier, data: item }
+            create: { collection: col, id: itemId, code, dossier, data: item }
           });
         }
       }

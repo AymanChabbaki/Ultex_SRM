@@ -225,31 +225,16 @@ export default function ImportCentre() {
     if (!fields) return;
     const { client, telephone, codeClient } = fields;
     
-    // Search existing client in db.clients
+    // Search existing client in db.clients strictly by code, phone or name
     let clientFound = (db.clients || []).find(c => 
       (codeClient && c.code === codeClient) ||
       (telephone && normTel(c.telephone) === normTel(telephone)) ||
-      (client && normCol(c.nom).includes(normCol(client)))
+      (client && normCol(c.nom) === normCol(client))
     );
 
     if (clientFound) {
       setPdfMeta(prev => ({ ...prev, client: clientFound.code }));
       toast(`Client rattaché automatiquement : ${clientFound.nom} (${clientFound.code})`);
-    } else if (client) {
-      // Auto-create client in db.clients so it can be selected immediately
-      const newCode = codeClient || genCode("C");
-      const newClient = {
-        code: newCode,
-        nom: client,
-        telephone: telephone || '',
-        segment: 'Client',
-        remarque: 'Créé automatiquement via OCR Document',
-        ts: Date.now()
-      };
-      const nextDb = { ...db, clients: [...(db.clients || []), newClient] };
-      updateDB(nextDb);
-      setPdfMeta(prev => ({ ...prev, client: newCode }));
-      toast(`Nouveau client créé et rattaché : ${client} (${newCode})`);
     }
   };
 
@@ -261,6 +246,66 @@ export default function ImportCentre() {
 
   // History State
   const [historique, setHistorique] = useState(() => db.importHistory || []);
+
+  useEffect(() => {
+    if (db && Array.isArray(db.importHistory)) {
+      setHistorique(db.importHistory);
+    }
+  }, [db]);
+
+  const handleSavePdfDocument = () => {
+    if (!pdfFileItem) return;
+
+    const logId = 'IMP-' + String(Date.now()).slice(-6);
+    const newDocCode = genCode("DOC");
+
+    const newDocObj = {
+      code: newDocCode,
+      nom: pdfFileItem.nom,
+      categorie: pdfMeta.categorie || 'Facture',
+      client: pdfMeta.client || '',
+      dossier: pdfMeta.dossier || '',
+      statut: 'Validé',
+      numeroPiece: extractedFields.numeroFacture || '',
+      dateDoc: extractedFields.dateDoc || new Date().toLocaleDateString('fr-FR'),
+      montantTTC: extractedFields.montantTTC || '',
+      contenuExtrait: extractedOcrText || '',
+      remarques: pdfMeta.remarques || 'Intégré via OCR Centre d\'importation',
+      par: userCourant,
+      ts: Date.now()
+    };
+
+    const newHistoryItem = {
+      id: logId,
+      codeImport: logId,
+      fichier: pdfFileItem.nom,
+      type: pdfFileItem.typeDetecte || 'Document non tabulaire',
+      taille: pdfFileItem.tailleMo + ' Mo',
+      utilisateur: userCourant,
+      date: new Date().toLocaleDateString('fr-FR'),
+      heure: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      nbLignes: 1,
+      crees: 1,
+      maj: 0,
+      ignores: 0,
+      statut: 'Importé (OCR)'
+    };
+
+    const nextDb = JSON.parse(JSON.stringify(db));
+    nextDb.documents = nextDb.documents || [];
+    nextDb.documents.push(newDocObj);
+
+    const nextHist = [newHistoryItem, ...(nextDb.importHistory || [])];
+    nextDb.importHistory = nextHist;
+    setHistorique(nextHist);
+
+    updateDB(nextDb);
+    audit("CentreImportation", "Import OCR Document", logId, pdfFileItem.nom, "—", `Document ${newDocCode} créé pour client ${pdfMeta.client || 'Général'}`);
+
+    toast(`Document ${pdfFileItem.nom} intégré avec succès (${logId}).`);
+    setShowPdfModal(false);
+    setFileQueue(prev => prev.filter(f => f.id !== pdfFileItem.id));
+  };
 
   // Export Filter State
   const [exportModule, setExportModule] = useState('clients');
@@ -919,11 +964,7 @@ export default function ImportCentre() {
           footer={
             <>
               <button className="btn doux" onClick={() => setShowPdfModal(false)}>Annuler</button>
-              <button className="btn" onClick={() => {
-                toast(`Document ${pdfFileItem.nom} intégré avec succès dans UBOS.`);
-                setShowPdfModal(false);
-                setFileQueue(prev => prev.filter(f => f.id !== pdfFileItem.id));
-              }}>
+              <button className="btn" onClick={handleSavePdfDocument}>
                 Enregistrer dans UBOS
               </button>
             </>
