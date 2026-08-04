@@ -1,4 +1,9 @@
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { createWorker } from 'tesseract.js';
+
+// Configure bundled local PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 /**
  * Intelligent regex parser for Invoices, Customs DUMs, BLs, and Packing Lists
@@ -102,10 +107,6 @@ export async function effectuerOCRPdf(file, onProgress) {
   try {
     if (onProgress) onProgress(15, "Chargement et découpage des pages du PDF...");
     
-    // Import PDF.js dynamically
-    const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.0.379'}/pdf.worker.min.mjs`;
-
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     
@@ -146,7 +147,10 @@ export async function effectuerOCRPdf(file, onProgress) {
     };
   } catch (error) {
     console.error("Erreur OCR PDF Scanné:", error);
-    // Fallback if Canvas rendering fails
-    return await effectuerOCRImage(file, onProgress);
+    return {
+      success: false,
+      text: "Impossible d'effectuer l'OCR sur ce PDF : " + (error.message || "Fichier invalide"),
+      error: error.message
+    };
   }
 }
