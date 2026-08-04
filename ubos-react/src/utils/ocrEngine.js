@@ -1,9 +1,16 @@
 import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import pdfWorkerRaw from 'pdfjs-dist/build/pdf.worker.min.mjs?raw';
 import { createWorker } from 'tesseract.js';
 
-// Configure bundled local PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+// Create an in-memory Blob URL for PDF.js worker with explicit application/javascript MIME type
+let workerBlobUrl = null;
+try {
+  const blob = new Blob([pdfWorkerRaw], { type: 'application/javascript' });
+  workerBlobUrl = URL.createObjectURL(blob);
+  pdfjsLib.GlobalWorkerOptions.workerSrc = workerBlobUrl;
+} catch (e) {
+  console.warn("Utilisation de la configuration worker par défaut:", e);
+}
 
 /**
  * Intelligent regex parser for Invoices, Customs DUMs, BLs, and Packing Lists
