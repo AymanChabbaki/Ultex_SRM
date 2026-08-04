@@ -6,6 +6,7 @@ import DataTable from '../common/DataTable';
 import Pill from '../common/Pill';
 import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
+import * as Actions from '../../utils/businessActions';
 
 const FicheCommande = ({ codeProp, code: codeFromProp }) => {
   const { db, updateDB, genCode, audit, userCourant } = useDB();
@@ -77,9 +78,7 @@ const FicheCommande = ({ codeProp, code: codeFromProp }) => {
 
         <div className="bloc-fiche large">
           <h4>Dossiers Liés <button className="btn mini vert" style={{float:'right'}} onClick={() => {
-            import('../../utils/businessActions').then(Actions => {
               Actions.creerDossierDepuisCommande(code, db, genCode, audit, userCourant, updateDB, (msg) => alert(msg));
-            });
           }}>+ Créer Dossier depuis Commande</button></h4>
           <DataTable 
             columns={[

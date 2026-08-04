@@ -28,7 +28,7 @@ export function importerJSON(file, setDB) {
 
 export function exporterExcel(modId, db, mods, userCourant) {
   try {
-    const xlsxLib = XLSX.default || XLSX;
+    const xlsxLib = XLSX['default'] || XLSX;
     const M = mods[modId];
     if (!M || !M.coll) return;
     
