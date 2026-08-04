@@ -14,7 +14,10 @@ export function baseVide() {
     remboursements: [], contacts: [], demandes: [], commandes: [],
     arrivages: [], analysesLimex: [], bonsLancement: [], stocks: [],
     mouvementsStock: [], livraisons: [], transfertsServices: [],
-    communicationsDossier: [], partenaires: [], notifs: [], audit: []
+    communicationsDossier: [], partenaires: [], notifs: [], audit: [],
+    importJobs: [], importFiles: [], importModels: [], importMappings: [],
+    importRows: [], importErrors: [], importHistory: [], importDetectedTypes: [],
+    importExtractedData: [], importAttachments: [], importRollbacks: []
   };
 }
 

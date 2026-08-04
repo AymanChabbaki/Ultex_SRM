@@ -21,7 +21,9 @@ const COLLS = [
   "erreurs", "utilisateurs", "facturesFinales", "avoirsFF", "abandons", "impayes",
   "remboursements", "contacts", "demandes", "commandes", "arrivages", "analysesLimex",
   "bonsLancement", "stocks", "mouvementsStock", "livraisons", "transfertsServices",
-  "communicationsDossier", "partenaires"
+  "communicationsDossier", "partenaires", "importJobs", "importFiles", "importModels",
+  "importMappings", "importRows", "importErrors", "importHistory", "importDetectedTypes",
+  "importExtractedData", "importAttachments", "importRollbacks"
 ];
 
 const PFX_ANNEE = ["DOS", "FF", "AV", "REL", "ABD", "IMP", "RMB", "CMD", "DMD", "ARR"];

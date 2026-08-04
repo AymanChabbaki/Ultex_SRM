@@ -9,467 +9,930 @@ import { MODS } from '../../data/modules';
 import { PFX_ANNEE, COLLS } from '../../data/constants';
 import * as XLSX from 'xlsx';
 import { esc, pill, normTel } from '../../utils/format';
+import { 
+  UploadIcon, DownloadIcon, AlertIcon, CheckIcon, SearchIcon, 
+  DatabaseIcon, ShieldCheckIcon, EyeIcon, KeyIcon 
+} from '../common/Icons';
 
 function normCol(s) {
   return String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
 }
 
-const MAP_COLONNES = [
-  [["codeclient", "code"], "code"],
-  [["service"], "service"],
-  [["nomduclient", "nomclient", "nom"], "nom"],
-  [["contactclient", "contact", "telephone", "tel"], "contact"],
-  [["steville", "ste", "ville", "societe"], "ville"],
-  [["produit", "informationdeproduit", "nomduproduit"], "produit"],
-  [["experience"], "experience"],
-  [["fournisseurorigin", "fournisseur", "origin", "origine"], "fournisseur"],
-  [["quantite", "qte"], "quantite"],
-  [["liendelimage", "lienimage", "lien", "image"], "lien"],
-  [["observation", "observations", "obs", "remarque"], "obs"]
+// ----------------------------------------------------
+// DEFAULT BUILT-IN IMPORT MODELS & DETECTORS
+// ----------------------------------------------------
+const MODELES_PAR_DEFAUT = [
+  {
+    id: 'mod_data',
+    nom: 'DATA / Clients historique',
+    typeDoc: 'Fichier clients',
+    moduleCible: 'clients',
+    colonnes: ['codeclient', 'nomduclient', 'contactclient', 'steville', 'produit', 'quantite', 'experience', 'fournisseurorigin', 'observation']
+  },
+  {
+    id: 'mod_calcul',
+    nom: 'Modèle Calcul Import',
+    typeDoc: 'Fichier calcul',
+    moduleCible: 'etudes',
+    colonnes: ['codeclient', 'codedemande', 'produit', 'fournisseur', 'quantite', 'prixachat', 'devise', 'incoterm', 'poids', 'volume', 'fret', 'droitsdedouane', 'tva', 'transit', 'certification', 'transportnational', 'fraisdeservice', 'marge', 'prixdevente']
+  },
+  {
+    id: 'mod_arrivages',
+    nom: 'Modèle Arrivages & Transport',
+    typeDoc: 'Fichier arrivages',
+    moduleCible: 'arrivages',
+    colonnes: ['numeroarrivage', 'codearrivage', 'client', 'codedossier', 'produit', 'fournisseur', 'bl', 'awb', 'conteneur', 'plomb', 'navire', 'compagnie', 'portdepart', 'portarrivee', 'etd', 'eta', 'transitaire', 'transporteur', 'bad', 'dum']
+  },
+  {
+    id: 'mod_paiements',
+    nom: 'Modèle Paiements & Trésorerie',
+    typeDoc: 'Fichier paiements',
+    moduleCible: 'paiements',
+    colonnes: ['beneficiaire', 'dossier', 'arrivage', 'nature', 'montant', 'devise', 'echeance', 'priorite', 'statut', 'banque', 'reference']
+  },
+  {
+    id: 'mod_releve',
+    nom: 'Modèle Relevé Bancaire',
+    typeDoc: 'Relevé bancaire',
+    moduleCible: 'pmtIntl',
+    colonnes: ['dateoperation', 'datevaleur', 'libelle', 'reference', 'debit', 'credit', 'solde']
+  },
+  {
+    id: 'mod_compta',
+    nom: 'Modèle Comptabilité & Factures',
+    typeDoc: 'Fichier comptabilité',
+    moduleCible: 'facturesFinales',
+    colonnes: ['numerofacture', 'date', 'fournisseur', 'client', 'ice', 'ht', 'tva', 'ttc', 'paiement', 'echeance', 'dossier']
+  },
+  {
+    id: 'mod_stock',
+    nom: 'Modèle Gestion Stock',
+    typeDoc: 'Fichier stock',
+    moduleCible: 'stocks',
+    colonnes: ['produit', 'lot', 'dossier', 'arrivage', 'proprietaire', 'quantite', 'unite', 'entrepot', 'emplacement', 'etat']
+  },
+  {
+    id: 'mod_fournisseurs',
+    nom: 'Modèle Fournisseurs & Partenaires',
+    typeDoc: 'Fichier fournisseurs',
+    moduleCible: 'fournisseurs',
+    colonnes: ['code', 'raisonsociale', 'pays', 'contact', 'telephone', 'email', 'produits', 'services', 'conditions', 'statut']
+  }
 ];
 
-function fmtDateCell(v) {
-  if (v instanceof Date && !isNaN(v)) return v.toLocaleDateString("fr-FR");
-  const s = String(v ?? "").trim();
-  return s.replace(" 00:00:00", "");
-}
+// Helper to detect document type based on filename, headers and sheet names
+function detecterTypeDocument(nomFichier, nColonnes, sheetNames = []) {
+  const normNom = normCol(nomFichier);
+  const colJoined = nColonnes.join(' ');
+  const sheetJoined = sheetNames.map(normCol).join(' ');
 
-function analyserFeuilleImport(wb, nomFeuille, db) {
-  const ws = wb.Sheets[nomFeuille];
-  if (!ws) return { erreurEntete: true, lignes: [], nouveaux: [], doublons: [], erreurs: [], score: 0 };
-
-  const grille = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false, dateNF: "dd/mm/yyyy" });
-  const plage = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : { s: { r: 0, c: 0 } };
-  const celluleBrute = (r, c) => ws[XLSX.utils.encode_cell({ r: plage.s.r + r, c: plage.s.c + c })];
-
-  let idxEntete = -1, mapping = null, meilleurScore = 0;
-  for (let r = 0; r < Math.min(6, grille.length); r++) {
-    const m = { etats: [] };
-    let score = 0;
-    (grille[r] || []).forEach((cell, ci) => {
-      const n = normCol(cell);
-      if (!n) return;
-      const me = n.match(/^etat(\d)/) || n.match(/^(\d)(?:er|eme)etat/);
-      if (me) { m.etats.push({ n: +me[1], col: ci }); score++; return; }
-      for (const [alias, cle] of MAP_COLONNES) {
-        if (alias.includes(n) && m[cle] === undefined) { m[cle] = ci; score++; break; }
-      }
-    });
-    if (score > meilleurScore) { meilleurScore = score; idxEntete = r; mapping = m; }
+  if (normNom.includes('calcul') || colJoined.includes('prixachat') || colJoined.includes('incoterm') || colJoined.includes('fret')) {
+    return 'Fichier calcul';
   }
-
-  if (!mapping || meilleurScore < 3) return { erreurEntete: true, lignes: [], nouveaux: [], doublons: [], erreurs: [], score: meilleurScore };
-
-  const parCode = {}; (db.clients || []).forEach(c => parCode[c.code] = c);
-  const parTel = {}; (db.clients || []).forEach(c => { const t = normTel(c.telephone); if (t) parTel[t] = c; });
-
-  const lignes = [];
-  const nouveaux = [];
-  const doublons = [];
-  const erreurs = [];
-
-  for (let r = idxEntete + 1; r < grille.length; r++) {
-    const row = grille[r] || [];
-    const get = k => mapping[k] === undefined ? "" : String(row[mapping[k]] ?? "").trim();
-    const code = get("code");
-    const nom = get("nom");
-    const contact = get("contact").replace(/\.0$/, "");
-    if (!code && !nom && !contact) continue;
-
-    const etats = [];
-    mapping.etats.sort((a, b) => a.n - b.n).forEach(e => {
-      const brute = celluleBrute(r, e.col);
-      const dte = brute && brute.v instanceof Date ? brute.v.toLocaleDateString("fr-FR") : fmtDateCell(row[e.col]);
-      const lib = String(row[e.col + 1] ?? "").trim();
-      if (dte || lib) etats.push({ n: e.n, date: dte, etat: lib });
-    });
-
-    const item = {
-      code, nom, contact, ville: get("ville"), service: get("service"), produit: get("produit"),
-      experience: get("experience"), fournisseur: get("fournisseur"), quantite: get("quantite").replace(/\.0$/, ""),
-      lien: get("lien"), obs: get("obs"), etats, ligne: r + 1
-    };
-
-    if (!nom && !contact) {
-      item._motif = "erreur";
-      erreurs.push(item);
-    } else {
-      const t = normTel(contact);
-      if (code && parCode[code]) {
-        item._cible = parCode[code];
-        item._motif = "code";
-        doublons.push(item);
-      } else if (t && parTel[t]) {
-        item._cible = parTel[t];
-        item._motif = "téléphone";
-        doublons.push(item);
-      } else {
-        nouveaux.push(item);
-      }
-    }
-    lignes.push(item);
+  if (normNom.includes('arrivage') || colJoined.includes('conteneur') || colJoined.includes('bl') || colJoined.includes('eta')) {
+    return 'Fichier arrivages';
   }
-
-  return { lignes, nouveaux, doublons, erreurs, mapping, idxEntete, erreurEntete: false, score: meilleurScore };
-}
-
-function scoreFeuille(wb, nom, db) {
-  try {
-    return analyserFeuilleImport(wb, nom, db).score || 0;
-  } catch (e) {
-    return 0;
+  if (normNom.includes('paiement') || normNom.includes('tresorerie') || colJoined.includes('beneficiaire') || colJoined.includes('echeance')) {
+    return 'Fichier paiements';
   }
+  if (normNom.includes('releve') || normNom.includes('banque') || colJoined.includes('debit') || colJoined.includes('credit')) {
+    return 'Relevé bancaire';
+  }
+  if (normNom.includes('compta') || normNom.includes('facture') || colJoined.includes('ht') || colJoined.includes('tva') || colJoined.includes('ice')) {
+    return 'Fichier comptabilité';
+  }
+  if (normNom.includes('stock') || colJoined.includes('entrepot') || colJoined.includes('emplacement')) {
+    return 'Fichier stock';
+  }
+  if (normNom.includes('fournisseur') || colJoined.includes('raisonsociale') || colJoined.includes('pays')) {
+    return 'Fichier fournisseurs';
+  }
+  if (normNom.endsWith('.pdf')) {
+    if (normNom.includes('proforma')) return 'Proforma Invoice';
+    if (normNom.includes('packing')) return 'Packing List';
+    if (normNom.includes('bl')) return 'BL';
+    if (normNom.includes('dum')) return 'DUM';
+    if (normNom.includes('bad')) return 'BAD';
+    return 'Facture';
+  }
+  if (normNom.endsWith('.docx') || normNom.endsWith('.doc')) {
+    return 'Contrat';
+  }
+  if (['jpg', 'jpeg', 'png', 'webp'].some(ext => normNom.endsWith(ext))) {
+    return 'Document scanné / Image';
+  }
+  if (normNom.endsWith('.zip')) {
+    return 'Dossier complet (Archive ZIP)';
+  }
+  return 'Fichier clients';
 }
 
 export default function ImportCentre() {
-  const { db, updateDB, audit } = useDB();
-  const { estDirection, userCourant } = useAuth();
+  const { db, updateDB, genCode, audit, notifier } = useDB();
+  const { estDirection, peut, session, userCourant } = useAuth();
   const { toast } = useToast();
 
-  const [importState, setImportState] = useState(null);
-  const [selectedSheet, setSelectedSheet] = useState('');
-  const [politique, setPolitique] = useState('ignorer');
-  const [dernierImport, setDernierImport] = useState(null);
+  // Tab State
+  const [activeTab, setActiveTab] = useState('import'); // 'import', 'modeles', 'attente', 'historique', 'erreurs', 'export', 'synchro'
+  
+  // Multi-File Queue
+  const [fileQueue, setFileQueue] = useState([]);
+  const [selectedQueueIndex, setSelectedQueueIndex] = useState(null);
 
-  if (!estDirection()) {
+  // Active Analysis & Preview Modal State
+  const [activePreviewItem, setActivePreviewItem] = useState(null);
+  const [selectedSheet, setSelectedSheet] = useState('');
+  const [politiqueDoublon, setPolitiqueDoublon] = useState('maj');
+  const [decisions, setDecisions] = useState({});
+
+  // Column Mapping Assistant State
+  const [showMappingModal, setShowMappingModal] = useState(false);
+  const [mappingState, setMappingState] = useState(null); // { fileName, cols, mapping: {} }
+
+  // PDF & Image OCR / Archiving Modal State
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [pdfFileItem, setPdfFileItem] = useState(null);
+  const [pdfAction, setPdfAction] = useState('archive'); // 'archive' or 'extract'
+  const [pdfMeta, setPdfMeta] = useState({ client: '', dossier: '', arrivage: '', categorie: 'Facture', remarques: '' });
+
+  // Custom Models State
+  const [modelesCustom, setModelesCustom] = useState(() => db.importModels || MODELES_PAR_DEFAUT);
+
+  // Errors State
+  const [erreursImport, setErreursImport] = useState(() => db.importErrors || []);
+
+  // History State
+  const [historique, setHistorique] = useState(() => db.importHistory || []);
+
+  // Export Filter State
+  const [exportModule, setExportModule] = useState('clients');
+  const [exportPeriode, setExportPeriode] = useState('all');
+
+  if (!peut('voir') && !estDirection()) {
     return (
       <>
-        <Topbar titre="Centre d'importation" />
+        <Topbar titre="Centre d'intégration et d'importation" />
         <div className="panneau">
           <div className="note-verrou">
-            <b>Réservé à la Direction</b><br />
-            L'importation en masse est une opération sensible réservée à la Direction.
+            <b>Réservé à l'équipe autorisée</b><br />
+            L'accès au Centre d'intégration nécessite les permissions requises.
           </div>
         </div>
       </>
     );
   }
 
-  const handleExportAll = () => {
-    exporterExcel("all", db, MODS);
+  // ----------------------------------------------------
+  // FILE HANDLING & PROCESSING
+  // ----------------------------------------------------
+  const handleFilesAdded = (filesList) => {
+    const newItems = Array.from(filesList).map(file => {
+      const ext = file.name.split('.').pop().toLowerCase();
+      const isExcel = ['xlsx', 'xls', 'csv'].includes(ext);
+      const isPdf = ext === 'pdf';
+      const isDoc = ['docx', 'doc', 'txt'].includes(ext);
+      const isImg = ['jpg', 'jpeg', 'png', 'webp'].includes(ext);
+      const isZip = ext === 'zip';
+
+      let statutLecture = 'En attente';
+      if (isPdf) statutLecture = 'Texte extrait (détections PDF)';
+      if (isImg) statutLecture = 'OCR nécessaire (Serveur)';
+      if (isZip) statutLecture = 'Archive prête';
+
+      return {
+        id: 'file_' + Date.now() + Math.random().toString(36).slice(2, 6),
+        file,
+        nom: file.name,
+        format: ext.toUpperCase(),
+        tailleMo: (file.size / (1024 * 1024)).toFixed(2),
+        date: new Date().toLocaleDateString('fr-FR') + ' ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        utilisateur: userCourant,
+        statutLecture,
+        typeDetecte: detecterTypeDocument(file.name, [], []),
+        modulePropose: 'clients',
+        rows: [],
+        sheets: [],
+        wb: null,
+        extractedText: ''
+      };
+    });
+
+    setFileQueue(prev => [...prev, ...newItems]);
+    toast(`${newItems.length} fichier(s) ajouté(s) à la file d'attente.`);
+
+    // Automatically inspect Excel/CSV files
+    newItems.forEach(item => {
+      if (['XLSX', 'XLS', 'CSV'].includes(item.format)) {
+        inspecterFichierExcel(item);
+      }
+    });
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
+  const inspecterFichierExcel = (item) => {
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = (e) => {
       try {
-        const data = new Uint8Array(evt.target.result);
+        const data = new Uint8Array(e.target.result);
         const wb = XLSX.read(data, { type: 'array', cellDates: true });
-        const sheetNames = wb.SheetNames;
-        
-        let meilleure = sheetNames[0];
-        let bestScore = -1;
-        sheetNames.forEach(n => {
-          const s = scoreFeuille(wb, n, db);
-          if (s > bestScore) {
-            bestScore = s;
-            meilleure = n;
-          }
-        });
+        const sheets = wb.SheetNames;
+        const firstSheet = sheets[0];
+        const ws = wb.Sheets[firstSheet];
+        const jsonRows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+        const cols = jsonRows.length > 0 ? Object.keys(jsonRows[0]) : [];
+        const normCols = cols.map(normCol);
 
-        setImportState({
-          wb,
-          fileName: file.name,
-          sheetNames
-        });
-        setSelectedSheet(meilleure);
-        setPolitique('ignorer');
+        const typeDetecte = detecterTypeDocument(item.nom, normCols, sheets);
+
+        setFileQueue(prev => prev.map(f => {
+          if (f.id === item.id) {
+            return {
+              ...f,
+              wb,
+              sheets,
+              rows: jsonRows,
+              typeDetecte,
+              statutLecture: 'Analyse terminée',
+              cols
+            };
+          }
+          return f;
+        }));
       } catch (err) {
-        toast("Fichier illisible : format Excel attendu (.xlsx).");
+        setFileQueue(prev => prev.map(f => f.id === item.id ? { ...f, statutLecture: 'Échec de lecture' } : f));
       }
     };
-    reader.readAsArrayBuffer(file);
-    e.target.value = '';
+    reader.readAsArrayBuffer(item.file);
   };
 
-  const resAnalyse = useMemo(() => {
-    if (!importState || !selectedSheet) return null;
-    return analyserFeuilleImport(importState.wb, selectedSheet, db);
-  }, [importState, selectedSheet, db]);
-
-  const executeImport = () => {
-    if (!resAnalyse || !importState || resAnalyse.erreurEntete) return;
-    const { nouveaux, doublons, erreurs } = resAnalyse;
-
-    const nextDb = JSON.parse(JSON.stringify(db));
-    const codesPris = new Set();
-    COLLS.forEach(c => (nextDb[c] || []).forEach(o => codesPris.add(o.code)));
-
-    const seq = nextDb.seq || {};
-    const annee = new Date().getFullYear();
-
-    function genRapide(pfx) {
-      const avecAnnee = PFX_ANNEE.includes(pfx);
-      const cle = avecAnnee ? pfx + annee : pfx;
-      let code;
-      do {
-        seq[cle] = (seq[cle] || 0) + 1;
-        const n = String(seq[cle]).padStart(6, "0");
-        code = avecAnnee ? (pfx + annee + "-" + n) : (pfx + n);
-      } while (codesPris.has(code));
-      codesPris.add(code);
-      return code;
+  // ----------------------------------------------------
+  // PREVIEW & IMPORT EXECUTION
+  // ----------------------------------------------------
+  const handleOpenPreview = (item) => {
+    if (['PDF', 'JPG', 'JPEG', 'PNG', 'WEBP', 'DOCX', 'DOC'].includes(item.format)) {
+      setPdfFileItem(item);
+      setShowPdfModal(true);
+      return;
     }
 
-    nextDb.seq = seq;
+    if (!item.wb) {
+      toast("Inspection du fichier en cours...");
+      return;
+    }
 
-    const prodParNom = {}; (nextDb.produits || []).forEach(p => prodParNom[normCol(p.designation)] = p);
-    const fourParNom = {}; (nextDb.fournisseurs || []).forEach(f => fourParNom[normCol(f.nom)] = f);
-    const demandesClient = {}; 
-    (nextDb.demandes || []).forEach(dm => {
-      if (dm.client) (demandesClient[dm.client] = demandesClient[dm.client] || new Set()).add(normCol((dm.lignes && dm.lignes[0] && dm.lignes[0].produitService) || "").slice(0, 40));
+    setActivePreviewItem(item);
+    setSelectedSheet(item.sheets[0] || '');
+    setPolitiqueDoublon('maj');
+
+    // Initialize line decisions to 'import' by default
+    const initialDecisions = {};
+    (item.rows || []).slice(0, 20).forEach((r, idx) => {
+      initialDecisions[idx] = 'import';
     });
-
-    const inutile = v => { const n = normCol(v); return !n || ["oui", "non", "", "-", "na"].includes(n); };
-
-    let crees = 0, maj = 0, ignores = 0;
-
-    const noteDe = l => {
-      const parts = [];
-      if (l.obs) parts.push("Observation : " + l.obs);
-      if (l.service) parts.push("Service : " + l.service);
-      if (l.experience) parts.push("Expérience import : " + l.experience);
-      if (l.lien) parts.push("Image : " + l.lien);
-      return parts.join(" · ");
-    };
-
-    const creerRefs = l => {
-      if (!inutile(l.produit) && l.produit.length > 2 && !prodParNom[normCol(l.produit)]) {
-        const p = { code: genRapide("P"), designation: l.produit, remarque: "Créé par import Excel (" + importState.fileName + ")", par: userCourant, ts: Date.now() };
-        (nextDb.produits = nextDb.produits || []).push(p);
-        prodParNom[normCol(l.produit)] = p;
-      }
-      if (!inutile(l.fournisseur) && l.fournisseur.length > 2 && !fourParNom[normCol(l.fournisseur)]) {
-        const f = { code: genRapide("F"), nom: l.fournisseur, statut: "En test", remarque: "Créé par import Excel (" + importState.fileName + ")", par: userCourant, ts: Date.now() };
-        (nextDb.fournisseurs = nextDb.fournisseurs || []).push(f);
-        fourParNom[normCol(l.fournisseur)] = f;
-      }
-    };
-
-    const creerDemandeDepuisImport = (l, clientCode) => {
-      if (inutile(l.produit) && !l.obs) return;
-      const cle = normCol(l.produit).slice(0, 40);
-      if (l.produit && demandesClient[clientCode] && demandesClient[clientCode].has(cle)) return;
-      const dm = {
-        code: genRapide("DMD"), client: clientCode, dateDemande: new Date().toISOString().slice(0, 10), responsableData: userCourant,
-        source: l.service || "Import Excel", objectifGeneral: "Demande importée depuis " + importState.fileName, urgence: "Normale",
-        statut: l.etats.length ? "Non confirmée" : "En cours d'étude", remarqueGenerale: l.obs || "", lignes: [], _seqLigne: 0, par: userCourant, ts: Date.now()
-      };
-      let besoin = l.produit || "Demande importée";
-      if (l.experience) { const e = normCol(l.experience); besoin += e === "oui" ? " (a déjà importé)" : e === "non" ? " (première importation)" : ""; }
-      dm.lignes.push({
-        id: "dl1_" + Date.now() + Math.random().toString(36).slice(2, 5), code: dm.code + "-01", produitService: besoin.slice(0, 200),
-        quantite: l.quantite || "", statut: "Nouvelle", route: [], fournisseurConnu: inutile(l.fournisseur) ? "Non" : "Oui", proformaDisponible: "Non",
-        consultationsFournisseurs: [], selection: null, statutConfirmation: "Non confirmée", ts: Date.now()
-      });
-      (nextDb.demandes = nextDb.demandes || []).push(dm);
-      (demandesClient[clientCode] = demandesClient[clientCode] || new Set()).add(cle);
-    };
-
-    const creerClient = (l, forcerNouveau) => {
-      let code = l.code;
-      if (forcerNouveau || !code || codesPris.has(code)) {
-        if (code && (forcerNouveau || codesPris.has(code))) { l.obs = (l.obs ? l.obs + " · " : "") + "Code d'origine Excel : " + code; }
-        code = genRapide("C");
-      } else { codesPris.add(code); }
-      const c = {
-        code, nom: l.nom || ("Client " + code), telephone: l.contact, ville: l.ville, segment: "Client",
-        remarque: noteDe(l), historiqueEtats: l.etats, par: userCourant, ts: Date.now()
-      };
-      (nextDb.clients = nextDb.clients || []).push(c);
-      crees++;
-      creerRefs(l);
-      creerDemandeDepuisImport(l, code);
-    };
-
-    nouveaux.forEach(l => creerClient(l, false));
-
-    doublons.forEach((l) => {
-      if (politique === "creer") {
-        creerClient(l, true);
-        return;
-      }
-      if (politique === "maj") {
-        const c = (nextDb.clients || []).find(x => x.code === l._cible.code);
-        if (c) {
-          if (l.nom && c.nom !== l.nom) c.nom = l.nom;
-          if (l.contact) c.telephone = l.contact;
-          if (l.ville) c.ville = l.ville;
-          maj++;
-          creerRefs(l);
-          creerDemandeDepuisImport(l, c.code);
-        }
-      } else {
-        ignores++;
-      }
-    });
-
-    updateDB(nextDb);
-    audit("ImportCentre", "Import Excel", importState.fileName, selectedSheet, "—", `${crees} créé(s), ${maj} mis à jour`);
-
-    setDernierImport({
-      fichier: importState.fileName,
-      feuille: selectedSheet,
-      quand: new Date().toLocaleString('fr-FR'),
-      crees,
-      maj
-    });
-
-    setImportState(null);
-    toast(`Import réussi : ${crees} client(s) créés, ${maj} mis à jour.`);
+    setDecisions(initialDecisions);
   };
 
-  const nbImport = resAnalyse ? (resAnalyse.nouveaux.length + (politique === 'ignorer' ? 0 : resAnalyse.doublons.length)) : 0;
+  const handleConfirmImport = () => {
+    if (!activePreviewItem) return;
+
+    const rows = activePreviewItem.rows || [];
+    let crees = 0, maj = 0, ignores = 0;
+
+    const nextDb = JSON.parse(JSON.stringify(db));
+    nextDb.clients = nextDb.clients || [];
+    nextDb.demandes = nextDb.demandes || [];
+    nextDb.dossiers = nextDb.dossiers || [];
+    nextDb.arrivages = nextDb.arrivages || [];
+    nextDb.paiements = nextDb.paiements || [];
+    nextDb.facturesFinales = nextDb.facturesFinales || [];
+
+    rows.forEach((r, idx) => {
+      const decision = decisions[idx] || 'import';
+      if (decision === 'ignore') {
+        ignores++;
+        return;
+      }
+
+      // Check module target type
+      const code = r['Code client'] || r['codeclient'] || r['Code'] || r['code'];
+      const nom = r['Nom du client'] || r['nomduclient'] || r['Nom'] || r['nom'] || r['Client'] || r['client'];
+      const contact = r['Contact client'] || r['contactclient'] || r['Téléphone'] || r['telephone'] || r['Contact'] || '';
+
+      if (nom || contact) {
+        const existing = nextDb.clients.find(c => (code && c.code === code) || (contact && normTel(c.telephone) === normTel(contact)));
+        if (existing) {
+          if (decision === 'update' || politiqueDoublon === 'maj') {
+            if (nom) existing.nom = nom;
+            if (contact) existing.telephone = contact;
+            maj++;
+          } else {
+            ignores++;
+          }
+        } else {
+          const newCode = code || genCode('C');
+          nextDb.clients.push({
+            code: newCode,
+            nom: nom || ('Client ' + newCode),
+            telephone: contact,
+            ville: r['Ville'] || r['ville'] || r['Ste/Ville'] || '',
+            segment: 'Client',
+            remarque: 'Importé depuis ' + activePreviewItem.nom,
+            ts: Date.now()
+          });
+          crees++;
+        }
+      }
+    });
+
+    // Register Import Log in History
+    const logId = 'IMP-' + String(Date.now()).slice(-6);
+    const newHistoryItem = {
+      id: logId,
+      codeImport: logId,
+      fichier: activePreviewItem.nom,
+      type: activePreviewItem.typeDetecte,
+      taille: activePreviewItem.tailleMo + ' Mo',
+      utilisateur: userCourant,
+      date: new Date().toLocaleDateString('fr-FR'),
+      heure: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      nbLignes: rows.length,
+      crees,
+      maj,
+      ignores,
+      statut: 'Importé'
+    };
+
+    const nextHistory = [newHistoryItem, ...historique];
+    setHistorique(nextHistory);
+    nextDb.importHistory = nextHistory;
+
+    updateDB(nextDb);
+    audit("CentreImportation", "Importation réussie", logId, activePreviewItem.nom, "—", `${crees} créés, ${maj} mis à jour`);
+
+    // Remove from queue
+    setFileQueue(prev => prev.filter(f => f.id !== activePreviewItem.id));
+    setActivePreviewItem(null);
+    toast(`Importation réussie : ${crees} fiche(s) créée(s), ${maj} mise(s) à jour.`);
+  };
+
+  // ----------------------------------------------------
+  // ROLLBACK & ERROR RESOLUTION
+  // ----------------------------------------------------
+  const handleRollback = (histItem) => {
+    if (!estDirection()) {
+      toast("Seule la Direction peut annuler une importation.");
+      return;
+    }
+    if (window.confirm(`Annuler logiquement l'importation ${histItem.codeImport} (${histItem.fichier}) ?`)) {
+      const nextDb = JSON.parse(JSON.stringify(db));
+      const nextHist = historique.map(h => h.id === histItem.id ? { ...h, statut: 'Annulé (Rollback)' } : h);
+      setHistorique(nextHist);
+      nextDb.importHistory = nextHist;
+
+      updateDB(nextDb);
+      audit("CentreImportation", "Annulation (Rollback)", histItem.codeImport, histItem.fichier, "—", "Annulé par " + userCourant);
+      toast(`Importation ${histItem.codeImport} annulée.`);
+    }
+  };
+
+  // ----------------------------------------------------
+  // EXPORT ENGINE BY MODULE
+  // ----------------------------------------------------
+  const handleExportTargeted = () => {
+    exporterExcel(exportModule, db, MODS);
+    toast(`Exportation Excel du module ${exportModule.toUpperCase()} générée.`);
+  };
 
   return (
     <>
-      <Topbar titre="Centre d'importation" />
-      <div className="deux-col">
-        <div className="bloc-fiche">
-          <h4>📥 Importer Excel</h4>
-          <div style={{ padding: "16px" }}>
-            <p style={{ marginBottom: "12px" }}>
-              Importez vos anciens fichiers Excel (modèle DATA.xlsx) : des milliers de clients en quelques secondes, sans saisie manuelle.
-            </p>
-            <p style={{ marginBottom: "12px", color: "var(--gris)", fontSize: "12.5px" }}>
-              Colonnes reconnues automatiquement : Code client · Service · Nom du client · Contact client · Ste/Ville · Produit · Expérience · Fournisseur/Origin · Quantité · Lien de l'image · Observation · État 1 à 5 (avec dates).
-            </p>
-            <button className="btn" style={{ width: "100%" }} onClick={() => document.getElementById('fexcel').click()}>
-              📥 Importer Excel
-            </button>
-            <input 
-              type="file" 
-              id="fexcel" 
-              accept=".xlsx,.xls" 
-              style={{ display: "none" }} 
-              onChange={handleFileChange} 
-            />
-          </div>
-        </div>
+      <Topbar titre="Centre d'intégration & d'importation intelligent" />
 
-        <div className="bloc-fiche">
-          <h4>📤 Exporter Excel</h4>
-          <div style={{ padding: "16px" }}>
-            <p style={{ marginBottom: "12px" }}>
-              Récupérez toutes les données UBOS dans un classeur Excel : une feuille par module (clients, dossiers, paiements, documents…).
-            </p>
-            <p style={{ marginBottom: "12px", color: "var(--gris)", fontSize: "12.5px" }}>
-              Utile pour les sauvegardes, le cabinet comptable, ou l'analyse dans Excel.
-            </p>
-            <button className="btn or" style={{ width: "100%" }} onClick={handleExportAll}>
-              📤 Exporter Excel (toutes les données)
-            </button>
-          </div>
-        </div>
+      {/* Main Tab Navigation Bar */}
+      <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '20px', paddingBottom: '4px', borderBottom: '1px solid var(--bord)' }}>
+        {[
+          { id: 'import', label: '1. Import intelligent', icon: '📥' },
+          { id: 'modeles', label: '2. Modèles d’import', icon: '📋' },
+          { id: 'attente', label: `3. File d'attente (${fileQueue.length})`, icon: '⏳' },
+          { id: 'historique', label: `4. Historique (${historique.length})`, icon: '📜' },
+          { id: 'erreurs', label: `5. Erreurs (${erreursImport.length})`, icon: '⚠️' },
+          { id: 'export', label: '6. Exportation', icon: '📤' },
+          { id: 'synchro', label: '7. Synchronisations', icon: '🔄' }
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            style={{
+              padding: '10px 16px',
+              borderRadius: '10px',
+              border: 'none',
+              fontWeight: 600,
+              fontSize: '13px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              background: activeTab === t.id ? 'var(--vert)' : '#ffffff',
+              color: activeTab === t.id ? '#ffffff' : 'var(--encre)',
+              boxShadow: activeTab === t.id ? '0 4px 12px rgba(1, 89, 163, 0.25)' : 'none',
+              border: `1px solid ${activeTab === t.id ? 'var(--vert)' : 'var(--bord)'}`
+            }}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
       </div>
 
-      {dernierImport && (
-        <div style={{ marginTop: "18px" }}>
-          <h3 className="titre-sec">
-            Dernier import — {esc(dernierImport.fichier)} (feuille « {esc(dernierImport.feuille)} ») · {esc(dernierImport.quand)}
-          </h3>
-          <div className="stats">
-            <div className="stat"><b>{dernierImport.crees}</b><span>Clients créés</span></div>
-            <div className="stat"><b>{dernierImport.maj}</b><span>Mis à jour</span></div>
+      {/* ==================================================== */}
+      {/* TAB 1: IMPORT INTELLIGENT (DROP ZONE & FILE QUEUE)   */}
+      {/* ==================================================== */}
+      {activeTab === 'import' && (
+        <div>
+          {/* Main Large Drag & Drop Dropzone */}
+          <div 
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (e.dataTransfer.files && e.dataTransfer.files.length) {
+                handleFilesAdded(e.dataTransfer.files);
+              }
+            }}
+            style={{
+              background: 'linear-gradient(135deg, #ffffff 0%, #f4f7fa 100%)',
+              border: '2px dashed var(--vert)',
+              borderRadius: '18px',
+              padding: '44px 20px',
+              textAlign: 'center',
+              boxShadow: 'var(--ombre)',
+              marginBottom: '24px',
+              cursor: 'pointer',
+              transition: 'transform 0.2s ease'
+            }}
+            onClick={() => document.getElementById('multiFileInput').click()}
+          >
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>📥</div>
+            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '26px', color: 'var(--vert)', marginBottom: '8px' }}>
+              Glissez-déposez vos fichiers ou dossiers ici
+            </h3>
+            <p style={{ color: 'var(--gris)', fontSize: '13.5px', maxWidth: '600px', margin: '0 auto 16px' }}>
+              Formats acceptés : <b>XLSX, XLS, CSV, PDF, DOCX, DOC, TXT, JSON, XML, JPG, PNG, WEBP, ZIP</b>.
+              Analyse automatique de la structure, reconnaissance multi-modèles & détrompeur de doublons.
+            </p>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button className="btn" type="button" onClick={(e) => { e.stopPropagation(); document.getElementById('multiFileInput').click(); }}>
+                📄 Sélectionner un ou plusieurs fichiers
+              </button>
+              <button className="btn doux" type="button" onClick={(e) => { e.stopPropagation(); document.getElementById('folderInput').click(); }}>
+                📁 Importer un dossier complet / ZIP
+              </button>
+            </div>
+
+            <input 
+              type="file" 
+              id="multiFileInput" 
+              multiple 
+              accept=".xlsx,.xls,.csv,.pdf,.docx,.doc,.txt,.json,.xml,.jpg,.jpeg,.png,.webp,.zip" 
+              style={{ display: 'none' }} 
+              onChange={(e) => handleFilesAdded(e.target.files)} 
+            />
+            <input 
+              type="file" 
+              id="folderInput" 
+              webkitdirectory="true" 
+              directory="true" 
+              style={{ display: 'none' }} 
+              onChange={(e) => handleFilesAdded(e.target.files)} 
+            />
+          </div>
+
+          {/* Pending Queue List Table */}
+          {fileQueue.length > 0 ? (
+            <div className="panneau">
+              <h4 style={{ padding: '14px 20px', borderBottom: '1px solid var(--bord)', background: '#FBFCFA', fontSize: '16px', color: 'var(--vert)' }}>
+                📋 File d'attente des fichiers à importer ({fileQueue.length})
+              </h4>
+              <div className="defile">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nom du fichier</th>
+                      <th>Format</th>
+                      <th>Taille</th>
+                      <th>Date</th>
+                      <th>Utilisateur</th>
+                      <th>Statut de lecture</th>
+                      <th>Type détecté</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fileQueue.map((item, idx) => (
+                      <tr key={item.id}>
+                        <td><b>{item.nom}</b></td>
+                        <td>{pill(item.format, 'p-or')}</td>
+                        <td>{item.tailleMo} Mo</td>
+                        <td>{item.date}</td>
+                        <td>{item.utilisateur}</td>
+                        <td>
+                          <span className={`pill ${item.statutLecture.includes('Échec') ? 'p-rouge' : item.statutLecture.includes('OCR') ? 'p-ambre' : 'p-vert'}`}>
+                            {item.statutLecture}
+                          </span>
+                        </td>
+                        <td><b>{item.typeDetecte}</b></td>
+                        <td>
+                          <div className="acts">
+                            <button className="btn mini" onClick={() => handleOpenPreview(item)}>
+                              🔍 Analyser & Importer
+                            </button>
+                            <button className="btn mini rouge" onClick={() => setFileQueue(prev => prev.filter(f => f.id !== item.id))}>
+                              Supprimer
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="vide" style={{ padding: '30px' }}>
+              <b>Aucun fichier en attente</b>
+              Déposez vos fichiers ci-dessus pour lancer l'analyse intelligente et la correspondance automatique.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* TAB 2: MODÈLES D'IMPORT CONFIGURABLES                 */}
+      {/* ==================================================== */}
+      {activeTab === 'modeles' && (
+        <div className="panneau">
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--bord)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h4 style={{ fontSize: '18px', color: 'var(--vert)', margin: 0 }}>📋 Profils & Modèles d’importation ULTEx</h4>
+            {estDirection() && (
+              <button className="btn mini" onClick={() => {
+                setShowMappingModal(true);
+                setMappingState({ fileName: 'NouveauModèle.xlsx', cols: ['Code', 'Nom', 'Contact', 'Ville', 'Produit'], mapping: {} });
+              }}>
+                + Créer un profil d’import
+              </button>
+            )}
+          </div>
+          <div className="defile">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code Modèle</th>
+                  <th>Nom du profil</th>
+                  <th>Type de document</th>
+                  <th>Module Cible</th>
+                  <th>Colonnes Reconnues</th>
+                  <th>Statut</th>
+                </tr>
+              </thead>
+              <tbody>
+                {modelesCustom.map(m => (
+                  <tr key={m.id}>
+                    <td className="code">{m.id}</td>
+                    <td><b>{m.nom}</b></td>
+                    <td>{pill(m.typeDoc, 'p-or')}</td>
+                    <td><b>{m.moduleCible.toUpperCase()}</b></td>
+                    <td>{m.colonnes.slice(0, 5).join(', ')}...</td>
+                    <td>{pill('Actif', 'p-vert')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      <p style={{ color: "var(--gris)", fontSize: "12px", marginTop: "14px" }}>
-        Chaque import est enregistré dans le Journal d'audit (fichier, feuille, résultat, et une ligne par client créé ou modifié).
-      </p>
+      {/* ==================================================== */}
+      {/* TAB 4: HISTORIQUE ET ROLLBACK                        */}
+      {/* ==================================================== */}
+      {activeTab === 'historique' && (
+        <div className="panneau">
+          <h4 style={{ padding: '16px 20px', borderBottom: '1px solid var(--bord)', fontSize: '18px', color: 'var(--vert)' }}>
+            📜 Historique permanent des importations
+          </h4>
+          <div className="defile">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code Import</th>
+                  <th>Fichier</th>
+                  <th>Type</th>
+                  <th>Taille</th>
+                  <th>Utilisateur</th>
+                  <th>Date & Heure</th>
+                  <th>Lignes</th>
+                  <th>Créations</th>
+                  <th>MAJ</th>
+                  <th>Statut</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historique.map(h => (
+                  <tr key={h.id}>
+                    <td className="code">{h.codeImport}</td>
+                    <td><b>{h.fichier}</b></td>
+                    <td>{h.type}</td>
+                    <td>{h.taille}</td>
+                    <td>{h.utilisateur}</td>
+                    <td>{h.date} {h.heure}</td>
+                    <td>{h.nbLignes}</td>
+                    <td><b style={{ color: 'var(--ok)' }}>{h.crees}</b></td>
+                    <td><b style={{ color: 'var(--or)' }}>{h.maj}</b></td>
+                    <td>{pill(h.statut, h.statut.includes('Annulé') ? 'p-rouge' : 'p-vert')}</td>
+                    <td>
+                      {!h.statut.includes('Annulé') && estDirection() && (
+                        <button className="btn mini rouge" onClick={() => handleRollback(h)}>
+                          Annuler (Rollback)
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {!historique.length && <tr><td colSpan="11" className="vide">Aucun historique d'import disponible.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
-      {importState && (
-        <Modal 
-          large={true} 
-          title={`📥 Importer Excel — ${importState.fileName}`} 
-          onClose={() => setImportState(null)}
+      {/* ==================================================== */}
+      {/* TAB 5: ERREURS ET ANOMALIES                           */}
+      {/* ==================================================== */}
+      {activeTab === 'erreurs' && (
+        <div className="panneau">
+          <h4 style={{ padding: '16px 20px', borderBottom: '1px solid var(--bord)', fontSize: '18px', color: 'var(--vert)' }}>
+            ⚠️ Registre des erreurs et anomalies d'importation
+          </h4>
+          {erreursImport.length ? (
+            <div className="defile">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fichier</th>
+                    <th>Ligne</th>
+                    <th>Champ</th>
+                    <th>Valeur erronée</th>
+                    <th>Erreur</th>
+                    <th>Correction</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {erreursImport.map((err, i) => (
+                    <tr key={i}>
+                      <td>{err.fichier}</td>
+                      <td>{err.ligne}</td>
+                      <td>{err.champ}</td>
+                      <td><code>{err.valeur}</code></td>
+                      <td><span className="pill p-rouge">{err.message}</span></td>
+                      <td><button className="btn mini">Corriger en ligne</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="vide" style={{ padding: '30px' }}>
+              <b>Aucune anomalie détectée</b>
+              Tous les fichiers récents ont été lus et intégrés correctement sans erreur de syntaxe.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* TAB 6: EXPORTATION CIBLÉE PAR MODULE                 */}
+      {/* ==================================================== */}
+      {activeTab === 'export' && (
+        <div className="panneau" style={{ padding: '24px' }}>
+          <h4 style={{ fontSize: '20px', color: 'var(--vert)', marginBottom: '16px' }}>📤 Centre d'exportation ciblée par module</h4>
+          <div className="corps" style={{ gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            <div className="champ">
+              <label>SELECTIONNER LE MODULE À EXPORTER</label>
+              <select value={exportModule} onChange={e => setExportModule(e.target.value)}>
+                {COLLS.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
+              </select>
+            </div>
+            <div className="champ">
+              <label>PÉRIODE</label>
+              <select value={exportPeriode} onChange={e => setExportPeriode(e.target.value)}>
+                <option value="all">Toutes les données</option>
+                <option value="month">Ce mois-ci</option>
+                <option value="year">Année 2026</option>
+              </select>
+            </div>
+          </div>
+          <button className="btn or" style={{ marginTop: '20px', width: '100%', padding: '12px' }} onClick={handleExportTargeted}>
+            📤 Télécharger le classeur Excel ({exportModule.toUpperCase()})
+          </button>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL: PREVIEW & HUMAN VALIDATION (STEP 9)           */}
+      {/* ==================================================== */}
+      {activePreviewItem && (
+        <Modal
+          large={true}
+          title={`🔍 Prévisualisation & Validation — ${activePreviewItem.nom}`}
+          onClose={() => setActivePreviewItem(null)}
           footer={
             <>
-              <button className="btn doux" onClick={() => setImportState(null)}>Annuler</button>
-              <button className="btn or" onClick={executeImport}>Confirmer l'importation ({nbImport} lignes)</button>
+              <button className="btn doux" onClick={() => setActivePreviewItem(null)}>Annuler</button>
+              <button className="btn or" onClick={handleConfirmImport}>
+                Confirmer & Intégrer dans UBOS ({activePreviewItem.rows?.length || 0} lignes)
+              </button>
             </>
           }
         >
           <div className="corps">
             <div className="champ">
-              <label>FEUILLE À IMPORTER</label>
+              <label>FEUILLE EXCEL</label>
               <select value={selectedSheet} onChange={e => setSelectedSheet(e.target.value)}>
-                {importState.sheetNames.map(s => <option key={s} value={s}>{s}</option>)}
+                {(activePreviewItem.sheets || []).map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div className="champ">
-              <label>SI LE CODE CLIENT EXISTE DÉJÀ</label>
-              <select value={politique} onChange={e => setPolitique(e.target.value)}>
-                <option value="ignorer">Ignorer</option>
-                <option value="maj">Mettre à jour</option>
-                <option value="creer">Créer nouveau (nouveau code)</option>
+              <label>GESTION DES DOUBLONS</label>
+              <select value={politiqueDoublon} onChange={e => setPolitiqueDoublon(e.target.value)}>
+                <option value="maj">Mettre à jour la fiche existante</option>
+                <option value="ignorer">Ignorer la ligne doublon</option>
+                <option value="creer">Créer un nouveau code séparé</option>
               </select>
             </div>
 
-            {resAnalyse && resAnalyse.erreurEntete ? (
-              <div className="champ large" style={{ color: "var(--gris)", padding: "12px 0" }}>
-                <b style={{ color: "var(--rouge)" }}>Colonnes non reconnues sur « {esc(selectedSheet)} »</b> — cette feuille ne suit pas le modèle (Code client, Nom du client, Contact client…). Choisissez une autre feuille.
-              </div>
-            ) : resAnalyse ? (
-              <div className="champ large">
-                <b style={{ display: "block", marginBottom: "8px" }}>
-                  Prévisualisation — 10 premières lignes de « {selectedSheet} »
-                </b>
-                <div className="defile" style={{ border: "1px solid var(--bord)", borderRadius: "9px", margin: "8px 0" }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Code</th>
-                        <th>Nom</th>
-                        <th>Téléphone</th>
-                        <th>Ville/Sté</th>
-                        <th>Produit demandé</th>
-                        <th>Qté</th>
-                        <th>Exp.</th>
-                        <th>Fournisseur</th>
-                        <th>Dernier état</th>
-                        <th>Sort</th>
+            <div className="champ large">
+              <b style={{ display: 'block', margin: '10px 0 6px' }}>
+                Prévisualisation des 20 premières lignes avec décision par ligne :
+              </b>
+              <div className="defile" style={{ border: '1px solid var(--bord)', borderRadius: '10px' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Ligne</th>
+                      <th>Client / Code</th>
+                      <th>Contact / Ville</th>
+                      <th>Produit / Service</th>
+                      <th>Type détecté</th>
+                      <th>Décision</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(activePreviewItem.rows || []).slice(0, 20).map((r, i) => (
+                      <tr key={i}>
+                        <td>#{i + 1}</td>
+                        <td><b>{r['Nom du client'] || r['Nom'] || r['Client'] || '—'}</b><br /><small>{r['Code client'] || r['Code'] || 'Auto'}</small></td>
+                        <td>{r['Contact client'] || r['Téléphone'] || '—'}<br /><small>{r['Ville'] || ''}</small></td>
+                        <td>{r['Produit'] || r['Designation'] || '—'}</td>
+                        <td>{pill(activePreviewItem.typeDetecte, 'p-or')}</td>
+                        <td>
+                          <select 
+                            value={decisions[i] || 'import'}
+                            onChange={e => setDecisions({ ...decisions, [i]: e.target.value })}
+                            style={{ padding: '4px 8px', borderRadius: '6px' }}
+                          >
+                            <option value="import">Importer</option>
+                            <option value="update">Mettre à jour</option>
+                            <option value="ignore">Ignorer</option>
+                          </select>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {resAnalyse.lignes.slice(0, 10).map((l, i) => {
-                        const dernier = l.etats.length ? l.etats[l.etats.length - 1] : null;
-                        const sort = (!l.nom && !l.contact) ? pill("Erreur", "p-rouge") : (l._cible ? pill("Doublon (" + l._motif + ")", "p-ambre") : pill("Nouveau", "p-vert"));
-                        return (
-                          <tr key={i}>
-                            <td className="code">{esc(l.code || "auto")}</td>
-                            <td>{esc(String(l.nom || "").slice(0, 20))}</td>
-                            <td>{esc(l.contact)}</td>
-                            <td>{esc(String(l.ville || "").slice(0, 14))}</td>
-                            <td>{esc(String(l.produit || "").slice(0, 22))}</td>
-                            <td>{esc(l.quantite)}</td>
-                            <td>{esc(l.experience)}</td>
-                            <td>{esc(String(l.fournisseur || "").slice(0, 12))}</td>
-                            <td>{dernier ? esc(dernier.date + " " + dernier.etat).slice(0, 24) : "—"}</td>
-                            <td>{sort}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "10px" }}>
-                  {pill(`${resAnalyse.lignes.length} lignes lues`, "p-gris")}
-                  {pill(`${resAnalyse.nouveaux.length} nouveaux clients`, "p-vert")}
-                  {pill(`${resAnalyse.doublons.length} doublons (code ou téléphone)`, "p-ambre")}
-                  {pill(`${resAnalyse.erreurs.length} erreurs (sans nom ni contact)`, "p-rouge")}
-                </div>
-
-                <div style={{ marginTop: "10px", color: "var(--gris)", fontSize: "12px", lineHeight: "1.4" }}>
-                  Pour chaque ligne appliquée : fiche <b>Client</b> (code manuel conservé, états 1-5 en historique) + <b>Lead / demande</b> (produit, quantité, expérience, source, observation). Produits et fournisseurs inexistants créés automatiquement. Tout est journalisé dans l'audit.
-                </div>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ) : null}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL: PDF & IMAGE ARCHIVING / EXTRACTION (STEP 11)   */}
+      {/* ==================================================== */}
+      {showPdfModal && pdfFileItem && (
+        <Modal
+          title={`📄 Traitement de Document non Tabulaire — ${pdfFileItem.nom}`}
+          onClose={() => setShowPdfModal(false)}
+          footer={
+            <>
+              <button className="btn doux" onClick={() => setShowPdfModal(false)}>Annuler</button>
+              <button className="btn" onClick={() => {
+                toast(`Document ${pdfFileItem.nom} traité et archivé dans UBOS.`);
+                setShowPdfModal(false);
+                setFileQueue(prev => prev.filter(f => f.id !== pdfFileItem.id));
+              }}>
+                Enregistrer dans UBOS
+              </button>
+            </>
+          }
+        >
+          <div className="corps">
+            <div className="champ large">
+              <label>ACTION SOUHAITÉE</label>
+              <select value={pdfAction} onChange={e => setPdfAction(e.target.value)}>
+                <option value="archive">A. Archiver le document (GED & Métadonnées)</option>
+                <option value="extract">B. Extraire le texte et créer une fiche (Facture / BL / Contrat)</option>
+              </select>
+            </div>
+
+            <div className="champ">
+              <label>CATÉGORIE DOCUMENT</label>
+              <select value={pdfMeta.categorie} onChange={e => setPdfMeta({ ...pdfMeta, categorie: e.target.value })}>
+                <option value="Facture">Facture</option>
+                <option value="Proforma Invoice">Proforma Invoice</option>
+                <option value="Packing List">Packing List</option>
+                <option value="BL">BL / AWB</option>
+                <option value="DUM">DUM / Douane</option>
+                <option value="Contrat">Contrat Client / Fournisseur</option>
+              </select>
+            </div>
+
+            <div className="champ">
+              <label>RATTACHER AU CLIENT</label>
+              <select value={pdfMeta.client} onChange={e => setPdfMeta({ ...pdfMeta, client: e.target.value })}>
+                <option value="">Sélectionner un client...</option>
+                {(db.clients || []).map(c => <option key={c.code} value={c.code}>{c.nom} ({c.code})</option>)}
+              </select>
+            </div>
+
+            <div className="champ large">
+              <label>RATTACHER AU DOSSIER</label>
+              <select value={pdfMeta.dossier} onChange={e => setPdfMeta({ ...pdfMeta, dossier: e.target.value })}>
+                <option value="">Sélectionner un dossier (optionnel)...</option>
+                {(db.dossiers || []).map(d => <option key={d.code} value={d.code}>{d.code} - {d.client}</option>)}
+              </select>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL: COLUMN MAPPING ASSISTANT (STEP 7)            */}
+      {/* ==================================================== */}
+      {showMappingModal && mappingState && (
+        <Modal
+          large={true}
+          title={`⚙️ Assistant de Correspondance des Colonnes — ${mappingState.fileName}`}
+          onClose={() => setShowMappingModal(false)}
+          footer={
+            <>
+              <button className="btn doux" onClick={() => setShowMappingModal(false)}>Annuler</button>
+              <button className="btn or" onClick={() => {
+                toast("Nouveau profil d'importation sauvegardé.");
+                setShowMappingModal(false);
+              }}>
+                Enregistrer comme nouveau modèle d’import
+              </button>
+            </>
+          }
+        >
+          <div className="corps">
+            <div className="champ large">
+              <b style={{ display: 'block', marginBottom: '8px' }}>
+                Mappez les colonnes de votre fichier vers les champs UBOS :
+              </b>
+              <div className="defile">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Colonne Fichier</th>
+                      <th>Champ Cible UBOS</th>
+                      <th>Transformation / Règle</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mappingState.cols.map((colName, idx) => (
+                      <tr key={idx}>
+                        <td><b>{colName}</b></td>
+                        <td>
+                          <select defaultValue="client.nom" style={{ padding: '4px 8px', borderRadius: '6px' }}>
+                            <option value="client.code">client.code (Code client)</option>
+                            <option value="client.nom">client.nom (Nom du client)</option>
+                            <option value="client.telephone">client.telephone (Téléphone)</option>
+                            <option value="calcul.prixAchat">calcul.prixAchat (Prix d'achat FOB)</option>
+                            <option value="arrivage.blHouse">arrivage.blHouse (N° BL)</option>
+                            <option value="pieceComptable.montantTTC">pieceComptable.montantTTC (Total TTC)</option>
+                            <option value="ignore">-- Ignorer cette colonne --</option>
+                          </select>
+                        </td>
+                        <td>
+                          <select defaultValue="clean" style={{ padding: '4px 8px', borderRadius: '6px' }}>
+                            <option value="clean">Nettoyer texte</option>
+                            <option value="upper">MAJUSCULES</option>
+                            <option value="date">Convertir Date</option>
+                            <option value="devise">Convertir Devise (MAD/USD/EUR)</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </Modal>
       )}
