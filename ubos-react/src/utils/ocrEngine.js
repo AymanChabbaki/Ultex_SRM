@@ -25,37 +25,47 @@ export function extraireChampsMetier(text) {
     ice: '',
     fournisseur: '',
     client: '',
+    telephone: '',
     blNumber: '',
     conteneur: ''
   };
 
   if (!text) return fields;
 
-  // 1. Facture N°
-  const matchFac = text.match(/(?:facture|invoice|n[°o]|fac|inv)[^\d]*([a-z0-9\-\/]{3,20})/i);
-  if (matchFac) fields.numeroFacture = matchFac[1].trim();
+  // 1. Facture / Devis N°
+  const matchDevis = text.match(/(?:devis|facture|invoice|n[°o]|fac|inv)[^\w]*([a-z0-9\-\/]{3,25})/i);
+  if (matchDevis) fields.numeroFacture = matchDevis[1].trim();
 
-  // 2. Date (DD/MM/YYYY or YYYY-MM-DD)
-  const matchDate = text.match(/(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4})/);
+  // 2. Nom du Client
+  const matchClient = text.match(/(?:nom\s*du\s*client|client)[^\:\n]*\:\s*([^\n\r]+)/i);
+  if (matchClient) fields.client = matchClient[1].trim();
+
+  // 3. Contact / Téléphone
+  const matchTel = text.match(/(?:contact|t[éel]*phone|t[éel]*)[^\:\n]*\:\s*([\+\d\s\-\.]{8,20})/i);
+  if (matchTel) fields.telephone = matchTel[1].trim();
+
+  // 4. Date (DD/MM/YYYY or YYYY-MM-DD)
+  const matchDate = text.match(/(?:date)[^\:\n]*\:\s*(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4})/i) || text.match(/(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4})/);
   if (matchDate) fields.dateDoc = matchDate[1];
 
-  // 3. ICE (15 digits in Morocco)
+  // 5. ICE (15 digits in Morocco)
   const matchIce = text.match(/ICE[^\d]*(\d{15})/i);
   if (matchIce) fields.ice = matchIce[1];
 
-  // 4. Montant TTC
-  const matchTTC = text.match(/(?:total\s*ttc|montant\s*ttc|net\s*a\s*payer|total\s*due)[^\d]*([\d\s\,\.]+)/i);
+  // 6. Montant TTC (Total MAD / DH)
+  const matchTTC = text.match(/(?:total\s*ttc|montant\s*ttc|net\s*a\s*payer|total\s*due)[^\d]*([\d\s\,\.]+)/i) 
+    || text.match(/([\d\s\,\.]{4,15})\s*MAD/i);
   if (matchTTC) fields.montantTTC = matchTTC[1].replace(/\s/g, '').replace(',', '.');
 
-  // 5. Montant HT
+  // 7. Montant HT
   const matchHT = text.match(/(?:total\s*ht|montant\s*ht|subtotal)[^\d]*([\d\s\,\.]+)/i);
   if (matchHT) fields.montantHT = matchHT[1].replace(/\s/g, '').replace(',', '.');
 
-  // 6. TVA
+  // 8. TVA
   const matchTVA = text.match(/(?:tva|vat)[^\d]*([\d\s\,\.]+)/i);
   if (matchTVA) fields.montantTVA = matchTVA[1].replace(/\s/g, '').replace(',', '.');
 
-  // 7. BL / Conteneur
+  // 9. BL / Conteneur
   const matchBL = text.match(/(?:b\/l|bl\s*n[°o]|bill\s*of\s*lading)[^\w]*([a-z0-9]{6,16})/i);
   if (matchBL) fields.blNumber = matchBL[1];
 
