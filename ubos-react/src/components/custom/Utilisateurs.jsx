@@ -7,6 +7,7 @@ import Modal from '../common/Modal';
 import { MODS } from '../../data/modules';
 import { USERS } from '../../data/constants';
 import { pill, esc } from '../../utils/format';
+import { EyeIcon, EyeOffIcon, KeyIcon } from '../common/Icons';
 
 const DEPARTEMENTS = ["Direction", "Commercial", "Études Commerciales", "Opérations Internationales", "Digital", "Administration"];
 const ACTIONS_PERM = ["voir", "ajouter", "modifier", "supprimer", "valider", "exporter"];
@@ -18,6 +19,9 @@ export default function Utilisateurs() {
 
   const [showModal, setShowModal] = useState(false);
   const [editingCode, setEditingCode] = useState(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [visiblePasswords, setVisiblePasswords] = useState({});
+
   const [formData, setFormData] = useState({
     nomComplet: '', identifiant: '', motDePasse: '', poste: '', departement: 'Commercial',
     actif: true, services: [], modules: [], permissions: { voir: 1, ajouter: 1, modifier: 1 }
@@ -42,10 +46,15 @@ export default function Utilisateurs() {
 
   const estDirectionUser = (u) => u.departement === "Direction" || (u.services || []).includes("Direction");
 
+  const toggleTablePassword = (code) => {
+    setVisiblePasswords(prev => ({ ...prev, [code]: !prev[code] }));
+  };
+
   const handleOpenAdd = () => {
     setEditingCode(null);
+    setShowPasswordModal(true);
     setFormData({
-      nomComplet: '', identifiant: '', motDePasse: '', poste: '', departement: 'Commercial',
+      nomComplet: '', identifiant: '', motDePasse: 'ubos2026', poste: '', departement: 'Commercial',
       actif: true, services: [], modules: [], permissions: { voir: 1, ajouter: 1, modifier: 1 }
     });
     setShowModal(true);
@@ -53,10 +62,11 @@ export default function Utilisateurs() {
 
   const handleOpenEdit = (u) => {
     setEditingCode(u.code);
+    setShowPasswordModal(false);
     setFormData({
       nomComplet: u.nomComplet || '',
       identifiant: u.identifiant || '',
-      motDePasse: '',
+      motDePasse: u.motDePasse || 'ubos2026',
       poste: u.poste || '',
       departement: u.departement || 'Commercial',
       actif: u.actif !== false,
@@ -70,7 +80,7 @@ export default function Utilisateurs() {
   const handleSave = () => {
     const nom = formData.nomComplet.trim();
     const id = formData.identifiant.trim();
-    const mdp = formData.motDePasse;
+    const mdp = formData.motDePasse.trim();
 
     if (!nom || !id) {
       toast("Nom complet et identifiant obligatoires.");
@@ -99,7 +109,7 @@ export default function Utilisateurs() {
 
         if (mdp) {
           u.motDePasse = mdp;
-          notifier(u.nomComplet, "Votre mot de passe UBOS a été modifié par la Direction.", "Utilisateurs");
+          notifier(u.nomComplet, "Votre mot de passe UBOS a été mis à jour par la Direction.", "Utilisateurs");
         }
         nextUsers[idx] = u;
         audit("Utilisateurs", "Modification", u.code, "compte", "—", nom + " (" + id + ")");
@@ -163,6 +173,7 @@ export default function Utilisateurs() {
                 <th>Code</th>
                 <th>Nom complet</th>
                 <th>Identifiant</th>
+                <th>Mot de passe</th>
                 <th>Poste</th>
                 <th>Département</th>
                 <th>Services</th>
@@ -173,29 +184,47 @@ export default function Utilisateurs() {
               </tr>
             </thead>
             <tbody>
-              {utilisateurs.map(u => (
-                <tr key={u.code}>
-                  <td className="code">{u.code}</td>
-                  <td><b>{esc(u.nomComplet)}</b></td>
-                  <td>{esc(u.identifiant)}</td>
-                  <td>{esc(u.poste || "—")}</td>
-                  <td>{esc(u.departement || "—")}</td>
-                  <td>{(u.services || []).map(s => pill(s, "p-gris")).length ? (u.services || []).map(s => pill(s, "p-gris")) : "—"}</td>
-                  <td>{estDirectionUser(u) ? pill("Tous", "p-or") : `${(u.modules || []).length} module(s)`}</td>
-                  <td>{estDirectionUser(u) ? pill("Toutes", "p-or") : ACTIONS_PERM.filter(a => u.permissions && u.permissions[a]).join(", ") || "—"}</td>
-                  <td>{u.actif ? pill("Actif", "p-vert") : pill("Inactif", "p-rouge")}</td>
-                  <td>
-                    <div className="acts">
-                      <button className="btn mini doux" onClick={() => handleOpenEdit(u)}>Modifier</button>
-                      {u.identifiant !== session?.identifiant && (
-                        <button className={`btn mini ${u.actif ? "rouge" : ""}`} onClick={() => handleToggleActif(u)}>
-                          {u.actif ? "Désactiver" : "Réactiver"}
+              {utilisateurs.map(u => {
+                const isPasswordVisible = visiblePasswords[u.code];
+                return (
+                  <tr key={u.code}>
+                    <td className="code">{u.code}</td>
+                    <td><b>{esc(u.nomComplet)}</b></td>
+                    <td><code style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '6px', color: '#0f172a', fontWeight: 600 }}>{esc(u.identifiant)}</code></td>
+                    <td>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 600, color: isPasswordVisible ? '#0159A3' : '#64748b' }}>
+                          {isPasswordVisible ? (u.motDePasse || 'ubos2026') : '••••••••'}
+                        </span>
+                        <button 
+                          type="button" 
+                          onClick={() => toggleTablePassword(u.code)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center', color: '#64748b' }}
+                          title={isPasswordVisible ? "Masquer le mot de passe" : "Voir le mot de passe actuel"}
+                        >
+                          {isPasswordVisible ? <EyeOffIcon size={15} /> : <EyeIcon size={15} />}
                         </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      </div>
+                    </td>
+                    <td>{esc(u.poste || "—")}</td>
+                    <td>{esc(u.departement || "—")}</td>
+                    <td>{(u.services || []).map(s => pill(s, "p-gris")).length ? (u.services || []).map(s => pill(s, "p-gris")) : "—"}</td>
+                    <td>{estDirectionUser(u) ? pill("Tous", "p-or") : `${(u.modules || []).length} module(s)`}</td>
+                    <td>{estDirectionUser(u) ? pill("Toutes", "p-or") : ACTIONS_PERM.filter(a => u.permissions && u.permissions[a]).join(", ") || "—"}</td>
+                    <td>{u.actif ? pill("Actif", "p-vert") : pill("Inactif", "p-rouge")}</td>
+                    <td>
+                      <div className="acts">
+                        <button className="btn mini doux" onClick={() => handleOpenEdit(u)}>Modifier</button>
+                        {u.identifiant !== session?.identifiant && (
+                          <button className={`btn mini ${u.actif ? "rouge" : ""}`} onClick={() => handleToggleActif(u)}>
+                            {u.actif ? "Désactiver" : "Réactiver"}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -224,10 +253,28 @@ export default function Utilisateurs() {
               <label>Identifiant *</label>
               <input value={formData.identifiant} onChange={e => setFormData({ ...formData, identifiant: e.target.value })} />
             </div>
+
+            {/* Mot de Passe avec bouton pour voir/masquer le mot de passe actuel */}
             <div className="champ">
-              <label>Mot de passe {editingCode ? "(vide = inchangé)" : "*"}</label>
-              <input type="password" placeholder={editingCode ? "••••••" : ""} value={formData.motDePasse} onChange={e => setFormData({ ...formData, motDePasse: e.target.value })} />
+              <label>Mot de passe actuel / nouveau *</label>
+              <div className="input-wrapper" style={{ position: 'relative' }}>
+                <input 
+                  type={showPasswordModal ? "text" : "password"} 
+                  value={formData.motDePasse} 
+                  onChange={e => setFormData({ ...formData, motDePasse: e.target.value })}
+                  style={{ width: '100%', paddingRight: '38px' }}
+                />
+                <button 
+                  type="button" 
+                  onClick={() => setShowPasswordModal(!showPasswordModal)}
+                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
+                  title={showPasswordModal ? "Masquer le mot de passe" : "Afficher le mot de passe actuel"}
+                >
+                  {showPasswordModal ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
+                </button>
+              </div>
             </div>
+
             <div className="champ">
               <label>Poste</label>
               <input value={formData.poste} onChange={e => setFormData({ ...formData, poste: e.target.value })} />
