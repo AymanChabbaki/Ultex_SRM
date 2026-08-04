@@ -156,6 +156,7 @@ export default function ImportCentre() {
   const [pdfFileItem, setPdfFileItem] = useState(null);
   const [pdfAction, setPdfAction] = useState('archive'); // 'archive' or 'extract'
   const [pdfMeta, setPdfMeta] = useState({ client: '', dossier: '', arrivage: '', categorie: 'Facture', remarques: '' });
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
 
   // Real OCR State
   const [ocrRunning, setOcrRunning] = useState(false);
@@ -1070,11 +1071,49 @@ export default function ImportCentre() {
               </select>
             </div>
 
-            <div className="champ">
-              <label>RATTACHER AU CLIENT</label>
-              <select value={pdfMeta.client} onChange={e => setPdfMeta({ ...pdfMeta, client: e.target.value })}>
+            <div className="champ large">
+              <label>RATTACHER AU CLIENT (Recherche rapide par Nom / Code / Tél)</label>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <input 
+                  type="text" 
+                  placeholder="🔍 Tapez un nom, un code (ex: 0826IM9402) ou un téléphone pour filtrer..."
+                  value={clientSearchQuery}
+                  onChange={e => setClientSearchQuery(e.target.value)}
+                  style={{ flex: 1, padding: '8px 12px', fontSize: '13px', borderRadius: '8px', border: '1px solid var(--bord)' }}
+                />
+                {clientSearchQuery && (
+                  <button 
+                    type="button"
+                    className="btn doux" 
+                    style={{ padding: '0 12px', fontSize: '12px' }}
+                    onClick={() => setClientSearchQuery('')}
+                  >
+                    Effacer
+                  </button>
+                )}
+              </div>
+
+              <select 
+                value={pdfMeta.client} 
+                onChange={e => setPdfMeta({ ...pdfMeta, client: e.target.value })}
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', fontSize: '13px' }}
+              >
                 <option value="">Sélectionner un client...</option>
-                {(db.clients || []).map(c => <option key={c.code} value={c.code}>{c.nom} ({c.code})</option>)}
+                {(db.clients || [])
+                  .filter(c => {
+                    if (!clientSearchQuery) return true;
+                    const q = clientSearchQuery.toLowerCase();
+                    return (
+                      (c.nom && c.nom.toLowerCase().includes(q)) ||
+                      (c.code && c.code.toLowerCase().includes(q)) ||
+                      (c.telephone && c.telephone.toLowerCase().includes(q))
+                    );
+                  })
+                  .map(c => (
+                    <option key={c.code} value={c.code}>
+                      {c.nom} ({c.code}) {c.telephone ? `— Tél: ${c.telephone}` : ''}
+                    </option>
+                  ))}
               </select>
             </div>
 
