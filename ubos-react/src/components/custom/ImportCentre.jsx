@@ -196,7 +196,9 @@ export default function ImportCentre() {
 
       if (res && res.success && res.text.trim()) {
         setExtractedOcrText(res.text);
-        setExtractedFields(res.parsedFields || {});
+        const fields = res.parsedFields || {};
+        setExtractedFields(fields);
+        autoMatchClient(fields);
         toast("OCR Tesseract sur le PDF scanné réussi !");
       } else {
         // Try PDF-Parse backend fallback
@@ -207,7 +209,9 @@ export default function ImportCentre() {
             const pdfRes = await parsePdfBackend(base64);
             if (pdfRes && pdfRes.success) {
               setExtractedOcrText(pdfRes.text);
-              setExtractedFields(extraireChampsMetier(pdfRes.text));
+              const fields = extraireChampsMetier(pdfRes.text);
+              setExtractedFields(fields);
+              autoMatchClient(fields);
             }
           };
           reader.readAsDataURL(pdfFileItem.file);
@@ -215,6 +219,38 @@ export default function ImportCentre() {
       }
     }
     setOcrRunning(false);
+  };
+
+  const autoMatchClient = (fields) => {
+    if (!fields) return;
+    const { client, telephone, codeClient } = fields;
+    
+    // Search existing client in db.clients
+    let clientFound = (db.clients || []).find(c => 
+      (codeClient && c.code === codeClient) ||
+      (telephone && normTel(c.telephone) === normTel(telephone)) ||
+      (client && normCol(c.nom).includes(normCol(client)))
+    );
+
+    if (clientFound) {
+      setPdfMeta(prev => ({ ...prev, client: clientFound.code }));
+      toast(`Client rattaché automatiquement : ${clientFound.nom} (${clientFound.code})`);
+    } else if (client) {
+      // Auto-create client in db.clients so it can be selected immediately
+      const newCode = codeClient || genCode("C");
+      const newClient = {
+        code: newCode,
+        nom: client,
+        telephone: telephone || '',
+        segment: 'Client',
+        remarque: 'Créé automatiquement via OCR Document',
+        ts: Date.now()
+      };
+      const nextDb = { ...db, clients: [...(db.clients || []), newClient] };
+      updateDB(nextDb);
+      setPdfMeta(prev => ({ ...prev, client: newCode }));
+      toast(`Nouveau client créé et rattaché : ${client} (${newCode})`);
+    }
   };
 
   // Custom Models State
