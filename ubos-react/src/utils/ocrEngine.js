@@ -26,46 +26,73 @@ export function extraireChampsMetier(text) {
     fournisseur: '',
     client: '',
     telephone: '',
+    produit: '',
+    quantite: '',
     blNumber: '',
     conteneur: ''
   };
 
   if (!text) return fields;
 
-  // 1. Facture / Devis N°
-  const matchDevis = text.match(/(?:devis|facture|invoice|n[°o]|fac|inv)[^\w]*([a-z0-9\-\/]{3,25})/i);
+  // 1. Facture / Devis N° (e.g. IMDA8224-0826)
+  const matchDevis = text.match(/(?:devis|facture|invoice|inv|fac)[\s\:\.\°Nn]*([A-Z0-9\-\/]{4,25})/i) || text.match(/(?:n[°o])[\s\:\.]*([A-Z0-9\-\/]{4,25})/i);
   if (matchDevis) fields.numeroFacture = matchDevis[1].trim();
 
-  // 2. Nom du Client
+  // 2. Nom du Client (e.g. Salaheddin el hajjaji)
   const matchClient = text.match(/(?:nom\s*du\s*client|client)[^\:\n]*\:\s*([^\n\r]+)/i);
-  if (matchClient) fields.client = matchClient[1].trim();
+  if (matchClient) {
+    fields.client = matchClient[1].replace(/(?:CIN|SERVICE|DGI|Contact).*$/i, '').trim();
+  }
 
-  // 3. Contact / Téléphone
-  const matchTel = text.match(/(?:contact|t[éel]*phone|t[éel]*)[^\:\n]*\:\s*([\+\d\s\-\.]{8,20})/i);
+  // 3. Contact / Téléphone (e.g. +33 6 17 84 90 87)
+  const matchTel = text.match(/(?:contact|t[éel]*phone|t[éel]*)[^\:\n]*\:\s*([\+\d\s\-\.]{8,22})/i);
   if (matchTel) fields.telephone = matchTel[1].trim();
 
-  // 4. Date (DD/MM/YYYY or YYYY-MM-DD)
+  // 4. Date (e.g. 03/08/2026)
   const matchDate = text.match(/(?:date)[^\:\n]*\:\s*(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4})/i) || text.match(/(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4})/);
   if (matchDate) fields.dateDoc = matchDate[1];
 
-  // 5. ICE (15 digits in Morocco)
+  // 5. ICE (15 digits in Morocco: 003311826000051)
   const matchIce = text.match(/ICE[^\d]*(\d{15})/i);
   if (matchIce) fields.ice = matchIce[1];
 
-  // 6. Montant TTC (Total MAD / DH)
-  const matchTTC = text.match(/(?:total\s*ttc|montant\s*ttc|net\s*a\s*payer|total\s*due)[^\d]*([\d\s\,\.]+)/i) 
-    || text.match(/([\d\s\,\.]{4,15})\s*MAD/i);
-  if (matchTTC) fields.montantTTC = matchTTC[1].replace(/\s/g, '').replace(',', '.');
+  // 6. Produit & Quantité (e.g. Brosse lissante... 306 PCS)
+  const matchProd = text.match(/(brosse[^\n\r]*|\w+\s+lissante[^\n\r]*)/i);
+  if (matchProd) fields.produit = matchProd[1].trim();
 
-  // 7. Montant HT
-  const matchHT = text.match(/(?:total\s*ht|montant\s*ht|subtotal)[^\d]*([\d\s\,\.]+)/i);
-  if (matchHT) fields.montantHT = matchHT[1].replace(/\s/g, '').replace(',', '.');
+  const matchQte = text.match(/(\d+)\s*(?:PCS|PIECES|UNITE|KG)/i);
+  if (matchQte) fields.quantite = matchQte[1];
 
-  // 8. TVA
-  const matchTVA = text.match(/(?:tva|vat)[^\d]*([\d\s\,\.]+)/i);
-  if (matchTVA) fields.montantTVA = matchTVA[1].replace(/\s/g, '').replace(',', '.');
+  // 7. Montants MAD (Collect all currency amounts)
+  const allMadAmounts = [];
+  const madMatches = text.matchAll(/([\d\s]{2,10}[\,\.]\d{2})\s*(?:MAD|DH|DIRHAMS)/gi);
+  for (const m of madMatches) {
+    const val = parseFloat(m[1].replace(/\s/g, '').replace(',', '.'));
+    if (!isNaN(val) && val > 0) {
+      allMadAmounts.push(val);
+    }
+  }
 
-  // 9. BL / Conteneur
+  if (allMadAmounts.length > 0) {
+    // Total TTC is the maximum amount in the quotation/invoice
+    const maxVal = Math.max(...allMadAmounts);
+    fields.montantTTC = maxVal.toFixed(2);
+
+    // Subtotal / HT (first or smaller total figure)
+    if (allMadAmounts.length > 1) {
+      const sorted = [...allMadAmounts].sort((a, b) => a - b);
+      fields.montantHT = sorted[0].toFixed(2);
+    }
+  }
+
+  // Fallback Montant TTC via "Toutes taxes comprises" or "Net à payer"
+  const matchTTCExplicit = text.match(/(?:total\s*ttc|toutes\s*taxes\s*comprises|net\s*a\s*payer)[^\d]*([\d\s\,\.]+)/i);
+  if (matchTTCExplicit && !fields.montantTTC) {
+    const val = parseFloat(matchTTCExplicit[1].replace(/\s/g, '').replace(',', '.'));
+    if (!isNaN(val)) fields.montantTTC = val.toFixed(2);
+  }
+
+  // 8. BL / Conteneur
   const matchBL = text.match(/(?:b\/l|bl\s*n[°o]|bill\s*of\s*lading)[^\w]*([a-z0-9]{6,16})/i);
   if (matchBL) fields.blNumber = matchBL[1];
 
