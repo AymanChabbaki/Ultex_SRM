@@ -109,8 +109,8 @@ app.get('/api/db', async (req, res) => {
       }
     });
 
-    // Fetch users
-    const users = await prisma.user.findMany({ where: { actif: true } });
+    // Fetch users (all users, both active and inactive)
+    const users = await prisma.user.findMany();
     dbState.utilisateurs = users.map(u => ({
       id: u.id,
       code: u.code,
@@ -187,7 +187,46 @@ app.post('/api/db/sync', async (req, res) => {
       }
     }
 
-    // 2. Sync Collections
+    // 2. Sync Users in PostgreSQL User table
+    if (Array.isArray(fullState.utilisateurs)) {
+      for (const u of fullState.utilisateurs) {
+        if (u.code || u.identifiant) {
+          const existing = await prisma.user.findFirst({
+            where: { OR: [{ code: u.code || '' }, { identifiant: u.identifiant || '' }] }
+          });
+
+          const userData = {
+            code: u.code || 'USR' + String(Math.floor(Math.random() * 10000)).padStart(6, '0'),
+            identifiant: u.identifiant,
+            nomComplet: u.nomComplet || u.identifiant,
+            motDePasse: u.motDePasse || 'ubos2026',
+            role: u.departement === 'Direction' || (u.services || []).includes('Direction') ? 'ADMIN' : 'USER',
+            service: u.departement || 'Général',
+            actif: u.actif !== false,
+            modulesAutorises: {
+              poste: u.poste || '',
+              departement: u.departement || '',
+              services: u.services || [],
+              modules: u.modules || []
+            },
+            permissions: u.permissions || {}
+          };
+
+          if (existing) {
+            await prisma.user.update({
+              where: { id: existing.id },
+              data: userData
+            });
+          } else {
+            await prisma.user.create({
+              data: userData
+            });
+          }
+        }
+      }
+    }
+
+    // 3. Sync Collections
     for (const col of COLLS) {
       if (Array.isArray(fullState[col])) {
         for (const item of fullState[col]) {

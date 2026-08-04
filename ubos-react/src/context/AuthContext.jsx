@@ -38,8 +38,17 @@ export const AuthProvider = ({ children }) => {
           setUserCourant(u.nomComplet || u.identifiant);
         }
       }
-    } else {
-      setUserCourant(session.nomComplet || session.identifiant);
+    } else if (db && db.utilisateurs) {
+      const updatedUser = db.utilisateurs.find(x => x.code === session.code || x.identifiant === session.identifiant);
+      if (updatedUser) {
+        if (updatedUser.identifiant !== session.identifiant || updatedUser.nomComplet !== session.nomComplet) {
+          setSession(updatedUser);
+          localStorage.setItem('ubos_session', JSON.stringify(updatedUser));
+          setUserCourant(updatedUser.nomComplet || updatedUser.identifiant);
+        } else {
+          setUserCourant(session.nomComplet || session.identifiant);
+        }
+      }
     }
   }, [db, session, setUserCourant]);
 
