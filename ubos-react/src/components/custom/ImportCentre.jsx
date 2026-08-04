@@ -13,7 +13,7 @@ import {
   UploadIcon, DownloadIcon, AlertIcon, CheckIcon, SearchIcon, 
   DatabaseIcon, ShieldCheckIcon, EyeIcon, KeyIcon 
 } from '../common/Icons';
-import { effectuerOCRImage, extraireChampsMetier } from '../../utils/ocrEngine';
+import { effectuerOCRImage, effectuerOCRPdf, extraireChampsMetier } from '../../utils/ocrEngine';
 import { parsePdfBackend } from '../../services/api';
 
 function normCol(s) {
@@ -188,26 +188,30 @@ export default function ImportCentre() {
         toast("Échec OCR sur l'image : " + (res.error || ""));
       }
     } else if (ext === 'pdf') {
-      setOcrStatusText("Lecture et extraction du texte du document PDF...");
-      setOcrProgress(40);
-      try {
-        const reader = new FileReader();
-        reader.onload = async (evt) => {
-          const base64 = evt.target.result;
-          const res = await parsePdfBackend(base64);
-          setOcrProgress(100);
-          if (res && res.success) {
-            setExtractedOcrText(res.text);
-            const fields = extraireChampsMetier(res.text);
-            setExtractedFields(fields);
-            toast("Texte du PDF extrait avec succès (" + res.numPages + " page(s)).");
-          } else {
-            toast("Extraction PDF terminée.");
-          }
-        };
-        reader.readAsDataURL(pdfFileItem.file);
-      } catch (err) {
-        toast("Erreur lors de la lecture du PDF.");
+      setOcrStatusText("Rendu des pages et exécution de l'OCR Tesseract.js sur le PDF scanné...");
+      const res = await effectuerOCRPdf(pdfFileItem.file, (pct, statusMsg) => {
+        setOcrProgress(pct);
+        setOcrStatusText(statusMsg);
+      });
+
+      if (res && res.success && res.text.trim()) {
+        setExtractedOcrText(res.text);
+        setExtractedFields(res.parsedFields || {});
+        toast("OCR Tesseract sur le PDF scanné réussi !");
+      } else {
+        // Try PDF-Parse backend fallback
+        try {
+          const reader = new FileReader();
+          reader.onload = async (evt) => {
+            const base64 = evt.target.result;
+            const pdfRes = await parsePdfBackend(base64);
+            if (pdfRes && pdfRes.success) {
+              setExtractedOcrText(pdfRes.text);
+              setExtractedFields(extraireChampsMetier(pdfRes.text));
+            }
+          };
+          reader.readAsDataURL(pdfFileItem.file);
+        } catch (err) {}
       }
     }
     setOcrRunning(false);
