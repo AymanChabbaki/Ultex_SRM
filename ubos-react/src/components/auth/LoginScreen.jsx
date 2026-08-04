@@ -7,7 +7,7 @@ import { UserIcon, KeyIcon, EyeIcon, EyeOffIcon, AlertIcon, ShieldCheckIcon } fr
 export default function LoginScreen() {
   const { db, isPostgresConnected } = useDB();
   const { connecter } = useAuth();
-  
+
   const [identifiant, setIdentifiant] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -52,7 +52,7 @@ export default function LoginScreen() {
         {/* Brand Header */}
         <div className="login-header">
           <Logo size="large" />
-          <p className="system-tagline">Portail Sécurisé d'Exploit & SRM</p>
+          <p className="system-tagline">Portail Sécurisé d'Exploit & CRM</p>
         </div>
 
         {/* Error Alert */}
@@ -73,8 +73,8 @@ export default function LoginScreen() {
               <span className="input-icon">
                 <UserIcon size={18} color="#64748b" />
               </span>
-              <input 
-                id="logId" 
+              <input
+                id="logId"
                 type="text"
                 autoComplete="username"
                 placeholder="Votre identifiant..."
@@ -94,17 +94,17 @@ export default function LoginScreen() {
               <span className="input-icon">
                 <KeyIcon size={18} color="#64748b" />
               </span>
-              <input 
-                id="logMdp" 
-                type={showPassword ? "text" : "password"} 
+              <input
+                id="logMdp"
+                type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 placeholder="••••••••••••"
                 value={motDePasse}
                 onChange={(e) => setMotDePasse(e.target.value)}
                 disabled={loading}
               />
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="toggle-pwd-btn"
                 onClick={() => setShowPassword(!showPassword)}
                 tabIndex={-1}
@@ -132,7 +132,7 @@ export default function LoginScreen() {
             <ShieldCheckIcon size={14} color="#059669" />
             <span>{isPostgresConnected ? 'Connexion PostgreSQL Chiffrée' : 'Espace Sécurisé SSL'}</span>
           </div>
-          <small>© 2026 ULTEx SRM. Tous droits réservés.</small>
+          <small>© 2026 ULTEx CRM. Tous droits réservés.</small>
         </div>
       </div>
     </div>

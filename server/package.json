@@ -1,7 +1,7 @@
 {
   "name": "ubos-server",
   "version": "1.0.0",
-  "description": "PostgreSQL Backend for UBOS SRM",
+  "description": "PostgreSQL Backend for UBOS CRM",
   "main": "src/index.js",
   "type": "module",
   "scripts": {

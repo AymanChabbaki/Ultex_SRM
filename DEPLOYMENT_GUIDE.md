@@ -1,6 +1,6 @@
-# 🌐 Guide de Déploiement Production (srm.ultex.ma)
+# 🌐 Guide de Déploiement Production (CRM.ultex.ma)
 
-Ce guide détaille les étapes pour déployer l'application **UBOS SRM** sur votre serveur Linux (`105.156.171.225`) avec support **HTTPS SSL** sur la sous-domaine **`srm.ultex.ma`**.
+Ce guide détaille les étapes pour déployer l'application **UBOS CRM** sur votre serveur Linux (`105.156.171.225`) avec support **HTTPS SSL** sur la sous-domaine **`CRM.ultex.ma`**.
 
 ---
 
@@ -20,8 +20,8 @@ Sur votre serveur Linux (`ultex@ultexserver`) :
 
 ```bash
 cd /opt # Ou dans votre dossier de projets
-git clone <URL_DE_VOTRE_REPO_GIT> Ultex_SRM
-cd Ultex_SRM
+git clone <URL_DE_VOTRE_REPO_GIT> Ultex_CRM
+cd Ultex_CRM
 ```
 
 ---
@@ -43,7 +43,7 @@ docker exec -it ubos_backend_prod npm run prisma:seed
 
 ---
 
-## 🔒 Étape 3 : Configuration du Proxy Inverse & SSL (HTTPS srm.ultex.ma)
+## 🔒 Étape 3 : Configuration du Proxy Inverse & SSL (HTTPS CRM.ultex.ma)
 
 Puisque les ports **80** et **443** de votre serveur sont gérés par un Docker Proxy (Nginx Proxy Manager ou Traefik/Caddy/Nginx) :
 
@@ -51,7 +51,7 @@ Puisque les ports **80** et **443** de votre serveur sont gérés par un Docker 
 1. Connectez-vous à votre Nginx Proxy Manager.
 2. Allez dans **Proxy Hosts** > **Add Proxy Host**.
 3. Remplissez les champs :
-   - **Domain Names:** `srm.ultex.ma`
+   - **Domain Names:** `CRM.ultex.ma`
    - **Scheme:** `http`
    - **Forward Hostname / IP:** `127.0.0.1` (ou `105.156.171.225`)
    - **Forward Port:** `8080`
@@ -65,21 +65,21 @@ Puisque les ports **80** et **443** de votre serveur sont gérés par un Docker 
 
 ### Option B : Si vous utilisez un fichier de configuration **Nginx classique** sur le serveur
 
-Ajoutez cette configuration dans `/etc/nginx/sites-available/srm.ultex.ma` :
+Ajoutez cette configuration dans `/etc/nginx/sites-available/CRM.ultex.ma` :
 
 ```nginx
 server {
     listen 80;
-    server_name srm.ultex.ma;
+    server_name CRM.ultex.ma;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name srm.ultex.ma;
+    server_name CRM.ultex.ma;
 
-    ssl_certificate /etc/letsencrypt/live/srm.ultex.ma/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/srm.ultex.ma/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/CRM.ultex.ma/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/CRM.ultex.ma/privkey.pem;
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -93,7 +93,7 @@ server {
 
 Pour obtenir le certificat SSL gratuit avec Certbot :
 ```bash
-sudo certbot --nginx -d srm.ultex.ma
+sudo certbot --nginx -d CRM.ultex.ma
 ```
 
 ---
@@ -101,7 +101,7 @@ sudo certbot --nginx -d srm.ultex.ma
 ## ✅ Étape 4 : Vérification
 
 Ouvrez votre navigateur :
-- 🌐 **HTTPS URL :** `https://srm.ultex.ma`
+- 🌐 **HTTPS URL :** `https://CRM.ultex.ma`
 - 🖥️ **Direct IP HTTP :** `http://105.156.171.225:8080`
 
 Identifiants de connexion par défaut :
