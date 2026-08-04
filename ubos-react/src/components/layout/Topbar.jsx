@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useDB } from '../../context/DBContext';
+import { useSidebar } from './Layout';
 import { MenuIcon, BellIcon, DatabaseIcon, SyncIcon } from '../common/Icons';
 
-const Topbar = ({ titre, toggleSidebar }) => {
+const Topbar = ({ titre, toggleSidebar: propToggle }) => {
   const { session, deconnecter, estDirection } = useAuth();
   const { db, isPostgresConnected, syncToPostgres } = useDB();
+  const sidebarCtx = useSidebar();
   const [terme, setTerme] = useState('');
   const [syncing, setSyncing] = useState(false);
+
+  const toggle = propToggle || sidebarCtx?.toggleSidebar;
 
   const nb = (db?.notifications || []).filter(n => !n.lu).length;
 
@@ -28,7 +32,7 @@ const Topbar = ({ titre, toggleSidebar }) => {
 
   return (
     <div className="top">
-      <button className="burger" onClick={toggleSidebar} title="Menu">
+      <button className="burger" onClick={toggle} title="Réduire / Agrandir le menu (Sidebar)">
         <MenuIcon size={18} color="#ffffff" />
       </button>
       <h2>{titre}</h2>

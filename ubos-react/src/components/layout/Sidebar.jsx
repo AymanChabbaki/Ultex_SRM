@@ -4,10 +4,14 @@ import { useDB } from '../../context/DBContext';
 import { MODS, ORDRE_NAV } from '../../data/modules';
 import Logo from '../common/Logo';
 import { DownloadIcon, UploadIcon } from '../common/Icons';
+import { useSidebar } from './Layout';
 
 const Sidebar = ({ ouvert }) => {
   const { moduleVisible } = useAuth();
   const { db, updateDB } = useDB();
+  const sidebarCtx = useSidebar();
+  const isCollapsed = sidebarCtx?.collapsed;
+
   const [currentHash, setCurrentHash] = useState(window.location.hash.replace('#', '') || 'dashboard');
 
   useEffect(() => {
@@ -52,9 +56,9 @@ const Sidebar = ({ ouvert }) => {
   };
 
   return (
-    <aside id="aside" className={ouvert ? 'ouvert' : ''}>
+    <aside id="aside" className={`${ouvert ? 'ouvert' : ''} ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="logo-aside-container">
-        <Logo size="medium" light />
+        <Logo size={isCollapsed ? "small" : "medium"} light />
       </div>
       <nav id="nav">
         {ORDRE_NAV.map(([grp, ids]) => {
@@ -69,9 +73,9 @@ const Sidebar = ({ ouvert }) => {
                 if (!M) return null;
                 const nb = nbNonLues();
                 return (
-                  <a key={id} href={`#${id}`} className={currentHash === id ? "on" : ""}>
+                  <a key={id} href={`#${id}`} className={currentHash === id ? "on" : ""} title={M.label}>
                     <span className="ic">{M.ic}</span>
-                    {M.label}
+                    <span className="nav-text">{M.label}</span>
                     {id === "notifications" && nb > 0 ? <span className="bulle">{nb}</span> : null}
                   </a>
                 );
@@ -81,11 +85,13 @@ const Sidebar = ({ ouvert }) => {
         })}
       </nav>
       <div className="aside-pied">
-        <button onClick={exporterJSON} title="Télécharger la sauvegarde complète (JSON)" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-          <DownloadIcon size={14} /> Sauvegarde
+        <button onClick={exporterJSON} title="Télécharger la sauvegarde complète (JSON)" className="btn-aside-action">
+          <DownloadIcon size={14} />
+          <span className="btn-text">Sauvegarde</span>
         </button>
-        <button onClick={() => document.getElementById('fimport').click()} title="Restaurer une sauvegarde JSON" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-          <UploadIcon size={14} /> Restaurer
+        <button onClick={() => document.getElementById('fimport').click()} title="Restaurer une sauvegarde JSON" className="btn-aside-action">
+          <UploadIcon size={14} />
+          <span className="btn-text">Restaurer</span>
         </button>
         <input type="file" id="fimport" accept=".json" style={{ display: 'none' }} onChange={importerJSON} />
       </div>
