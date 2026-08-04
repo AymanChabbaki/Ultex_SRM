@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useDB } from '../../context/DBContext';
+import { MenuIcon, BellIcon, DatabaseIcon, SyncIcon } from '../common/Icons';
 
 const Topbar = ({ titre, toggleSidebar }) => {
   const { session, deconnecter, estDirection } = useAuth();
@@ -8,7 +9,7 @@ const Topbar = ({ titre, toggleSidebar }) => {
   const [terme, setTerme] = useState('');
   const [syncing, setSyncing] = useState(false);
 
-  const nb = (db?.notifications || []).filter(n => !n.lue).length;
+  const nb = (db?.notifications || []).filter(n => !n.lu).length;
 
   const handleRecherche = (e) => {
     if (e.key === 'Enter') {
@@ -27,12 +28,14 @@ const Topbar = ({ titre, toggleSidebar }) => {
 
   return (
     <div className="top">
-      <button className="burger" onClick={toggleSidebar}>☰</button>
+      <button className="burger" onClick={toggleSidebar} title="Menu">
+        <MenuIcon size={18} color="#ffffff" />
+      </button>
       <h2>{titre}</h2>
       <input 
         type="search" 
         className="gsearch" 
-        placeholder="🔎 Recherche globale (Entrée)" 
+        placeholder="Recherche globale (Entrée)" 
         value={terme}
         onChange={e => setTerme(e.target.value)}
         onKeyDown={handleRecherche}
@@ -46,23 +49,26 @@ const Topbar = ({ titre, toggleSidebar }) => {
           display: 'flex',
           alignItems: 'center',
           gap: '6px',
-          padding: '4px 10px',
-          borderRadius: '16px',
+          padding: '5px 12px',
+          borderRadius: '20px',
           fontSize: '12px',
           fontWeight: 600,
           cursor: 'pointer',
-          background: isPostgresConnected ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+          background: isPostgresConnected ? 'rgba(5, 150, 105, 0.12)' : 'rgba(217, 119, 6, 0.12)',
           color: isPostgresConnected ? '#059669' : '#d97706',
           border: `1px solid ${isPostgresConnected ? '#10b981' : '#f59e0b'}`
         }}
       >
-        <span>{isPostgresConnected ? '🟢 PostgreSQL' : '🟠 Mode Cache'}</span>
-        {syncing && <span>🔄</span>}
+        <DatabaseIcon size={15} color={isPostgresConnected ? '#059669' : '#d97706'} />
+        <span>{isPostgresConnected ? 'PostgreSQL Actif' : 'Mode Cache'}</span>
+        {syncing && <SyncIcon size={14} color={isPostgresConnected ? '#059669' : '#d97706'} className="animate-spin" />}
       </div>
 
       <button className="cloche" onClick={() => window.location.hash = 'notifications'} title="Notifications">
-        🔔<em style={{ display: nb ? 'block' : 'none' }}>{nb > 0 ? nb : ''}</em>
+        <BellIcon size={18} color="#0159A3" />
+        <em style={{ display: nb ? 'block' : 'none' }}>{nb > 0 ? nb : ''}</em>
       </button>
+
       <div className="badge-user">
         <div className="rond">{init}</div>
         <div>

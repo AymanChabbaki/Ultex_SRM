@@ -1,11 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
 :root{
-  --vert:#1E4D3B; --vert-fonce:#14382B; --vert-nuit:#0E2A20;
-  --or:#9A7B2D; --or-clair:#C8A954; --ivoire:#F7F5F0; --carte:#FFFFFF;
-  --encre:#26312B; --gris:#6C7A72; --bord:#E2E7E1; --vert-pale:#EAF2EE;
-  --rouge:#A33B2E; --ambre:#B07A1E; --ok:#2E7D4F;
-  --ombre:0 1px 3px rgba(20,56,43,.08),0 8px 24px rgba(20,56,43,.06);
+  --vert:#0159A3; --vert-fonce:#004472; --vert-nuit:#002B4B;
+  --or:#D99B00; --or-clair:#FFC90D; --ivoire:#F4F7FA; --carte:#FFFFFF;
+  --encre:#0F172A; --gris:#64748B; --bord:#E2E8F0; --vert-pale:#EBF3FA;
+  --rouge:#DC2626; --ambre:#D97706; --ok:#059669;
+  --ombre:0 1px 3px rgba(1,89,163,.08),0 8px 24px rgba(1,89,163,.06);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%}
@@ -140,24 +140,263 @@ h3.titre-sec{font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--v
 .note-verrou{padding:40px;text-align:center;color:var(--gris)}
 .note-verrou b{display:block;font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--vert);margin-bottom:6px}
 
-/* ---------- Connexion & utilisateurs ---------- */
-#ecranLogin{position:fixed;inset:0;background:linear-gradient(150deg,var(--vert-fonce),var(--vert-nuit));display:flex;align-items:center;justify-content:center;z-index:500;padding:16px}
-.carte-login{background:var(--carte);border-radius:16px;padding:34px 34px 28px;width:100%;max-width:400px;box-shadow:0 24px 70px rgba(0,0,0,.4)}
-.carte-login h1{font-family:'Cormorant Garamond',serif;font-size:40px;color:var(--vert);text-align:center}
-.carte-login h1 span{color:var(--or)}
-.carte-login .sous{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--gris);text-align:center;margin:2px 0 22px}
-.carte-login .champ{margin-bottom:14px}
-.carte-login .btn{width:100%;padding:11px;font-size:14.5px;margin-top:4px}
-.login-err{background:#F6E7E4;color:var(--rouge);border-radius:9px;padding:9px 12px;font-size:12.5px;margin-bottom:12px;display:none}
-.login-note{font-size:11.5px;color:var(--gris);text-align:center;margin-top:16px;line-height:1.5}
-.grille-cases{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;border:1px solid var(--bord);border-radius:9px;padding:10px;background:#FDFDFC;max-height:170px;overflow-y:auto}
-.grille-cases label{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;color:var(--encre);text-transform:none;letter-spacing:0}
-.badge-user{display:flex;align-items:center;gap:9px;background:var(--carte);border:1px solid var(--bord);border-radius:10px;padding:6px 12px;box-shadow:var(--ombre)}
-.badge-user .rond{width:30px;height:30px;border-radius:50%;background:var(--vert);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
-.badge-user b{font-size:13px;color:var(--vert);display:block;line-height:1.1}
-.badge-user small{font-size:10.5px;color:var(--gris)}
-.agenda-jour{margin-bottom:14px}
-.agenda-jour h4{font-family:'Cormorant Garamond',serif;font-size:17px;color:var(--vert);margin-bottom:6px}
+/* ---------- Ultex Brand Logo Component ---------- */
+.ultex-logo-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ultex-brand-img {
+  max-width: 100%;
+  height: auto;
+  filter: drop-shadow(0 4px 10px rgba(1, 89, 163, 0.15));
+  transition: transform 0.3s ease;
+}
+.ultex-logo-brand:hover .ultex-brand-img {
+  transform: scale(1.04);
+}
+.ultex-logo-text {
+  display: flex;
+  flex-direction: column;
+}
+.brand-name {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #0f172a;
+  line-height: 1.1;
+}
+.ultex-logo-wrapper.large .brand-name {
+  font-size: 36px;
+}
+.brand-highlight {
+  color: #d97706;
+}
+.sub-brand {
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #64748b;
+  font-weight: 600;
+}
+.logo-aside-container {
+  padding: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.12);
+}
+.logo-aside-container .brand-name {
+  color: #ffffff;
+}
+.logo-aside-container .sub-brand {
+  color: #94a3b8;
+}
+
+/* ---------- Connexion & Écran de Login Premium ---------- */
+#ecranLogin {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 50% 30%, #002B4B 0%, #001C33 70%, #001222 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+  padding: 20px;
+  overflow: hidden;
+}
+
+/* Floating Ambient Glows */
+.login-bg-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  opacity: 0.35;
+}
+.glow-1 {
+  width: 450px;
+  height: 450px;
+  background: #d97706;
+  top: -100px;
+  right: -100px;
+}
+.glow-2 {
+  width: 500px;
+  height: 500px;
+  background: #1e3a8a;
+  bottom: -120px;
+  left: -120px;
+}
+
+.carte-login {
+  position: relative;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 20px;
+  padding: 40px 36px 32px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.4) inset;
+  z-index: 10;
+  animation: loginSlideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes loginSlideUp {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.login-header {
+  margin-bottom: 24px;
+}
+.system-tagline {
+  font-size: 12px;
+  color: #64748b;
+  text-align: center;
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-form .champ label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon {
+  position: absolute;
+  left: 14px;
+  font-size: 15px;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.input-wrapper input {
+  width: 100%;
+  padding: 12px 42px 12px 42px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  font-size: 14px;
+  color: #0f172a;
+  transition: all 0.2s ease;
+}
+
+.input-wrapper input:focus {
+  outline: none;
+  border-color: #d97706;
+  background: #ffffff;
+  box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.15);
+}
+
+.toggle-pwd-btn {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.toggle-pwd-btn:hover {
+  opacity: 1;
+}
+
+.btn-login-submit {
+  width: 100%;
+  padding: 13px;
+  font-size: 15px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #0159A3 0%, #004472 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(1, 89, 163, 0.35);
+  margin-top: 8px;
+  transition: all 0.2s ease;
+}
+
+.btn-login-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(1, 89, 163, 0.45);
+  background: linear-gradient(135deg, #0269bf 0%, #00528a 100%);
+}
+
+.btn-login-submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.login-err {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
+.login-security-badge {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid #e2e8f0;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.sec-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: #059669;
+  font-weight: 600;
+  background: #ecfdf5;
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid #a7f3d0;
+}
+
+.sec-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+.login-security-badge small {
+  font-size: 10.5px;
+  color: #94a3b8;
+}
 
 /* ---------- Recherche globale ---------- */
 .gsearch{width:210px;padding:9px 12px;border:1px solid var(--bord);border-radius:10px;background:var(--carte);box-shadow:var(--ombre)}

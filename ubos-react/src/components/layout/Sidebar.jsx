@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useDB } from '../../context/DBContext';
 import { MODS, ORDRE_NAV } from '../../data/modules';
+import Logo from '../common/Logo';
+import { DownloadIcon, UploadIcon } from '../common/Icons';
 
 const Sidebar = ({ ouvert }) => {
   const { moduleVisible } = useAuth();
@@ -51,9 +53,8 @@ const Sidebar = ({ ouvert }) => {
 
   return (
     <aside id="aside" className={ouvert ? 'ouvert' : ''}>
-      <div className="logo">
-        <h1>UB<span>O</span>S</h1>
-        <small>ULTEx Business Operating System</small>
+      <div className="logo-aside-container">
+        <Logo size="medium" light />
       </div>
       <nav id="nav">
         {ORDRE_NAV.map(([grp, ids]) => {
@@ -80,11 +81,11 @@ const Sidebar = ({ ouvert }) => {
         })}
       </nav>
       <div className="aside-pied">
-        <button onClick={exporterJSON} title="Télécharger la sauvegarde complète (JSON)">
-          ⭳ Télécharger sauvegarde
+        <button onClick={exporterJSON} title="Télécharger la sauvegarde complète (JSON)" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+          <DownloadIcon size={14} /> Sauvegarde
         </button>
-        <button onClick={() => document.getElementById('fimport').click()} title="Restaurer une sauvegarde JSON">
-          ⭱ Restaurer
+        <button onClick={() => document.getElementById('fimport').click()} title="Restaurer une sauvegarde JSON" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+          <UploadIcon size={14} /> Restaurer
         </button>
         <input type="file" id="fimport" accept=".json" style={{ display: 'none' }} onChange={importerJSON} />
       </div>

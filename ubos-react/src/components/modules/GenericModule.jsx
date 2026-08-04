@@ -6,6 +6,7 @@ import Topbar from '../layout/Topbar';
 import ModuleForm from './ModuleForm';
 import { MODS as MODS_DATA } from '../../data/modules';
 import { exporterExcel } from '../../utils/export';
+import { DownloadIcon } from '../common/Icons';
 
 export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
   const { db, updateDB, audit } = useDB();
@@ -110,7 +111,9 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
           </select>
         )}
         {peut("exporter") && (
-          <button className="btn doux" onClick={handleExport}>⭳ Excel / CSV</button>
+          <button className="btn doux" onClick={handleExport} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <DownloadIcon size={14} /> Excel / CSV
+          </button>
         )}
         {peut("ajouter") && (
           <button className="btn" onClick={() => { setEditCode(null); setShowForm(true); }}>+ Ajouter</button>
