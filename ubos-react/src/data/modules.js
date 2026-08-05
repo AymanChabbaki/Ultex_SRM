@@ -137,7 +137,7 @@ dossiers:{label:"Dossiers", ic:FolderKanban, grp:"Commercial", coll:"dossiers", 
  },
  fiche:"ficheDossier",
  cols:[["client","Client",(v,o,DB)=>esc(refLabel(DB, "clients",v,"nom"))],["produit","Produit"],["fournisseur","Fourn.",(v,o,DB)=>v?esc(refLabel(DB, "fournisseurs",v,"nom")).slice(0,22):"—"],["incoterm","Incoterm",v=>v?pill(v,"p-gris"):"—"],["montantVente","Valeur",v=>fmtMAD(v)],["etape","Étape",(v,o)=>{const i=ETAPES.indexOf(v);return `<span class="pill p-or">${i+1}/${ETAPES.length} · ${esc(v)}</span>`}],["responsable","Resp."],["actionSuivante","Action suivante",(v,o)=>{if(!v)return pill("À définir","p-rouge");const r=o.echeanceActionSuivante&&new Date(o.echeanceActionSuivante)<new Date(new Date().toDateString());return esc(String(v).slice(0,28))+`<br><small style="color:var(--gris)">`+esc(o.respActionSuivante||"—")+" · "+esc(o.echeanceActionSuivante||"—")+(r?" "+pill("Retard","p-rouge"):"")+`</small>`}],["statut","Statut",v=>pillStatut(v)]],
- actions:[{txt:"Fiche", cls:"btn mini or", fn:"ouvrirFicheDossier"},{txt:"Étape suivante ➜", cls:"btn mini", si:o=>ETAPES.indexOf(o.etape) < ETAPES.length-1 && o.statut!=="Annulé", fn:"avancerDossier"},{txt:"💰 Facture finale", cls:"btn mini doux", fn:"creerFactureDepuisDossier"}]},
+ actions:[{txt:"Fiche", cls:"btn mini or", fn:"ouvrirFicheDossier"},{txt:"Étape suivante ➜", cls:"btn mini", si:o=>ETAPES.indexOf(o.etape) < ETAPES.length-1 && o.statut!=="Annulé", fn:"avancerDossier"},{txt:"Facture finale", cls:"btn mini doux", fn:"creerFactureDepuisDossier"}]},
 
 sourcings:{label:"Sourcing", ic:PackageSearch, grp:"Études", coll:"sourcings", pfx:"SRC", statut:"statut",
  champs:[
