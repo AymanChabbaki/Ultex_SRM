@@ -14,7 +14,7 @@ import {
   SyncIcon, ClockIcon, PlayIcon
 } from '../common/Icons';
 import { FolderOpen, ClipboardList, History, FileText, Settings2 } from 'lucide-react';
-import { effectuerOCRImage, effectuerOCRPdf, extraireChampsMetier } from '../../utils/ocrEngine';
+import { effectuerOCRImage, effectuerOCRPdf, extraireChampsMetier, LANGUES_OCR, LANGUE_OCR_DEFAUT } from '../../utils/ocrEngine';
 import { parsePdfBackend } from '../../services/api';
 
 function normCol(s) {
@@ -163,6 +163,8 @@ export default function ImportCentre() {
   const [ocrRunning, setOcrRunning] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrStatusText, setOcrStatusText] = useState('');
+  const [ocrLang, setOcrLang] = useState(LANGUE_OCR_DEFAUT);
+  const [ocrConfidence, setOcrConfidence] = useState(null);
   const [extractedOcrText, setExtractedOcrText] = useState('');
   const [extractedFields, setExtractedFields] = useState({});
 
@@ -171,6 +173,7 @@ export default function ImportCentre() {
 
     setOcrRunning(true);
     setOcrProgress(10);
+    setOcrConfidence(null);
     setOcrStatusText("Initialisation du moteur OCR...");
 
     const ext = pdfFileItem.format.toLowerCase();
@@ -180,11 +183,12 @@ export default function ImportCentre() {
       const res = await effectuerOCRImage(pdfFileItem.file, (pct, statusMsg) => {
         setOcrProgress(pct);
         setOcrStatusText(statusMsg);
-      });
+      }, ocrLang);
 
       if (res && res.success) {
         setExtractedOcrText(res.text);
         setExtractedFields(res.parsedFields || {});
+        setOcrConfidence(res.confidence);
         toast("OCR réussi ! Texte et champs extraits.");
       } else {
         toast("Échec OCR sur l'image : " + (res.error || ""));
@@ -194,30 +198,40 @@ export default function ImportCentre() {
       const res = await effectuerOCRPdf(pdfFileItem.file, (pct, statusMsg) => {
         setOcrProgress(pct);
         setOcrStatusText(statusMsg);
-      });
+      }, ocrLang);
 
       if (res && res.success && res.text.trim()) {
         setExtractedOcrText(res.text);
         const fields = res.parsedFields || {};
         setExtractedFields(fields);
+        setOcrConfidence(res.confidence);
         autoMatchClient(fields);
         toast("OCR Tesseract sur le PDF scanné réussi !");
       } else {
-        // Try PDF-Parse backend fallback
+        setOcrStatusText("Bascule vers l'extraction de texte PDF côté serveur...");
         try {
-          const reader = new FileReader();
-          reader.onload = async (evt) => {
-            const base64 = evt.target.result;
-            const pdfRes = await parsePdfBackend(base64);
-            if (pdfRes && pdfRes.success) {
-              setExtractedOcrText(pdfRes.text);
-              const fields = extraireChampsMetier(pdfRes.text);
-              setExtractedFields(fields);
-              autoMatchClient(fields);
-            }
-          };
-          reader.readAsDataURL(pdfFileItem.file);
-        } catch (err) {}
+          const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (evt) => resolve(evt.target.result);
+            reader.onerror = () => reject(new Error("Impossible de lire le fichier PDF."));
+            reader.readAsDataURL(pdfFileItem.file);
+          });
+          const pdfRes = await parsePdfBackend(base64);
+          if (pdfRes && pdfRes.success && pdfRes.text) {
+            setExtractedOcrText(pdfRes.text);
+            const fields = extraireChampsMetier(pdfRes.text);
+            setExtractedFields(fields);
+            autoMatchClient(fields);
+            toast(pdfRes.isScanned
+              ? "Aucun texte détecté automatiquement — vérifiez et complétez les champs manuellement."
+              : "Texte extrait du PDF via le serveur.");
+          } else {
+            toast("Échec de l'extraction : ni l'OCR local ni le serveur n'ont pu lire ce PDF. Vérifiez le fichier ou saisissez les champs manuellement.");
+          }
+        } catch (err) {
+          console.error("Erreur fallback PDF backend:", err);
+          toast("Erreur lors de l'extraction du PDF : " + (err.message || "vérifiez la connexion au serveur."));
+        }
       }
     }
     setOcrRunning(false);
@@ -1008,9 +1022,14 @@ export default function ImportCentre() {
                     Format : <b>{pdfFileItem.format}</b> ({pdfFileItem.tailleMo} Mo) · Reconnaissance optique et analyse sémantique
                   </div>
                 </div>
-                <button className="btn or" onClick={lancerOCR} disabled={ocrRunning}>
-                  {ocrRunning ? <><ClockIcon size={14} /> OCR en cours...</> : <><PlayIcon size={14} /> Exécuter l'OCR maintenant</>}
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <select value={ocrLang} onChange={e => setOcrLang(e.target.value)} disabled={ocrRunning} style={{ fontSize: '12.5px' }}>
+                    {LANGUES_OCR.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                  </select>
+                  <button className="btn or" onClick={lancerOCR} disabled={ocrRunning}>
+                    {ocrRunning ? <><ClockIcon size={14} /> OCR en cours...</> : <><PlayIcon size={14} /> Exécuter l'OCR maintenant</>}
+                  </button>
+                </div>
               </div>
 
               {ocrRunning && (
@@ -1021,6 +1040,17 @@ export default function ImportCentre() {
                   <div style={{ height: '8px', background: '#e2e8f0', borderRadius: '99px', overflow: 'hidden' }}>
                     <div style={{ width: `${ocrProgress}%`, height: '100%', background: 'var(--vert)', transition: 'width 0.3s ease' }}></div>
                   </div>
+                </div>
+              )}
+
+              {!ocrRunning && ocrConfidence !== null && (
+                <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className={`pill ${ocrConfidence >= 80 ? 'p-vert' : ocrConfidence >= 50 ? 'p-ambre' : 'p-rouge'}`}>
+                    Confiance OCR : {ocrConfidence}%
+                  </span>
+                  {ocrConfidence < 50 && (
+                    <span style={{ fontSize: '12px', color: 'var(--rouge)' }}>Qualité faible — vérifiez chaque champ avant d'enregistrer.</span>
+                  )}
                 </div>
               )}
             </div>

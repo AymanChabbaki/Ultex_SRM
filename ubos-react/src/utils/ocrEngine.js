@@ -12,6 +12,91 @@ try {
   console.warn("Utilisation de la configuration worker par défaut:", e);
 }
 
+export const LANGUES_OCR = [
+  { value: 'fra+eng', label: 'Français + Anglais (recommandé)' },
+  { value: 'fra', label: 'Français uniquement' },
+  { value: 'eng', label: 'Anglais uniquement' },
+  { value: 'ara+fra', label: 'Arabe + Français' }
+];
+export const LANGUE_OCR_DEFAUT = 'fra+eng';
+
+/**
+ * Shared Tesseract worker pool — avoids paying the ~1-2s worker init cost on
+ * every OCR click. Reinitialized only when the requested language changes.
+ */
+let sharedWorker = null;
+let sharedWorkerLang = null;
+
+async function getWorker(lang) {
+  if (sharedWorker && sharedWorkerLang === lang) return sharedWorker;
+  if (sharedWorker) {
+    await sharedWorker.terminate();
+    sharedWorker = null;
+  }
+  sharedWorker = await createWorker(lang);
+  sharedWorkerLang = lang;
+  return sharedWorker;
+}
+
+export async function terminerMoteurOCR() {
+  if (sharedWorker) {
+    await sharedWorker.terminate();
+    sharedWorker = null;
+    sharedWorkerLang = null;
+  }
+}
+
+/**
+ * Grayscale + min/max contrast stretch, applied in-place on canvas pixel data.
+ * A simple, well-established preprocessing step that measurably improves
+ * Tesseract accuracy on low-contrast scans/photos (e.g. phone photos of invoices).
+ */
+function appliquerContrasteCanvas(ctx, width, height) {
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  const n = data.length / 4;
+  const gray = new Float32Array(n);
+  let min = 255, max = 0;
+
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    const g = 0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2];
+    gray[i] = g;
+    if (g < min) min = g;
+    if (g > max) max = g;
+  }
+
+  const range = Math.max(max - min, 1);
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    const stretched = ((gray[i] - min) / range) * 255;
+    data[o] = data[o + 1] = data[o + 2] = stretched;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+}
+
+function pretraiterImage(imageUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        appliquerContrasteCanvas(ctx, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (e) {
+        resolve(imageUrl); // preprocessing failure shouldn't block OCR — fall back to the original
+      }
+    };
+    img.onerror = () => resolve(imageUrl);
+    img.src = imageUrl;
+  });
+}
+
 /**
  * Intelligent regex parser for Invoices, Customs DUMs, BLs, and Packing Lists
  */
@@ -68,33 +153,37 @@ export function extraireChampsMetier(text) {
   const matchQte = text.match(/(\d+)\s*(?:PCS|PIECES|UNITE|KG)/i);
   if (matchQte) fields.quantite = matchQte[1];
 
-  // 7. Montants MAD (Collect all currency amounts)
-  const allMadAmounts = [];
-  const madMatches = text.matchAll(/([\d\s]{2,10}[\,\.]\d{2})\s*(?:MAD|DH|DIRHAMS)/gi);
-  for (const m of madMatches) {
-    const val = parseFloat(m[1].replace(/\s/g, '').replace(',', '.'));
-    if (!isNaN(val) && val > 0) {
-      allMadAmounts.push(val);
-    }
+  // 7. Montants MAD — prefer an explicitly labeled total over guessing from
+  // the raw list of amounts on the page (a "biggest number = total" heuristic
+  // misreads any document where a line item's subtotal exceeds the real total).
+  const matchTTCExplicit = text.match(/(?:total\s*ttc|toutes\s*taxes\s*comprises|net\s*[aà]\s*payer|montant\s*total)[^\d]{0,15}([\d\s]{1,10}[,.]\d{2})/i);
+  if (matchTTCExplicit) {
+    const val = parseFloat(matchTTCExplicit[1].replace(/\s/g, '').replace(',', '.'));
+    if (!isNaN(val)) fields.montantTTC = val.toFixed(2);
   }
 
-  if (allMadAmounts.length > 0) {
-    // Total TTC is the maximum amount in the quotation/invoice
-    const maxVal = Math.max(...allMadAmounts);
-    fields.montantTTC = maxVal.toFixed(2);
+  const matchHTExplicit = text.match(/(?:total\s*ht|montant\s*ht|sous[\s\-]total)[^\d]{0,15}([\d\s]{1,10}[,.]\d{2})/i);
+  if (matchHTExplicit) {
+    const val = parseFloat(matchHTExplicit[1].replace(/\s/g, '').replace(',', '.'));
+    if (!isNaN(val)) fields.montantHT = val.toFixed(2);
+  }
 
-    // Subtotal / HT (first or smaller total figure)
-    if (allMadAmounts.length > 1) {
+  if (!fields.montantTTC || !fields.montantHT) {
+    const allMadAmounts = [];
+    const madMatches = text.matchAll(/([\d\s]{2,10}[\,\.]\d{2})\s*(?:MAD|DH|DIRHAMS)/gi);
+    for (const m of madMatches) {
+      const val = parseFloat(m[1].replace(/\s/g, '').replace(',', '.'));
+      if (!isNaN(val) && val > 0) allMadAmounts.push(val);
+    }
+
+    // Fallback heuristic — only used when no explicitly labeled amount was found.
+    if (!fields.montantTTC && allMadAmounts.length > 0) {
+      fields.montantTTC = Math.max(...allMadAmounts).toFixed(2);
+    }
+    if (!fields.montantHT && allMadAmounts.length > 1) {
       const sorted = [...allMadAmounts].sort((a, b) => a - b);
       fields.montantHT = sorted[0].toFixed(2);
     }
-  }
-
-  // Fallback Montant TTC via "Toutes taxes comprises" or "Net à payer"
-  const matchTTCExplicit = text.match(/(?:total\s*ttc|toutes\s*taxes\s*comprises|net\s*a\s*payer)[^\d]*([\d\s\,\.]+)/i);
-  if (matchTTCExplicit && !fields.montantTTC) {
-    const val = parseFloat(matchTTCExplicit[1].replace(/\s/g, '').replace(',', '.'));
-    if (!isNaN(val)) fields.montantTTC = val.toFixed(2);
   }
 
   // 8. BL / Conteneur
@@ -111,21 +200,23 @@ export function extraireChampsMetier(text) {
  * Real Optical Character Recognition (OCR) Engine using Tesseract.js
  * Extracts raw text from images (JPG, PNG, WEBP).
  */
-export async function effectuerOCRImage(file, onProgress) {
+export async function effectuerOCRImage(file, onProgress, lang = LANGUE_OCR_DEFAUT) {
   try {
-    const worker = await createWorker('fra+eng');
-    
-    const imageUrl = await new Promise((resolve, reject) => {
+    if (onProgress) onProgress(10, "Préparation de l'image (niveaux de gris, contraste)...");
+
+    const rawImageUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target.result);
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
 
+    const imageUrl = await pretraiterImage(rawImageUrl);
+
     if (onProgress) onProgress(30, "Lancement du moteur OCR Tesseract...");
 
+    const worker = await getWorker(lang);
     const ret = await worker.recognize(imageUrl);
-    await worker.terminate();
 
     const rawText = ret.data.text || '';
     if (onProgress) onProgress(100, "Extraction OCR terminée.");
@@ -135,7 +226,7 @@ export async function effectuerOCRImage(file, onProgress) {
     return {
       success: true,
       text: rawText,
-      confidence: ret.data.confidence || 85,
+      confidence: typeof ret.data.confidence === 'number' ? Math.round(ret.data.confidence) : null,
       parsedFields
     };
   } catch (error) {
@@ -143,6 +234,7 @@ export async function effectuerOCRImage(file, onProgress) {
     return {
       success: false,
       text: "",
+      confidence: null,
       error: error.message || "Échec de l'OCR sur l'image"
     };
   }
@@ -152,22 +244,23 @@ export async function effectuerOCRImage(file, onProgress) {
  * Real Optical Character Recognition (OCR) on Scanned PDF Files
  * Renders PDF pages to Canvas and runs Tesseract OCR per page.
  */
-export async function effectuerOCRPdf(file, onProgress) {
+export async function effectuerOCRPdf(file, onProgress, lang = LANGUE_OCR_DEFAUT) {
   try {
     if (onProgress) onProgress(15, "Chargement et découpage des pages du PDF...");
-    
+
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    
+
     let combinedText = '';
-    const worker = await createWorker('fra+eng');
+    const confidences = [];
+    const worker = await getWorker(lang);
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       if (onProgress) {
         const pct = Math.floor(20 + (pageNum / pdf.numPages) * 75);
         onProgress(pct, `Reconnaissance OCR Tesseract sur la page ${pageNum}/${pdf.numPages}...`);
       }
-      
+
       const page = await pdf.getPage(pageNum);
       const viewport = page.getViewport({ scale: 1.5 });
       const canvas = document.createElement('canvas');
@@ -176,22 +269,27 @@ export async function effectuerOCRPdf(file, onProgress) {
       canvas.width = viewport.width;
 
       await page.render({ canvasContext: context, viewport }).promise;
+      appliquerContrasteCanvas(context, canvas.width, canvas.height);
       const imageUrl = canvas.toDataURL('image/png');
 
       const ret = await worker.recognize(imageUrl);
       if (ret.data && ret.data.text) {
         combinedText += `\n--- PAGE ${pageNum} ---\n` + ret.data.text;
       }
+      if (typeof ret.data?.confidence === 'number') confidences.push(ret.data.confidence);
     }
 
-    await worker.terminate();
     if (onProgress) onProgress(100, "OCR du PDF terminé avec succès !");
 
     const parsedFields = extraireChampsMetier(combinedText);
+    const confidence = confidences.length
+      ? Math.round(confidences.reduce((s, c) => s + c, 0) / confidences.length)
+      : null;
 
     return {
       success: true,
       text: combinedText,
+      confidence,
       parsedFields
     };
   } catch (error) {
@@ -199,6 +297,7 @@ export async function effectuerOCRPdf(file, onProgress) {
     return {
       success: false,
       text: "Impossible d'effectuer l'OCR sur ce PDF : " + (error.message || "Fichier invalide"),
+      confidence: null,
       error: error.message
     };
   }
