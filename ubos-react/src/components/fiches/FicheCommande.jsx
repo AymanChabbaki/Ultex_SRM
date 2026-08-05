@@ -47,7 +47,7 @@ const FicheCommande = ({ codeProp, code: codeFromProp }) => {
 
   const mainFields = [
     {k: 'client', l: 'Client', render: () => <a href={`#ficheClient:${commande.client}`}>{client.nom || commande.client}</a>},
-    {k: 'demande', l: 'Demande', render: () => <a href={`#ficheDemande:${commande.demande}`}>{commande.demande}</a>},
+    {k: 'demande', l: 'Demande', render: () => commande.demande ? <a href={`#ficheDemande:${commande.demande}`}>{commande.demande}</a> : '—'},
     {k: 'condition', l: 'Condition'},
     {k: 'formuleUltex', l: 'Formule'},
     {k: 'devisAccepte', l: 'Devis'},

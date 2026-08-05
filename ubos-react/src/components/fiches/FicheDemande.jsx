@@ -41,7 +41,7 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
   const client = db.clients?.find(c => c.code === demande.client) || {};
 
   const mainFields = [
-    {k: 'client', l: 'Client', render: () => <a href={`#ficheClient:${demande.client}`}>{client.nom || demande.client}</a>},
+    {k: 'client', l: 'Client', render: () => demande.client ? <a href={`#ficheClient:${demande.client}`}>{client.nom || demande.client}</a> : '—'},
     {k: 'date', l: 'Date', render: (d) => d ? new Date(d).toLocaleDateString() : ''},
     {k: 'responsable', l: 'Responsable'},
     {k: 'source', l: 'Source'},
