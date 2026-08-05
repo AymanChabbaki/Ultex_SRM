@@ -10,7 +10,7 @@ import Modal from '../common/Modal';
 import LigneModal from '../common/LigneModal';
 import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
-import { calculerLigne } from '../../utils/businessActions';
+import { calculerLigne, calculFF } from '../../utils/businessActions';
 import { PrinterIcon, SearchIcon, CheckIcon, AlertIcon } from '../common/Icons';
 
 const SEUIL_ECART_DEVIS_PCT = 15;
@@ -28,34 +28,6 @@ const LIGNE_CHAMPS = [
   {k: 'commentaire', l: 'Commentaire', t: 'textarea', large: 1},
   {k: 'statut', l: 'Statut', t: 'select', opts: ['Estimée', 'Justifiée', 'Annulée']}
 ];
-
-function calculFF(f, db) {
-  const lignes = f.lignes || [];
-  const actives = lignes.filter(l => l.statut !== "Annulée");
-  const totalHT = actives.reduce((s, l) => s + (+l.montantHT || 0), 0);
-  const totalTVA = actives.reduce((s, l) => s + (+l.montantTVA || 0), 0);
-  const totalTTC = actives.reduce((s, l) => s + (+l.montantTTC || 0), 0);
-
-  const reducValidees = (f.reductions || []).filter(r => r.statut === "Validée").reduce((s, r) => s + (+r.montant || 0), 0);
-  const reducAttente = (f.reductions || []).filter(r => r.statut === "En attente").reduce((s, r) => s + (+r.montant || 0), 0);
-
-  const avoirs = (db.avoirsFF || []).filter(a => a.facture === f.code).reduce((s, a) => s + (+a.montant || 0), 0);
-
-  const paiementsUBOS = (db.paiements || []).filter(p => p.dossier === f.dossier && p.statut === "Payé" && ["Acompte","Solde","Reliquat"].includes(p.nature)).reduce((s, p) => s + (+p.montant || 0), 0);
-  const paiementsHorsSysteme = +f.paiementsHorsSysteme || 0;
-  const paiementsRecus = paiementsUBOS + paiementsHorsSysteme;
-
-  const remboursements = (db.remboursements || []).filter(r => r.facture === f.code && r.statut === "Effectué").reduce((s, r) => s + (+r.montant || 0), 0);
-
-  const soldeDu = totalTTC - reducValidees - avoirs - paiementsRecus + remboursements;
-
-  const joursRetard = (f.echeance && soldeDu > 0) ? Math.floor((Date.now() - new Date(f.echeance).getTime()) / 864e5) : 0;
-  const devis = +f.devisInitial || 0;
-  const ecartDevis = devis ? totalTTC - devis : null;
-  const ecartDevisPct = devis ? Math.round((totalTTC - devis) / devis * 1000) / 10 : null;
-
-  return { lignes, actives, totalHT, totalTVA, totalTTC, reducValidees, reducAttente, avoirs, paiementsUBOS, paiementsHorsSysteme, paiementsRecus, remboursements, soldeDu, joursRetard, ecartDevis, ecartDevisPct };
-}
 
 const FicheFF = ({ codeProp, code: codeFromProp }) => {
   const { db, updateDB, audit, notifier } = useDB();

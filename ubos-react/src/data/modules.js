@@ -7,6 +7,7 @@ import {
 } from './constants';
 import { pill, pillStatut, esc, refLabel, fmtMAD } from '../utils/format';
 import { PERS_ET_SERVICES } from './permissions';
+import { calculFF } from '../utils/businessActions';
 import {
   LayoutDashboard, Contact2, Building2, Archive, ClipboardEdit, ShoppingCart, FolderKanban,
   PackageSearch, Calculator, FileSignature, Wallet, ClipboardCheck, Ship, Scale, Award,
@@ -377,8 +378,8 @@ facturation:{label:"Facturation finale", ic:Receipt, grp:"Finance", coll:"factur
  fiche:"ficheFF",
  cols:[["dossier","Dossier",v=>`<span class="pill p-gris">${esc(v||"—")}</span>`],
   ["client","Client",(v,o,DB)=>esc(refLabel(DB, "clients",v,"nom")).slice(0,22)],
-  ["code","Total TTC",(v,o)=>fmtMAD(calculFF(o).totalTTC)],
-  ["echeance","Solde dû",(v,o)=>{const c=calculFF(o);return `<b style="color:${c.soldeDu>0?"var(--rouge)":"var(--ok)"}">${fmtMAD(c.soldeDu)}</b>`}],
+  ["code","Total TTC",(v,o,DB)=>fmtMAD(calculFF(o,DB).totalTTC)],
+  ["echeance","Solde dû",(v,o,DB)=>{const c=calculFF(o,DB);return `<b style="color:${c.soldeDu>0?"var(--rouge)":"var(--ok)"}">${fmtMAD(c.soldeDu)}</b>`}],
   ["validee","Validée",v=>v?pill("Validée","p-vert"):pill("Brouillon","p-gris")],
   ["statutFinal","Statut",v=>pillStatut(v==="Soldé"||v==="Clôturé sans perte"?"Validé":["Impayé","Perte supportée par ULTEx","Clôturé avec perte","Dossier en contentieux"].includes(v)?"Rejeté":v)]],
  actions:[{txt:"Fiche facture", cls:"btn mini or", fn:"ouvrirFicheFF"}]},

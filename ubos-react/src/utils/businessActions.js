@@ -2,6 +2,34 @@ import { ETAPES, SERVICE_ETAPE } from '../data/constants';
 
 function normTel(t) { return String(t||"").replace(/\D/g,"").replace(/^00/,"+").replace(/^0/,"+212"); }
 
+export function calculFF(f, db) {
+  const lignes = f.lignes || [];
+  const actives = lignes.filter(l => l.statut !== "Annulée");
+  const totalHT = actives.reduce((s, l) => s + (+l.montantHT || 0), 0);
+  const totalTVA = actives.reduce((s, l) => s + (+l.montantTVA || 0), 0);
+  const totalTTC = actives.reduce((s, l) => s + (+l.montantTTC || 0), 0);
+
+  const reducValidees = (f.reductions || []).filter(r => r.statut === "Validée").reduce((s, r) => s + (+r.montant || 0), 0);
+  const reducAttente = (f.reductions || []).filter(r => r.statut === "En attente").reduce((s, r) => s + (+r.montant || 0), 0);
+
+  const avoirs = (db.avoirsFF || []).filter(a => a.facture === f.code).reduce((s, a) => s + (+a.montant || 0), 0);
+
+  const paiementsUBOS = (db.paiements || []).filter(p => p.dossier === f.dossier && p.statut === "Payé" && ["Acompte","Solde","Reliquat"].includes(p.nature)).reduce((s, p) => s + (+p.montant || 0), 0);
+  const paiementsHorsSysteme = +f.paiementsHorsSysteme || 0;
+  const paiementsRecus = paiementsUBOS + paiementsHorsSysteme;
+
+  const remboursements = (db.remboursements || []).filter(r => r.facture === f.code && r.statut === "Effectué").reduce((s, r) => s + (+r.montant || 0), 0);
+
+  const soldeDu = totalTTC - reducValidees - avoirs - paiementsRecus + remboursements;
+
+  const joursRetard = (f.echeance && soldeDu > 0) ? Math.floor((Date.now() - new Date(f.echeance).getTime()) / 864e5) : 0;
+  const devis = +f.devisInitial || 0;
+  const ecartDevis = devis ? totalTTC - devis : null;
+  const ecartDevisPct = devis ? Math.round((totalTTC - devis) / devis * 1000) / 10 : null;
+
+  return { lignes, actives, totalHT, totalTVA, totalTTC, reducValidees, reducAttente, avoirs, paiementsUBOS, paiementsHorsSysteme, paiementsRecus, remboursements, soldeDu, joursRetard, ecartDevis, ecartDevisPct };
+}
+
 export const qualifierLead = (code, db, genCode, audit, userCourant, sauver, toast, peut) => {
   if (!peut) { toast("Permission refusée."); return; }
   const l = db.leads?.find(x => x.code === code); if (!l) return;
