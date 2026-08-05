@@ -11,7 +11,7 @@ import * as XLSX from 'xlsx';
 import { esc, pill, normTel } from '../../utils/format';
 import {
   UploadIcon, DownloadIcon, AlertIcon, CheckIcon, SearchIcon,
-  DatabaseIcon, ShieldCheckIcon, EyeIcon, KeyIcon, SyncIcon, ClockIcon, PlayIcon
+  SyncIcon, ClockIcon, PlayIcon
 } from '../common/Icons';
 import { FolderOpen, ClipboardList, History, FileText, Settings2 } from 'lucide-react';
 import { effectuerOCRImage, effectuerOCRPdf, extraireChampsMetier } from '../../utils/ocrEngine';
