@@ -57,7 +57,13 @@ const FicheDocument = ({ codeProp, code: codeFromProp }) => {
           <b className="titre-fiche">{code}</b>
           <span className="spacer"></span>
           <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
-          <a href={document.url || '#'} target="_blank" rel="noreferrer" className="btn bleu">Aperçu / Télécharger</a>
+          {document.url ? (
+            <a href={document.url} target="_blank" rel="noreferrer" className="btn bleu">Aperçu / Télécharger</a>
+          ) : (
+            <button className="btn bleu" disabled title="Aucun fichier ni lien attaché — cliquez sur « Modifier » pour en ajouter un">
+              Aperçu / Télécharger
+            </button>
+          )}
         </div>
         {showEdit && (
           <ModuleForm 
