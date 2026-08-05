@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useDB } from '../../context/DBContext';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
@@ -8,9 +10,12 @@ import CheminDossier from '../common/CheminDossier';
 import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
 import * as Actions from '../../utils/businessActions';
+import { PrinterIcon } from '../common/Icons';
 
 const FicheDossier = ({ codeProp, code: codeFromProp }) => {
   const { db, updateDB, genCode, audit, userCourant, notifier } = useDB();
+  const { peut } = useAuth();
+  const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
   const [showEdit, setShowEdit] = useState(false);
@@ -82,13 +87,13 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
         <CheminDossier etape={dossier.etape} />
         
         <div className="outils" style={{marginTop: '15px'}}>
-          <b style={{fontSize:'16px', color:'var(--vert)'}}>{code} - {dossier.produit}</b>
-          <span style={{flex:1}}></span>
+          <b className="titre-fiche">{code} - {dossier.produit}</b>
+          <span className="spacer"></span>
           <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
           <button className="btn vert" onClick={() => {
-              Actions.avancerDossier(code, db, genCode, audit, userCourant, updateDB, (msg) => alert(msg), notifier);
+              Actions.avancerDossier(code, db, genCode, audit, userCourant, updateDB, toast, peut('valider'), notifier);
           }}>Étape suivante</button>
-          <button className="btn or" onClick={() => window.print()}>🖨 Imprimer</button>
+          <button className="btn or" onClick={() => window.print()}><PrinterIcon size={14} /> Imprimer</button>
         </div>
         {showEdit && (
           <ModuleForm 

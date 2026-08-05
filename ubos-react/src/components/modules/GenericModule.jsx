@@ -9,6 +9,14 @@ import { exporterExcel } from '../../utils/export';
 import { DownloadIcon } from '../common/Icons';
 import * as Actions from '../../utils/businessActions';
 
+const PERMISSION_REQUISE = {
+  qualifierLead: 'valider',
+  convertirContactEnClient: 'valider',
+  avancerDossier: 'valider',
+  creerFactureDepuisDossier: 'ajouter',
+  creerDossierDepuisCommande: 'ajouter'
+};
+
 export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
   const { db, updateDB, audit, genCode, sauver, notifier, userCourant } = useDB();
   const { peut, moduleVisible } = useAuth();
@@ -75,7 +83,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
   };
 
   const handleExport = () => {
-    exporterExcel(moduleId, db, MODS);
+    exporterExcel(moduleId, db, MODS, toast);
   };
 
   const handleActionClick = (a, code) => {
@@ -88,7 +96,8 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
         window.location.hash = `#${target}:${code}`;
       } else if (Actions[a.fn]) {
         // Appelle la logique métier réelle
-        Actions[a.fn](code, db, genCode, audit, userCourant, updateDB, toast, notifier);
+        const permission = PERMISSION_REQUISE[a.fn];
+        Actions[a.fn](code, db, genCode, audit, userCourant, updateDB, toast, permission ? peut(permission) : true, notifier);
       } else {
         toast(`Action « ${a.txt} » exécutée sur ${code}`);
       }
@@ -115,7 +124,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
           </select>
         )}
         {peut("exporter") && (
-          <button className="btn doux" onClick={handleExport} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <button className="btn doux" onClick={handleExport}>
             <DownloadIcon size={14} /> Excel / CSV
           </button>
         )}

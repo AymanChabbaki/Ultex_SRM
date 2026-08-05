@@ -1,4 +1,5 @@
 import { USERS } from './constants.js';
+import { hashPassword } from '../utils/passwordHash.js';
 
 export const MODELES = [
   ["Oumaima","oumaima","Gérante","Direction",["Direction"],[],{voir:1,ajouter:1,modifier:1,supprimer:1,valider:1,exporter:1}],
@@ -57,7 +58,7 @@ export function seedUsers(DB) {
             if (!DB.utilisateurs.some(u => u.identifiant === m[1])) {
                 DB.seq["USR"] = Math.max(DB.seq["USR"] || 0, DB.utilisateurs.length) + 1;
                 DB.utilisateurs.push({
-                    code: "USR" + String(DB.seq["USR"]).padStart(6, "0"), nomComplet: m[0], identifiant: m[1], motDePasse: "ubos2026",
+                    code: "USR" + String(DB.seq["USR"]).padStart(6, "0"), nomComplet: m[0], identifiant: m[1], motDePasse: hashPassword("ubos2026"),
                     poste: m[2], departement: m[3], services: m[4], modules: m[5], permissions: m[6], actif: true, ts: Date.now()
                 });
             }

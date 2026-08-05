@@ -57,8 +57,8 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
       <div className="panneau">
         
         <div className="outils">
-          <b style={{fontSize:'16px', color:'var(--vert)'}}>{code}</b>
-          <span style={{flex:1}}></span>
+          <b className="titre-fiche">{code}</b>
+          <span className="spacer"></span>
           <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
         </div>
         {showEdit && (

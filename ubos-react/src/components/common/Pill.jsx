@@ -1,13 +1,14 @@
 import React from 'react';
 
-export const Pill = ({ text, type }) => {
-  return <span className={`pill ${type || 'p-gris'}`}>{text}</span>;
+export const Pill = ({ text, texte, type }) => {
+  return <span className={`pill ${type || 'p-gris'}`}>{texte ?? text}</span>;
 };
 
-export const PillStatut = ({ text }) => {
-  if (!text) return <Pill text="—" type="p-gris" />;
-  
-  const lower = text.toLowerCase();
+export const PillStatut = ({ text, texte }) => {
+  const val = texte ?? text;
+  if (!val) return <Pill texte="—" type="p-gris" />;
+
+  const lower = val.toLowerCase();
   let type = "p-gris";
 
   if (lower.includes("livré") || lower.includes("payée") || lower.includes("clôturé") || lower.includes("qualifié") || lower === "actif") {
@@ -20,7 +21,7 @@ export const PillStatut = ({ text }) => {
     type = "p-ambre";
   }
 
-  return <Pill text={text} type={type} />;
+  return <Pill texte={val} type={type} />;
 };
 
 export default Pill;

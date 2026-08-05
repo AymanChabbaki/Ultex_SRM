@@ -566,7 +566,7 @@ export default function ImportCentre() {
   // EXPORT ENGINE BY MODULE
   // ----------------------------------------------------
   const handleExportTargeted = () => {
-    exporterExcel(exportModule, db, MODS);
+    exporterExcel(exportModule, db, MODS, toast);
     toast(`Exportation Excel du module ${exportModule.toUpperCase()} générée.`);
   };
 

@@ -1,24 +1,59 @@
 import React, { useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useDB } from '../../context/DBContext';
+import { destinataireEstMoi } from '../../data/permissions';
 import Topbar from '../layout/Topbar';
 import StatCard from '../common/StatCard';
 import CheminDossier from '../common/CheminDossier';
 import DataTable from '../common/DataTable';
+import PersonalDashboard from './PersonalDashboard';
 
 const ETAPES = ["Sourcing","Études & Chiffrage","Closing","Paiement","Analyse Dossier","Transport","Transit & Douane","Certification","Livraison","Suivi Client","Clôturé"];
 
+function calculerAlertes(db) {
+  const out = [];
+  const auj = new Date(new Date().toDateString());
+
+  (db.dossiers || []).filter(d => d.statut === "Bloqué").forEach(d => {
+    out.push(["p-rouge", `Dossier ${d.code} bloqué — ${d.produit || d.client || "à vérifier"}`, `ficheDossier:${d.code}`]);
+  });
+
+  (db.paiements || []).filter(p => p.statut === "En retard").forEach(p => {
+    out.push(["p-rouge", `Paiement ${p.code} en retard${p.dossier ? " — dossier " + p.dossier : ""}`, p.dossier ? `ficheDossier:${p.dossier}` : "paiements"]);
+  });
+
+  (db.taches || []).filter(t => t.statut !== "Terminée" && t.echeance && new Date(t.echeance) < auj).forEach(t => {
+    out.push(["p-or", `Tâche en retard : ${t.titre || t.code}`, "monAgenda"]);
+  });
+
+  (db.transits || []).filter(t => t.franchiseFin && t.etapeDum !== "Sorti du port" && new Date(t.franchiseFin) < auj).forEach(t => {
+    out.push(["p-or", `Franchise portuaire dépassée${t.dossier ? " — dossier " + t.dossier : ""}`, t.dossier ? `ficheDossier:${t.dossier}` : "transits"]);
+  });
+
+  return out;
+}
+
+function donneesPersoPour(db, x) {
+  const auj = new Date(new Date().toDateString());
+  const ajd = new Date().toISOString().slice(0, 10);
+  const mesTaches = (db.taches || []).filter(t => (x.services || []).includes(t.assigne) || t.assigne === x.nomComplet);
+  return {
+    tJour: mesTaches.filter(t => t.statut !== "Terminée" && t.echeance === ajd),
+    tRetard: mesTaches.filter(t => t.statut !== "Terminée" && t.echeance && new Date(t.echeance) < auj),
+    mesDossiers: (db.dossiers || []).filter(d => d.statut !== "Annulé" && d.etape !== "Clôturé" &&
+      (d.responsable === x.nomComplet || d.respActionSuivante === x.nomComplet || (x.services || []).includes(d.responsable))),
+    nonLues: (db.notifs || []).filter(n => !n.lu && destinataireEstMoi(x, n))
+  };
+}
+
 export default function Dashboard() {
   const { db } = useDB();
-  const { session, estDirection, donneesPerso } = useAuth();
+  const { session, estDirection } = useAuth();
 
-  const alertes = useMemo(() => {
-    // Placeholder for calculerAlertes
-    return [];
-  }, [db]);
+  const alertes = useMemo(() => calculerAlertes(db), [db]);
 
   if (!estDirection()) {
-    return <div>{/* RendrePersonnel component or logic here */}</div>;
+    return <PersonalDashboard user={session} />;
   }
 
   const dossActifs = db.dossiers.filter(d => d.statut !== "Annulé" && d.etape !== "Clôturé");
@@ -56,25 +91,25 @@ export default function Dashboard() {
 
       <CheminDossier compte={compte} etapes={ETAPES} />
 
-      <div className="panneau" style={{ marginBottom: '18px' }}>
-        <h4 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '18px', color: 'var(--vert)', padding: '12px 16px', borderBottom: '1px solid var(--bord)', background: '#FBFCFA', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          Alertes automatiques 
+      <div className="panneau mb-lg">
+        <h4 className="panneau-header">
+          Alertes automatiques
           {alertes.length ? <span className="pill p-rouge">{alertes.length}</span> : <span className="pill p-vert">Aucune</span>}
-          <span style={{ flex: 1 }}></span>
+          <span className="spacer"></span>
           <button className="btn mini or" onClick={() => window.location.hash = 'rapportDirection'}>⎙ Rapport Direction</button>
         </h4>
         {alertes.length ? (
           <div className="liste-notif">
             {alertes.slice(0, 20).map((a, i) => (
-              <div key={i} className="notif nonlu" style={{ background: a[0] === "p-rouge" ? "#FBEDEA" : "#FBF6E9" }}>
+              <div key={i} className={`notif nonlu ${a[0] === "p-rouge" ? "notif-rouge" : ""}`}>
                 <div className="pt-n" style={{ background: a[0] === "p-rouge" ? "var(--rouge)" : "var(--or)" }}></div>
-                <div style={{ flex: 1 }}>{a[1]}</div>
+                <div className="spacer">{a[1]}</div>
                 <button className="btn mini doux" onClick={() => window.location.hash = a[2]}>Ouvrir</button>
               </div>
             ))}
           </div>
         ) : (
-          <div className="vide" style={{ padding: '16px' }}>Aucune alerte : dossiers suivis, paiements à jour, franchises sous contrôle.</div>
+          <div className="vide">Aucune alerte : dossiers suivis, paiements à jour, franchises sous contrôle.</div>
         )}
       </div>
 
@@ -125,7 +160,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <h3 className="titre-sec" style={{ marginTop: '18px' }}>Équipe — vue par utilisateur</h3>
+      <h3 className="titre-sec mt-lg">Équipe — vue par utilisateur</h3>
       <div className="panneau">
         <div className="defile">
           <table>
@@ -134,7 +169,7 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {db.utilisateurs.filter(x => x.actif).map(x => {
-                const dp = donneesPerso ? donneesPerso(x) : { tJour: [], tRetard: [], mesDossiers: [], nonLues: [] };
+                const dp = donneesPersoPour(db, x);
                 const act = db.audit.filter(a => a.ts >= lim7 && a.utilisateur === x.nomComplet).length;
                 return (
                   <tr key={x.identifiant}>

@@ -26,7 +26,7 @@ export function importerJSON(file, setDB) {
   });
 }
 
-export function exporterExcel(modId, db, mods, userCourant) {
+export function exporterExcel(modId, db, mods, toast) {
   try {
     const xlsxLib = typeof XLSX.writeFile !== 'undefined' ? XLSX : (Object.keys(XLSX).length ? XLSX : window.XLSX);
     const M = mods[modId];
@@ -59,6 +59,6 @@ export function exporterExcel(modId, db, mods, userCourant) {
   xlsxLib.writeFile(wb, `ubos_${modId}_${new Date().toISOString().slice(0, 10)}.xlsx`);
   } catch (err) {
     console.error("Export Error:", err);
-    alert("Erreur lors de l'exportation: " + err.message);
+    if (toast) toast("Erreur lors de l'exportation : " + err.message);
   }
 }

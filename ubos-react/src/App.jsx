@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { AuthProvider } from './context/AuthContext';
-import { DBProvider } from './context/DBContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { DBProvider, useDB } from './context/DBContext';
 import { ToastProvider } from './context/ToastContext';
 import Layout from './components/layout/Layout';
 
 // Dashboard
 import Dashboard from './components/dashboard/Dashboard';
+import PersonalDashboard from './components/dashboard/PersonalDashboard';
 
 // Fiches
 import FicheClient from './components/fiches/FicheClient';
@@ -36,6 +37,30 @@ import GenericModule from './components/modules/GenericModule';
 // Constants
 import { MODS } from './data/modules';
 
+const DashUserRoute = ({ identifiant }) => {
+  const { db } = useDB();
+  const { estDirection } = useAuth();
+
+  if (!estDirection()) {
+    return (
+      <div className="panneau">
+        <div className="note-verrou"><b>Réservé à la Direction</b></div>
+      </div>
+    );
+  }
+
+  const targetUser = (db.utilisateurs || []).find(u => u.identifiant === identifiant || u.code === identifiant);
+  if (!targetUser) {
+    return (
+      <div className="panneau">
+        <div className="vide"><b>Utilisateur introuvable</b> ({identifiant})</div>
+      </div>
+    );
+  }
+
+  return <PersonalDashboard user={targetUser} isAdminView />;
+};
+
 const Router = () => {
   const [currentHash, setCurrentHash] = useState(window.location.hash.replace('#', '') || 'dashboard');
 
@@ -55,6 +80,7 @@ const Router = () => {
 
     switch (route) {
       case 'dashboard': return <Dashboard />;
+      case 'dashUser': return <DashUserRoute identifiant={params} />;
       case 'ficheClient': return <FicheClient codeProp={params} code={params} />;
       case 'ficheDossier': return <FicheDossier codeProp={params} code={params} />;
       case 'ficheDemande': return <FicheDemande codeProp={params} code={params} />;

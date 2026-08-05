@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useDB } from '../../context/DBContext';
+import { useToast } from '../../context/ToastContext';
+import { destinataireEstMoi } from '../../data/permissions';
 import { MODS, ORDRE_NAV } from '../../data/modules';
 import Logo from '../common/Logo';
 import { DownloadIcon, UploadIcon } from '../common/Icons';
 import { useSidebar } from './Layout';
 
 const Sidebar = ({ ouvert }) => {
-  const { moduleVisible } = useAuth();
+  const { moduleVisible, session } = useAuth();
   const { db, updateDB } = useDB();
+  const { toast } = useToast();
   const sidebarCtx = useSidebar();
   const isCollapsed = sidebarCtx?.collapsed;
 
@@ -25,7 +28,7 @@ const Sidebar = ({ ouvert }) => {
   }, []);
 
   const nbNonLues = () => {
-    return (db?.notifications || []).filter(n => !n.lu).length;
+    return (db?.notifs || []).filter(n => !n.lu && destinataireEstMoi(session, n)).length;
   };
 
   const exporterJSON = () => {
@@ -49,7 +52,7 @@ const Sidebar = ({ ouvert }) => {
           window.location.reload();
         }
       } catch (err) {
-        alert("Fichier JSON invalide.");
+        toast("Fichier JSON invalide.");
       }
     };
     reader.readAsText(file);

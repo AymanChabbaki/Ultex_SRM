@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useDB } from './DBContext';
 import { estDirection as estDirectionPerm, peut as peutPerm, moduleVisible as moduleVisiblePerm } from '../data/permissions';
 import { loginBackend } from '../services/api';
+import { verifyPassword } from '../utils/passwordHash';
 
 const AuthContext = createContext();
 
@@ -73,7 +74,7 @@ export const AuthProvider = ({ children }) => {
 
     // 2. Local fallback check
     if (!db || !db.utilisateurs) return false;
-    const user = db.utilisateurs.find(u => (u.identifiant === id || u.code === id) && u.motDePasse === mdp && u.actif);
+    const user = db.utilisateurs.find(u => (u.identifiant === id || u.code === id) && u.actif && verifyPassword(mdp, u.motDePasse));
     if (user) {
       login(user);
       return true;

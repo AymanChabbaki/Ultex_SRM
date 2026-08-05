@@ -1,4 +1,5 @@
 import React from 'react';
+import { CloseIcon } from './Icons';
 
 const Modal = ({ isOpen = true, onClose, title, titre, large, children, footer }) => {
   if (!isOpen) return null;
@@ -10,7 +11,7 @@ const Modal = ({ isOpen = true, onClose, title, titre, large, children, footer }
       <div className={`modale ${large ? 'large' : ''}`} id="modale" onClick={e => e.stopPropagation()}>
         <header>
           <h3>{displayTitle}</h3>
-          <button onClick={onClose}>✕</button>
+          <button onClick={onClose} title="Fermer"><CloseIcon size={14} /></button>
         </header>
         {children}
         {footer && (

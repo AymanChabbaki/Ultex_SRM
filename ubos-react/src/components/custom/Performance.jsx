@@ -3,6 +3,7 @@ import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
 import Topbar from '../layout/Topbar';
 import { pill, esc } from '../../utils/format';
+import { PrinterIcon } from '../common/Icons';
 
 export default function Performance() {
   const { db } = useDB();
@@ -31,10 +32,10 @@ export default function Performance() {
     <>
       <Topbar titre="Performance équipe" />
       <div className="outils">
-        <span style={{ flex: 1, color: "var(--gris)" }}>
+        <span className="spacer" style={{ color: "var(--gris)" }}>
           Vue consolidée par personne — tâches, dossiers, actions, rapports, erreurs, connexions
         </span>
-        <button className="btn or" onClick={() => window.print()}>🖨 Imprimer / PDF</button>
+        <button className="btn or" onClick={() => window.print()}><PrinterIcon size={14} /> Imprimer / PDF</button>
       </div>
 
       <div className="entete-impression">

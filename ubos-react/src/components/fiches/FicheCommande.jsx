@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useDB } from '../../context/DBContext';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
@@ -10,6 +12,8 @@ import * as Actions from '../../utils/businessActions';
 
 const FicheCommande = ({ codeProp, code: codeFromProp }) => {
   const { db, updateDB, genCode, audit, userCourant } = useDB();
+  const { peut } = useAuth();
+  const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
   const [showEdit, setShowEdit] = useState(false);
@@ -58,8 +62,8 @@ const FicheCommande = ({ codeProp, code: codeFromProp }) => {
       <div className="panneau">
         
         <div className="outils">
-          <b style={{fontSize:'16px', color:'var(--vert)'}}>{code}</b>
-          <span style={{flex:1}}></span>
+          <b className="titre-fiche">{code}</b>
+          <span className="spacer"></span>
           <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
         </div>
         {showEdit && (
@@ -78,7 +82,7 @@ const FicheCommande = ({ codeProp, code: codeFromProp }) => {
 
         <div className="bloc-fiche large">
           <h4>Dossiers Liés <button className="btn mini vert" style={{float:'right'}} onClick={() => {
-              Actions.creerDossierDepuisCommande(code, db, genCode, audit, userCourant, updateDB, (msg) => alert(msg));
+              Actions.creerDossierDepuisCommande(code, db, genCode, audit, userCourant, updateDB, toast, peut('ajouter'));
           }}>+ Créer Dossier depuis Commande</button></h4>
           <DataTable 
             columns={[

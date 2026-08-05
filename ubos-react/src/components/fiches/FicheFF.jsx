@@ -5,6 +5,7 @@ import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
 import Pill from '../common/Pill';
+import { PrinterIcon, SearchIcon, CheckIcon } from '../common/Icons';
 
 const SEUIL_ECART_DEVIS_PCT = 15;
 
@@ -132,11 +133,11 @@ const FicheFF = ({ codeProp, code: codeFromProp }) => {
         <div className="outils">
           <span className="pill p-or" style={{fontSize:'14px', padding:'6px 14px'}}>{f.code}</span>
           {f.validee ? <Pill type="p-vert" texte={`Validée le ${f.valideeLe}`} /> : <Pill type="p-gris" texte="Brouillon" />}
-          <span style={{flex:1}}></span>
+          <span className="spacer"></span>
           {peut("modifier") && <button className="btn doux">Modifier l'entête</button>}
-          <button className="btn doux">🔍 Vérifier la cohérence</button>
-          {!f.validee && peut("valider") && <button className="btn">✔ Valider</button>}
-          <button className="btn or" onClick={() => window.print()}>🖨 Imprimer</button>
+          <button className="btn doux"><SearchIcon size={14} /> Vérifier la cohérence</button>
+          {!f.validee && peut("valider") && <button className="btn"><CheckIcon size={14} /> Valider</button>}
+          <button className="btn or" onClick={() => window.print()}><PrinterIcon size={14} /> Imprimer</button>
         </div>
 
         <div className="fiche-grille">

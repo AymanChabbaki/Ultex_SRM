@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import Topbar from '../layout/Topbar';
 import StatCard from '../common/StatCard';
 import { fmtMAD, refLabel, esc, pill, pillStatut } from '../../utils/format';
+import { PrinterIcon } from '../common/Icons';
 
 export default function RapportDirection() {
   const { db } = useDB();
@@ -34,10 +35,10 @@ export default function RapportDirection() {
     <>
       <Topbar titre="Rapport Direction" />
       <div className="outils">
-        <span style={{ flex: 1, color: "var(--gris)" }}>
+        <span className="spacer" style={{ color: "var(--gris)" }}>
           Généré le {new Date().toLocaleString("fr-FR")} — {esc(userCourant)}
         </span>
-        <button className="btn or" onClick={() => window.print()}>🖨 Imprimer / PDF</button>
+        <button className="btn or" onClick={() => window.print()}><PrinterIcon size={14} /> Imprimer / PDF</button>
       </div>
 
       <div className="entete-impression">

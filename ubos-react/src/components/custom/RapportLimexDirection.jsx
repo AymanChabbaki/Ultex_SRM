@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import Topbar from '../layout/Topbar';
 import StatCard from '../common/StatCard';
 import { pillStatut, pill } from '../../utils/format';
+import { PrinterIcon } from '../common/Icons';
 
 export default function RapportLimexDirection() {
   const { db } = useDB();
@@ -31,10 +32,10 @@ export default function RapportLimexDirection() {
     <>
       <Topbar titre="Rapport LIMEX Direction" />
       <div className="outils">
-        <span style={{ flex: 1, color: "var(--gris)" }}>
+        <span className="spacer" style={{ color: "var(--gris)" }}>
           Généré le {new Date().toLocaleString("fr-FR")}
         </span>
-        <button className="btn or" onClick={() => window.print()}>🖨 Imprimer</button>
+        <button className="btn or" onClick={() => window.print()}><PrinterIcon size={14} /> Imprimer</button>
       </div>
 
       <div className="stats">

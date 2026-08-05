@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -31,7 +32,7 @@ async function main() {
           code,
           identifiant,
           nomComplet: m[0],
-          motDePasse: "ubos2026",
+          motDePasse: bcrypt.hashSync("ubos2026", 10),
           role: m[3] === "Direction" ? "ADMIN" : "USER",
           service: m[3],
           actif: true,

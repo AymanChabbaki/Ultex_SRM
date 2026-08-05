@@ -6,6 +6,7 @@ import DataTable from '../common/DataTable';
 import Pill from '../common/Pill';
 import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
+import { PrinterIcon } from '../common/Icons';
 
 const ONGLETS_360 = [
   ["identite", "1. Identité"],
@@ -109,19 +110,19 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
       <div className="panneau">
         <div className="outils">
           <span className="pill p-or" style={{fontSize:'14px', padding:'6px 14px'}}>{client.code}</span>
-          <b style={{fontSize:'16px', color:'var(--vert)'}}>{client.nom}</b>
+          <b className="titre-fiche">{client.nom}</b>
           <Pill type={client.segment} texte={client.segment} />
-          <span style={{flex:1}}></span>
+          <span className="spacer"></span>
           <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
-          <button className="btn or" onClick={() => window.print()}>🖨 Imprimer / PDF</button>
+          <button className="btn or" onClick={() => window.print()}><PrinterIcon size={14} /> Imprimer / PDF</button>
         </div>
 
         {showEdit && (
-          <ModuleForm 
-            moduleId="clients" 
+          <ModuleForm
+            moduleId="clients"
             MODS={MODS}
-            recordCode={code} 
-            onClose={() => setShowEdit(false)} 
+            recordCode={code}
+            onClose={() => setShowEdit(false)}
           />
         )}
 

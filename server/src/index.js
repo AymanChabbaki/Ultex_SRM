@@ -15,6 +15,11 @@ const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'ubos_secret_2026';
+const BCRYPT_HASH_RE = /^\$2[aby]\$/;
+
+if (!process.env.JWT_SECRET) {
+  console.warn('⚠️ JWT_SECRET non défini — utilisation de la valeur par défaut (à définir en production).');
+}
 
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
@@ -59,12 +64,24 @@ app.post('/api/auth/login', async (req, res) => {
     const user = await prisma.user.findFirst({
       where: {
         OR: [{ identifiant }, { code: identifiant }],
-        motDePasse,
         actif: true
       }
     });
 
     if (!user) {
+      return res.status(401).json({ error: 'Identifiant ou mot de passe incorrect' });
+    }
+
+    let motDePasseValide = false;
+    if (BCRYPT_HASH_RE.test(user.motDePasse)) {
+      motDePasseValide = bcrypt.compareSync(motDePasse, user.motDePasse);
+    } else if (user.motDePasse === motDePasse) {
+      // Ligne héritée (pré-migration) encore en clair : on migre silencieusement vers bcrypt.
+      motDePasseValide = true;
+      await prisma.user.update({ where: { id: user.id }, data: { motDePasse: bcrypt.hashSync(motDePasse, 10) } });
+    }
+
+    if (!motDePasseValide) {
       return res.status(401).json({ error: 'Identifiant ou mot de passe incorrect' });
     }
 
@@ -203,11 +220,16 @@ app.post('/api/db/sync', async (req, res) => {
             where: { OR: [{ code: u.code || '' }, { identifiant: u.identifiant || '' }] }
           });
 
+          const motDePasseEntrant = u.motDePasse || (existing ? existing.motDePasse : null);
+          const motDePasseFinal = motDePasseEntrant
+            ? (BCRYPT_HASH_RE.test(motDePasseEntrant) ? motDePasseEntrant : bcrypt.hashSync(motDePasseEntrant, 10))
+            : bcrypt.hashSync('ubos2026', 10);
+
           const userData = {
             code: u.code || 'USR' + String(Math.floor(Math.random() * 10000)).padStart(6, '0'),
             identifiant: u.identifiant,
             nomComplet: u.nomComplet || u.identifiant,
-            motDePasse: u.motDePasse || 'ubos2026',
+            motDePasse: motDePasseFinal,
             role: u.departement === 'Direction' || (u.services || []).includes('Direction') ? 'ADMIN' : 'USER',
             service: u.departement || 'Général',
             actif: u.actif !== false,

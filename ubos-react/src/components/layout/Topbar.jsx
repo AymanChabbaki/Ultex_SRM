@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useDB } from '../../context/DBContext';
+import { destinataireEstMoi } from '../../data/permissions';
 import { useSidebar } from './Layout';
 import { MenuIcon, BellIcon, DatabaseIcon, SyncIcon } from '../common/Icons';
 
@@ -13,7 +14,7 @@ const Topbar = ({ titre, toggleSidebar: propToggle }) => {
 
   const toggle = propToggle || sidebarCtx?.toggleSidebar;
 
-  const nb = (db?.notifications || []).filter(n => !n.lu).length;
+  const nb = (db?.notifs || []).filter(n => !n.lu && destinataireEstMoi(session, n)).length;
 
   const handleRecherche = (e) => {
     if (e.key === 'Enter') {
@@ -46,22 +47,10 @@ const Topbar = ({ titre, toggleSidebar: propToggle }) => {
       />
       
       {/* PostgreSQL Status Indicator */}
-      <div 
+      <div
+        className={`sync-pill ${isPostgresConnected ? 'on' : 'off'}`}
         title={isPostgresConnected ? "Base PostgreSQL connectée et synchronisée" : "Cliquer pour tenter la synchro PostgreSQL"}
         onClick={handleManualSync}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          padding: '5px 12px',
-          borderRadius: '20px',
-          fontSize: '12px',
-          fontWeight: 600,
-          cursor: 'pointer',
-          background: isPostgresConnected ? 'rgba(5, 150, 105, 0.12)' : 'rgba(217, 119, 6, 0.12)',
-          color: isPostgresConnected ? '#059669' : '#d97706',
-          border: `1px solid ${isPostgresConnected ? '#10b981' : '#f59e0b'}`
-        }}
       >
         <DatabaseIcon size={15} color={isPostgresConnected ? '#059669' : '#d97706'} />
         <span>{isPostgresConnected ? 'PostgreSQL Actif' : 'Mode Cache'}</span>

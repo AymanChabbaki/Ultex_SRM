@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import Topbar from '../layout/Topbar';
 import StatCard from '../common/StatCard';
 import { fmtMAD, refLabel, esc, pill } from '../../utils/format';
+import { PrinterIcon } from '../common/Icons';
 
 export default function RisquesClients() {
   const { db } = useDB();
@@ -35,8 +36,8 @@ export default function RisquesClients() {
     <>
       <Topbar titre="Factures finales & Risques clients" />
       <div className="outils">
-        <span style={{ flex: 1, color: "var(--gris)" }}>{factures.length} facture(s) finale(s) émise(s)</span>
-        <button className="btn or" onClick={() => window.print()}>🖨 Imprimer</button>
+        <span className="spacer" style={{ color: "var(--gris)" }}>{factures.length} facture(s) finale(s) émise(s)</span>
+        <button className="btn or" onClick={() => window.print()}><PrinterIcon size={14} /> Imprimer</button>
       </div>
 
       <div className="stats">

@@ -1,13 +1,9 @@
 import { ETAPES, SERVICE_ETAPE } from '../data/constants';
 
-function peut(db, userCourant, action) {
-  return true;
-}
-
 function normTel(t) { return String(t||"").replace(/\D/g,"").replace(/^00/,"+").replace(/^0/,"+212"); }
 
-export const qualifierLead = (code, db, genCode, audit, userCourant, sauver, toast) => {
-  if (!peut(db, userCourant, "valider")) { toast("Permission refusée."); return; }
+export const qualifierLead = (code, db, genCode, audit, userCourant, sauver, toast, peut) => {
+  if (!peut) { toast("Permission refusée."); return; }
   const l = db.leads?.find(x => x.code === code); if (!l) return;
   if (l.statut === "Qualifié") { toast("Ce lead a déjà été converti."); return; }
   
@@ -37,8 +33,8 @@ export const qualifierLead = (code, db, genCode, audit, userCourant, sauver, toa
   toast("Lead qualifié avec succès.");
 };
 
-export const convertirContactEnClient = (code, db, genCode, audit, userCourant, sauver, toast) => {
-  if (!peut(db, userCourant, "valider")) { toast("Permission refusée."); return; }
+export const convertirContactEnClient = (code, db, genCode, audit, userCourant, sauver, toast, peut) => {
+  if (!peut) { toast("Permission refusée."); return; }
   const ct = db.contacts?.find(x => x.code === code); if (!ct || ct.codeClientAssocie) return;
   
   const nc = {
@@ -59,8 +55,8 @@ export const convertirContactEnClient = (code, db, genCode, audit, userCourant, 
   toast(ct.nom + " devient client : " + nc.code);
 };
 
-export const avancerDossier = (code, db, genCode, audit, userCourant, sauver, toast, notifier) => {
-  if (!peut(db, userCourant, "valider")) { toast("Permission refusée."); return; }
+export const avancerDossier = (code, db, genCode, audit, userCourant, sauver, toast, peut, notifier) => {
+  if (!peut) { toast("Permission refusée."); return; }
   const d = db.dossiers?.find(x => x.code === code); if (!d) return;
   
   const i = ETAPES.indexOf(d.etape);
@@ -95,9 +91,9 @@ const calculerLigne = (l) => {
   return l;
 };
 
-export const creerFactureDepuisDossier = (codeDossier, db, genCode, audit, userCourant, sauver, toast) => {
-  if (!peut(db, userCourant, "ajouter")) { toast("Permission refusée."); return; }
-  
+export const creerFactureDepuisDossier = (codeDossier, db, genCode, audit, userCourant, sauver, toast, peut) => {
+  if (!peut) { toast("Permission refusée."); return; }
+
   const exist = db.facturesFinales?.find(f => f.dossier === codeDossier);
   if (exist) { 
     window.location.hash = "#ficheFF:" + exist.code; 
@@ -154,9 +150,9 @@ export const creerFactureDepuisDossier = (codeDossier, db, genCode, audit, userC
   toast(f.code + " créée depuis " + codeDossier + " (" + lignes.length + " lignes pré-remplies à vérifier)");
 };
 
-export const creerDossierDepuisCommande = (codeCommande, db, genCode, audit, userCourant, sauver, toast) => {
-  if (!peut(db, userCourant, "ajouter")) { toast("Permission refusée."); return; }
-  
+export const creerDossierDepuisCommande = (codeCommande, db, genCode, audit, userCourant, sauver, toast, peut) => {
+  if (!peut) { toast("Permission refusée."); return; }
+
   const cmd = db.commandes?.find(x => x.code === codeCommande); if (!cmd) return;
   
   const d = {

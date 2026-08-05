@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import Topbar from '../layout/Topbar';
 import { pill, pillStatut, esc, fmtMAD } from '../../utils/format';
 
-function collecterAgenda(db, user, estDirection) {
+export function collecterAgenda(db, user, estDirection) {
   if (!db || !user) return [];
   const dir = estDirection();
   const auj = new Date(new Date().toDateString());

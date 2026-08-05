@@ -7,7 +7,8 @@ import Modal from '../common/Modal';
 import { MODS } from '../../data/modules';
 import { USERS } from '../../data/constants';
 import { pill, esc } from '../../utils/format';
-import { EyeIcon, EyeOffIcon, KeyIcon } from '../common/Icons';
+import { hashPassword } from '../../utils/passwordHash';
+import { EyeIcon, EyeOffIcon } from '../common/Icons';
 
 const DEPARTEMENTS = ["Direction", "Commercial", "Études Commerciales", "Opérations Internationales", "Digital", "Administration"];
 const ACTIONS_PERM = ["voir", "ajouter", "modifier", "supprimer", "valider", "exporter"];
@@ -20,7 +21,6 @@ export default function Utilisateurs() {
   const [showModal, setShowModal] = useState(false);
   const [editingCode, setEditingCode] = useState(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [visiblePasswords, setVisiblePasswords] = useState({});
 
   const [formData, setFormData] = useState({
     nomComplet: '', identifiant: '', motDePasse: '', poste: '', departement: 'Commercial',
@@ -46,10 +46,6 @@ export default function Utilisateurs() {
 
   const estDirectionUser = (u) => u.departement === "Direction" || (u.services || []).includes("Direction");
 
-  const toggleTablePassword = (code) => {
-    setVisiblePasswords(prev => ({ ...prev, [code]: !prev[code] }));
-  };
-
   const handleOpenAdd = () => {
     setEditingCode(null);
     setShowPasswordModal(true);
@@ -66,7 +62,7 @@ export default function Utilisateurs() {
     setFormData({
       nomComplet: u.nomComplet || '',
       identifiant: u.identifiant || '',
-      motDePasse: u.motDePasse || 'ubos2026',
+      motDePasse: '',
       poste: u.poste || '',
       departement: u.departement || 'Commercial',
       actif: u.actif !== false,
@@ -108,7 +104,7 @@ export default function Utilisateurs() {
         u.permissions = formData.permissions;
 
         if (mdp) {
-          u.motDePasse = mdp;
+          u.motDePasse = hashPassword(mdp);
           notifier(u.nomComplet, "Votre mot de passe UBOS a été mis à jour par la Direction.", "Utilisateurs");
         }
         nextUsers[idx] = u;
@@ -124,7 +120,7 @@ export default function Utilisateurs() {
         code: genCode("USR"),
         nomComplet: nom,
         identifiant: id,
-        motDePasse: mdp,
+        motDePasse: hashPassword(mdp),
         poste: formData.poste,
         departement: formData.departement,
         services: formData.services,
@@ -185,26 +181,15 @@ export default function Utilisateurs() {
             </thead>
             <tbody>
               {utilisateurs.map(u => {
-                const isPasswordVisible = visiblePasswords[u.code];
                 return (
                   <tr key={u.code}>
                     <td className="code">{u.code}</td>
                     <td><b>{esc(u.nomComplet)}</b></td>
                     <td><code style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '6px', color: '#0f172a', fontWeight: 600 }}>{esc(u.identifiant)}</code></td>
                     <td>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontFamily: 'monospace', fontWeight: 600, color: isPasswordVisible ? '#0159A3' : '#64748b' }}>
-                          {isPasswordVisible ? (u.motDePasse || 'ubos2026') : '••••••••'}
-                        </span>
-                        <button 
-                          type="button" 
-                          onClick={() => toggleTablePassword(u.code)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center', color: '#64748b' }}
-                          title={isPasswordVisible ? "Masquer le mot de passe" : "Voir le mot de passe actuel"}
-                        >
-                          {isPasswordVisible ? <EyeOffIcon size={15} /> : <EyeIcon size={15} />}
-                        </button>
-                      </div>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#64748b' }} title="Le mot de passe est chiffré : utilisez « Modifier » pour en définir un nouveau">
+                        ••••••••
+                      </span>
                     </td>
                     <td>{esc(u.poste || "—")}</td>
                     <td>{esc(u.departement || "—")}</td>
@@ -254,14 +239,15 @@ export default function Utilisateurs() {
               <input value={formData.identifiant} onChange={e => setFormData({ ...formData, identifiant: e.target.value })} />
             </div>
 
-            {/* Mot de Passe avec bouton pour voir/masquer le mot de passe actuel */}
+            {/* Mot de passe : toujours saisi en clair puis chiffré (bcrypt) avant stockage */}
             <div className="champ">
-              <label>Mot de passe actuel / nouveau *</label>
+              <label>{editingCode ? "Nouveau mot de passe" : "Mot de passe *"}</label>
               <div className="input-wrapper" style={{ position: 'relative' }}>
-                <input 
-                  type={showPasswordModal ? "text" : "password"} 
-                  value={formData.motDePasse} 
+                <input
+                  type={showPasswordModal ? "text" : "password"}
+                  value={formData.motDePasse}
                   onChange={e => setFormData({ ...formData, motDePasse: e.target.value })}
+                  placeholder={editingCode ? "Laisser vide pour ne pas changer" : ""}
                   style={{ width: '100%', paddingRight: '38px' }}
                 />
                 <button 
