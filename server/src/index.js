@@ -34,7 +34,9 @@ const COLLS = [
   "bonsLancement", "stocks", "mouvementsStock", "livraisons", "transfertsServices",
   "communicationsDossier", "partenaires", "importJobs", "importFiles", "importModels",
   "importMappings", "importRows", "importErrors", "importHistory", "importDetectedTypes",
-  "importExtractedData", "importAttachments", "importRollbacks"
+  "importExtractedData", "importAttachments", "importRollbacks",
+  "controlesLimex", "dossierControlesLimex", "limexDiagnosticOumaima",
+  "limexPortesValidation", "limexImportHistory"
 ];
 
 const PFX_ANNEE = ["DOS", "FF", "AV", "REL", "ABD", "IMP", "RMB", "CMD", "DMD", "ARR"];

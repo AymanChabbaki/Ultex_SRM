@@ -223,7 +223,44 @@ export const TYPES_MESSAGE = ["Information","Action demandée","Validation deman
 export const PRIORITES_MESSAGE = ["Normale","Élevée","Urgente"];
 
 export const PFX_ANNEE = ["DOS","FF","AV","REL","ABD","IMP","RMB","CMD","DMD","ARR"];
-export const COLLS = ["clients","leads","fournisseurs","produits","dossiers","sourcings","etudes","offres","paiements","analyses","transports","transits","documents","taches","rapports","reclamations","stockage","certifs","transportsNat","pmtIntl","erreurs","utilisateurs","facturesFinales","avoirsFF","abandons","impayes","remboursements","contacts","demandes","commandes","arrivages","analysesLimex","bonsLancement","stocks","mouvementsStock","livraisons","transfertsServices","communicationsDossier","partenaires","importJobs","importFiles","importModels","importMappings","importRows","importErrors","importHistory","importDetectedTypes","importExtractedData","importAttachments","importRollbacks"];
+export const COLLS = ["clients","leads","fournisseurs","produits","dossiers","sourcings","etudes","offres","paiements","analyses","transports","transits","documents","taches","rapports","reclamations","stockage","certifs","transportsNat","pmtIntl","erreurs","utilisateurs","facturesFinales","avoirsFF","abandons","impayes","remboursements","contacts","demandes","commandes","arrivages","analysesLimex","bonsLancement","stocks","mouvementsStock","livraisons","transfertsServices","communicationsDossier","partenaires","importJobs","importFiles","importModels","importMappings","importRows","importErrors","importHistory","importDetectedTypes","importExtractedData","importAttachments","importRollbacks","controlesLimex","dossierControlesLimex","limexDiagnosticOumaima","limexPortesValidation","limexImportHistory"];
+
+// ---------- Checklist Maître LIMEX (import CHECKLIST_MAITRE_ULTEX_LIMEX.xlsx, onglet 3_Checklist_Maitre) ----------
+export const STATUTS_CONTROLE_LIMEX = [
+  "Non commencé", "Applicable", "N/A", "A demander", "Demandé", "En attente",
+  "Reçu à contrôler", "Non conforme", "Correction demandée", "Bloqué",
+  "Validé par Imane", "Validation Oumaima requise", "Validé définitivement"
+];
+export const COULEUR_STATUT_LIMEX = {
+  "Validé par Imane": "p-vert", "Validé définitivement": "p-vert",
+  "En attente": "p-ambre", "Demandé": "p-ambre", "Reçu à contrôler": "p-ambre", "Correction demandée": "p-ambre",
+  "Bloqué": "p-rouge", "Non conforme": "p-rouge",
+  "N/A": "p-gris", "Non commencé": "p-gris",
+  "Validation Oumaima requise": "p-jaune", "A demander": "p-jaune"
+};
+export const PRIORITES_CONTROLE_LIMEX = [
+  { code: "P0", label: "P0 — Blocage immédiat (interdit de payer/expédier)" },
+  { code: "P1", label: "P1 — Avant paiement de l'avance" },
+  { code: "P2", label: "P2 — Avant lancement de production" },
+  { code: "P3", label: "P3 — Avant paiement du reliquat" },
+  { code: "P4", label: "P4 — Avant expédition" },
+  { code: "P5", label: "P5 — Avant arrivée au Maroc" },
+  { code: "P6", label: "P6 — Pendant le dédouanement" },
+  { code: "P7", label: "P7 — Avant livraison" },
+  { code: "P8", label: "P8 — À clôturer après livraison" }
+];
+export const PORTES_VALIDATION_LIMEX = [
+  { n: 1, titre: "Autorisation de paiement de l'avance", phases: ["4. Paiement avance"] },
+  { n: 2, titre: "Autorisation de lancement de production", phases: ["5. Production"] },
+  { n: 3, titre: "Autorisation de paiement du reliquat", phases: ["6. Paiement reliquat"] },
+  { n: 4, titre: "Autorisation d'expédition", phases: ["7. Expedition", "8. Transport"] },
+  { n: 5, titre: "Validation du dossier avant arrivée (ETA)", phases: ["9. Preparation douaniere"] },
+  { n: 6, titre: "Validation du budget douanier", phases: ["9. Preparation douaniere"] },
+  { n: 7, titre: "Autorisation de dédouanement", phases: ["10. Dedouanement"] },
+  { n: 8, titre: "Autorisation de livraison", phases: ["11. Livraison"] },
+  { n: 9, titre: "Autorisation de clôture", phases: ["12. Cloture / REX"] }
+];
+export const DECISIONS_PORTE_LIMEX = ["En attente", "GO", "GO sous conditions", "STOP"];
 
 export const MODULES_LIBRES = ["dashboard","monAgenda","notifications","rapports"];
 export const MODULES_DIRECTION = ["auditGlobal","utilisateurs","rapportDirection","performance","importCentre","risquesClients"];

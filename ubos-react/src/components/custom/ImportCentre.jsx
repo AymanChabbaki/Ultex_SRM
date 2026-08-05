@@ -13,7 +13,8 @@ import {
   UploadIcon, DownloadIcon, AlertIcon, CheckIcon, SearchIcon,
   SyncIcon, ClockIcon, PlayIcon
 } from '../common/Icons';
-import { FolderOpen, ClipboardList, History, FileText, Settings2 } from 'lucide-react';
+import { FolderOpen, ClipboardList, History, FileText, Settings2, ListChecks } from 'lucide-react';
+import { parserChecklistMaitre, diffReferentielLimex } from '../../utils/limex';
 import { effectuerOCRImage, effectuerOCRPdf, extraireChampsMetier, LANGUES_OCR, LANGUE_OCR_DEFAUT } from '../../utils/ocrEngine';
 import { parsePdfBackend } from '../../services/api';
 
@@ -167,6 +168,43 @@ export default function ImportCentre() {
   const [ocrConfidence, setOcrConfidence] = useState(null);
   const [extractedOcrText, setExtractedOcrText] = useState('');
   const [extractedFields, setExtractedFields] = useState({});
+
+  const handleImportLimex = async (file) => {
+    if (!file) return;
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const sheetName = wb.SheetNames.find(n => n.includes('Checklist_Maitre'));
+      if (!sheetName) { toast("Feuille « 3_Checklist_Maitre » introuvable dans ce classeur."); return; }
+
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '' });
+      const parses = parserChecklistMaitre(rows);
+      if (!parses.length) { toast("Aucun contrôle trouvé dans la feuille « 3_Checklist_Maitre »."); return; }
+
+      const { controlesFinal, ajoutes, misAJour, inchanges, desactives } = diffReferentielLimex(db.controlesLimex, parses, userCourant);
+
+      const historyEntry = {
+        code: genCode('LIH'),
+        version: (db.limexImportHistory || []).length + 1,
+        date: new Date().toLocaleDateString('fr-FR'),
+        fichier: file.name,
+        utilisateur: userCourant,
+        ajoutes, misAJour, inchanges, desactives,
+        ts: Date.now()
+      };
+
+      updateDB({
+        ...db,
+        controlesLimex: controlesFinal,
+        limexImportHistory: [historyEntry, ...(db.limexImportHistory || [])]
+      });
+      audit('Checklist LIMEX', 'Import référentiel', historyEntry.code, '—', '—', `${ajoutes} ajoutés, ${misAJour} mis à jour, ${desactives} désactivés (v${historyEntry.version})`);
+      toast(`Référentiel LIMEX importé : ${ajoutes} ajouté(s), ${misAJour} mis à jour, ${inchanges} inchangé(s), ${desactives} désactivé(s).`);
+    } catch (err) {
+      console.error('Erreur import référentiel LIMEX:', err);
+      toast("Erreur lors de l'import du classeur LIMEX : " + err.message);
+    }
+  };
 
   const lancerOCR = async () => {
     if (!pdfFileItem || !pdfFileItem.file) return;
@@ -770,6 +808,42 @@ export default function ImportCentre() {
       {/* TAB 2: MODÈLES D'IMPORT CONFIGURABLES                 */}
       {/* ==================================================== */}
       {activeTab === 'modeles' && (
+        <div>
+          <div className="bloc-fiche large" style={{ marginBottom: '18px' }}>
+            <h4><ListChecks size={17} style={{ verticalAlign: 'text-bottom', marginRight: '6px' }} />Modèle officiel : Checklist Maître ULTEx LIMEX</h4>
+            <div style={{ padding: '16px 18px' }}>
+              <p style={{ fontSize: '13px', color: 'var(--gris)', marginBottom: '12px' }}>
+                Importe l'onglet « 3_Checklist_Maitre » du classeur <code>CHECKLIST_MAITRE_ULTEX_LIMEX.xlsx</code> dans le référentiel central des contrôles.
+                Les contrôles déjà présents (même ID) sont mis à jour, les nouveaux sont ajoutés, ceux retirés du fichier sont désactivés sans jamais être supprimés (historique conservé).
+                Ce n'est <b>pas</b> une checklist par dossier — chaque dossier génère automatiquement ses propres lignes de suivi à partir de ce référentiel.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportLimex(f); e.target.value = ''; }}
+                  disabled={!estDirection() && !peut('ajouter')}
+                />
+                <span className="pill p-gris">{(db.controlesLimex || []).filter(c => c.actif !== false).length} contrôle(s) actif(s) dans le référentiel</span>
+              </div>
+              {(db.limexImportHistory || []).length > 0 && (
+                <div className="defile" style={{ marginTop: '14px' }}>
+                  <table>
+                    <thead><tr><th>Version</th><th>Date</th><th>Fichier</th><th>Utilisateur</th><th>Ajoutés</th><th>Mis à jour</th><th>Désactivés</th></tr></thead>
+                    <tbody>
+                      {(db.limexImportHistory || []).slice(0, 5).map(h => (
+                        <tr key={h.code}>
+                          <td>v{h.version}</td><td>{h.date}</td><td>{h.fichier}</td><td>{h.utilisateur}</td>
+                          <td>{h.ajoutes}</td><td>{h.misAJour}</td><td>{h.desactives}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+
         <div className="panneau">
           <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--bord)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', color: 'var(--vert)', margin: 0 }}><ClipboardList size={17} /> Profils & Modèles d’importation ULTEx</h4>
@@ -808,6 +882,7 @@ export default function ImportCentre() {
               </tbody>
             </table>
           </div>
+        </div>
         </div>
       )}
 

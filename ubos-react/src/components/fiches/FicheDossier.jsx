@@ -6,9 +6,11 @@ import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
 import CheminDossier from '../common/CheminDossier';
+import StatCard from '../common/StatCard';
 import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
 import * as Actions from '../../utils/businessActions';
+import { calculerDashboardLimex } from '../../utils/limex';
 import { PrinterIcon } from '../common/Icons';
 
 function colsToDataTableColumns(cols, db) {
@@ -141,6 +143,28 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
             ))}
             {(!dossier.services || dossier.services.length === 0) && <span className="pill p-gris">Aucun service spécifié</span>}
           </div>
+        </div>
+
+        <div className="bloc-fiche large">
+          <h4>
+            Checklist LIMEX
+            <button className="btn mini or" style={{float:'right'}} onClick={() => window.location.hash = `ficheChecklistLimex:${code}`}>Ouvrir la checklist complète</button>
+          </h4>
+          {(() => {
+            const dash = calculerDashboardLimex(db, code);
+            if (!dash.total) {
+              return <div className="vide">Aucune checklist LIMEX générée pour ce dossier (créé avant l'activation du référentiel, ou référentiel vide).</div>;
+            }
+            return (
+              <div className="stats" style={{ padding: '16px' }}>
+                <StatCard val={dash.applicables} label="Applicables" />
+                <StatCard val={dash.valides} label="Validés" />
+                <StatCard val={dash.p0Ouverts} label="P0 ouverts" alerte={dash.p0Ouverts > 0} />
+                <StatCard val={dash.bloques} label="Bloqués" alerte={dash.bloques > 0} />
+                <StatCard val={`${dash.tauxAvancement}%`} label="Avancement" />
+              </div>
+            );
+          })()}
         </div>
 
         {sousSections.map(sec => {

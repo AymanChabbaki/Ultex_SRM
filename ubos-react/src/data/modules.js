@@ -8,6 +8,7 @@ import {
 import { pill, pillStatut, esc, refLabel, fmtMAD } from '../utils/format';
 import { PERS_ET_SERVICES } from './permissions';
 import { calculFF } from '../utils/businessActions';
+import { genererControlesDossier } from '../utils/limex';
 import {
   LayoutDashboard, Contact2, Building2, Archive, ClipboardEdit, ShoppingCart, FolderKanban,
   PackageSearch, Calculator, FileSignature, Wallet, ClipboardCheck, Ship, Scale, Award,
@@ -106,16 +107,21 @@ dossiers:{label:"Dossiers", ic:FolderKanban, grp:"Commercial", coll:"dossiers", 
   {k:"proprietaireMarchandise",l:"Propriétaire de la marchandise",t:"select",opts:PROPRIETAIRES_MARCHANDISE},
   {k:"formuleUltex",l:"Package commercial (raccourci)",t:"select",opts:FORMULES_ULTEX},
   {k:"produit",l:"Produit / Marchandise",t:"text",req:1},
+  {k:"quantite",l:"Quantité",t:"text"},
   {k:"fournisseur",l:"Fournisseur",t:"ref",coll:"fournisseurs",cle:"nom"},
+  {k:"fabricantReel",l:"Fabricant réel (si différent du fournisseur)",t:"text"},
   {k:"incoterm",l:"Incoterm",t:"incoterm",aide:"Règle Incoterms® 2020 qui définit qui du vendeur ou de l'acheteur supporte les frais et risques à chaque étape du transport."},
   {k:"paysOrigine",l:"Pays d'origine",t:"pays"},
+  {k:"paysProvenance",l:"Pays de provenance (si différent de l'origine)",t:"pays"},
   {k:"portDepart",l:"Port / aéroport de départ",t:"port"},
   {k:"portArrivee",l:"Port / aéroport d'arrivée",t:"port"},
   {k:"modeTransport",l:"Mode de transport",t:"select",opts:()=>CATEGORIES_TRANSPORT.flatMap(cat=>MODES_TRANSPORT_DETAIL[cat].map(s=>cat+" — "+s))},
   {k:"montantVente",l:"Valeur marchandise / vente (MAD)",t:"number"},
   {k:"montantAchat",l:"Coût d'achat estimé (MAD)",t:"number"},
   {k:"cbm",l:"Volume (CBM)",t:"number"},
-  {k:"poids",l:"Poids (kg)",t:"number"},
+  {k:"poids",l:"Poids brut (kg)",t:"number"},
+  {k:"poidsNet",l:"Poids net (kg)",t:"number"},
+  {k:"niveauRisqueInitial",l:"Niveau de risque initial (LIMEX)",t:"select",opts:["Faible","Moyen","Élevé","Critique"]},
   {k:"etape",l:"Étape actuelle",t:"select",opts:ETAPES},
   {k:"responsable",l:"Responsable du dossier",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB)},
   {k:"actionSuivante",l:"Action suivante *",t:"text",req:1},
@@ -135,6 +141,15 @@ dossiers:{label:"Dossiers", ic:FolderKanban, grp:"Commercial", coll:"dossiers", 
    }
    o.nouveauClient = "";
    if(!o.etape) o.etape = ETAPES[0];
+ },
+ apresSauve: (DB, o, ancien) => {
+   if (!ancien) {
+     // Génère automatiquement une ligne de checklist LIMEX par contrôle actif
+     // du référentiel — exhaustivité garantie, sans jamais dupliquer le texte
+     // des contrôles (qui reste dans controlesLimex).
+     const lignes = genererControlesDossier(DB, o.code);
+     DB.dossierControlesLimex = [...(DB.dossierControlesLimex || []), ...lignes];
+   }
  },
  fiche:"ficheDossier",
  cols:[["client","Client",(v,o,DB)=>esc(refLabel(DB, "clients",v,"nom"))],["produit","Produit"],["fournisseur","Fourn.",(v,o,DB)=>v?esc(refLabel(DB, "fournisseurs",v,"nom")).slice(0,22):"—"],["incoterm","Incoterm",v=>v?pill(v,"p-gris"):"—"],["montantVente","Valeur",v=>fmtMAD(v)],["etape","Étape",(v,o)=>{const i=ETAPES.indexOf(v);return `<span class="pill p-or">${i+1}/${ETAPES.length} · ${esc(v)}</span>`}],["responsable","Resp."],["actionSuivante","Action suivante",(v,o)=>{if(!v)return pill("À définir","p-rouge");const r=o.echeanceActionSuivante&&new Date(o.echeanceActionSuivante)<new Date(new Date().toDateString());return esc(String(v).slice(0,28))+`<br><small style="color:var(--gris)">`+esc(o.respActionSuivante||"—")+" · "+esc(o.echeanceActionSuivante||"—")+(r?" "+pill("Retard","p-rouge"):"")+`</small>`}],["statut","Statut",v=>pillStatut(v)]],

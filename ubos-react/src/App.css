@@ -383,6 +383,7 @@ td .acts{display:flex;gap:6px;flex-wrap:wrap}
 .p-gris{background:#EEF1EE;color:var(--gris)}.p-rouge{background:#F6E7E4;color:var(--rouge)}
 .p-ambre{background:#F7EEDD;color:var(--ambre)}
 .p-bleu{background:#E3EBFA;color:var(--bleu)}
+.p-jaune{background:#FCF3CF;color:#8a6d00}
 .vide{padding:40px 24px;text-align:center;color:var(--gris)}
 .vide b,.vide h3{display:block;color:var(--vert);font-size:16px;font-weight:700;font-family:'Cormorant Garamond',serif;margin-bottom:4px}
 .vide p{font-size:13px;margin:0}

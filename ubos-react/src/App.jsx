@@ -16,6 +16,7 @@ import FicheCommande from './components/fiches/FicheCommande';
 import FicheArrivage from './components/fiches/FicheArrivage';
 import FicheDocument from './components/fiches/FicheDocument';
 import FicheFF from './components/fiches/FicheFF';
+import FicheChecklistLimex from './components/fiches/FicheChecklistLimex';
 
 // Custom Modules
 import Notifications from './components/custom/Notifications';
@@ -88,6 +89,7 @@ const Router = () => {
       case 'ficheArrivage': return <FicheArrivage codeProp={params} code={params} />;
       case 'ficheDocument': return <FicheDocument codeProp={params} code={params} />;
       case 'ficheFF': return <FicheFF codeProp={params} code={params} />;
+      case 'ficheChecklistLimex': return <FicheChecklistLimex codeProp={params} code={params} />;
       
       case 'notifications': return <Notifications />;
       case 'monAgenda': return <MonAgenda />;

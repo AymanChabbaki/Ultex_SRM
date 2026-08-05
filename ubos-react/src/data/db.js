@@ -17,7 +17,9 @@ export function baseVide() {
     communicationsDossier: [], partenaires: [], notifs: [], audit: [],
     importJobs: [], importFiles: [], importModels: [], importMappings: [],
     importRows: [], importErrors: [], importHistory: [], importDetectedTypes: [],
-    importExtractedData: [], importAttachments: [], importRollbacks: []
+    importExtractedData: [], importAttachments: [], importRollbacks: [],
+    controlesLimex: [], dossierControlesLimex: [], limexDiagnosticOumaima: [],
+    limexPortesValidation: [], limexImportHistory: []
   };
 }
 
