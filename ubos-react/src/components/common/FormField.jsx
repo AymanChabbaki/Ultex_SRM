@@ -72,19 +72,20 @@ const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, opt
     );
   } else if (fieldType === "port" || fieldType === "aeroport") {
     const listData = fieldType === "port" ? PORTS_MONDE : AEROPORTS_MONDE;
+    const datalistId = `dl_${fieldDef.k}`;
     inputEl = (
       <>
-        <input 
-          id={`f_${fieldDef.k}`} 
-          list={`dl_${fieldDef.t}s`} 
-          value={val} 
-          onChange={handleChange} 
-          placeholder={`Rechercher un ${fieldType}…`} 
+        <input
+          id={`f_${fieldDef.k}`}
+          list={datalistId}
+          value={val}
+          onChange={handleChange}
+          placeholder={`Rechercher un ${fieldType}…`}
           autoComplete="off"
           disabled={disabled}
         />
-        <datalist id={`dl_${fieldDef.t}s`}>
-          {listData.map(p => <option key={p.c || p} value={typeof p === 'string' ? p : p.n} />)}
+        <datalist id={datalistId}>
+          {listData.map((p, i) => <option key={(typeof p === 'string' ? p : (p.l || p.i)) || i} value={typeof p === 'string' ? p : p.n} />)}
         </datalist>
       </>
     );

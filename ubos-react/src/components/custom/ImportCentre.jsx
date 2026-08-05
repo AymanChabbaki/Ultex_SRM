@@ -269,13 +269,30 @@ export default function ImportCentre() {
     }
   }, [db]);
 
-  const handleSavePdfDocument = () => {
+  const handleSavePdfDocument = async () => {
     if (!pdfFileItem) return;
 
     const logId = 'IMP-' + String(Date.now()).slice(-6);
     const newDocCode = genCode("DOC");
     const clientSelected = (db.clients || []).find(c => c.code === pdfMeta.client);
     const clientNom = clientSelected ? `${clientSelected.nom} (${clientSelected.code})` : pdfMeta.client;
+
+    // Persist the original file itself (as a data URL) so it can actually be
+    // previewed/downloaded later — previously only OCR-derived text/numbers
+    // were kept and the uploaded file was silently discarded.
+    let fichierUrl = '';
+    if (pdfFileItem.file) {
+      try {
+        fichierUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = () => reject(new Error("Impossible de lire le fichier."));
+          reader.readAsDataURL(pdfFileItem.file);
+        });
+      } catch (err) {
+        toast("Le fichier n'a pas pu être attaché (il sera enregistré sans aperçu) : " + err.message);
+      }
+    }
 
     const newDocObj = {
       code: newDocCode,
@@ -285,6 +302,8 @@ export default function ImportCentre() {
       clientNom: clientNom,
       dossier: pdfMeta.dossier || '',
       statut: 'Validé',
+      url: fichierUrl,
+      typeFichier: pdfFileItem.format,
       numeroPiece: extractedFields.numeroFacture || newDocCode,
       dateDoc: extractedFields.dateDoc || new Date().toLocaleDateString('fr-FR'),
       montantHT: extractedFields.montantHT || '0.00',
