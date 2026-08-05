@@ -404,6 +404,17 @@ td .acts{display:flex;gap:6px;flex-wrap:wrap}
 .champ input,.champ select,.champ textarea{padding:9px 12px;border:1.5px solid var(--bord);border-radius:var(--rayon-sm);background:#FDFDFC;font-size:13.5px;color:var(--encre);transition:all .16s ease}
 .champ input:focus,.champ select:focus,.champ textarea:focus{outline:none;border-color:var(--vert);background:#fff;box-shadow:0 0 0 3px rgba(1,89,163,.12)}
 .champ textarea{min-height:64px;resize:vertical}
+
+.ref-select{position:relative}
+.ref-select input{width:100%;padding-right:28px}
+.ref-select-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:18px;height:18px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:var(--gris);font-size:15px;line-height:1;cursor:pointer;border-radius:50%}
+.ref-select-clear:hover{background:var(--ivoire);color:var(--rouge)}
+.ref-select-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--carte);border:1px solid var(--bord);border-radius:var(--rayon-sm);box-shadow:0 12px 30px rgba(0,0,0,.12);max-height:230px;overflow-y:auto;z-index:60}
+.ref-select-option{padding:8px 12px;font-size:13px;cursor:pointer;border-top:1px solid var(--bord)}
+.ref-select-option:first-child{border-top:none}
+.ref-select-option:hover{background:var(--vert-pale)}
+.ref-select-option.actif{background:var(--vert-pale);color:var(--vert);font-weight:600}
+.ref-select-empty{padding:10px 12px;font-size:12.5px;color:var(--gris)}
 /* ---------- Assistant (Wizard) ---------- */
 .assistant{background:var(--carte);border-radius:14px;max-width:680px;margin:0 auto;box-shadow:var(--ombre)}
 .assist-barre{display:flex;gap:4px;padding:16px 20px 0}

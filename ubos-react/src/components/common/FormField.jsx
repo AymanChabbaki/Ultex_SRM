@@ -1,6 +1,7 @@
 import React from 'react';
 import { useDB } from '../../context/DBContext';
 import { INCOTERMS_2020, PAYS_MONDE, PORTS_MONDE, AEROPORTS_MONDE } from '../../data/constants';
+import SearchableSelect from './SearchableSelect';
 
 const BulleAide = ({ texte }) => {
   if (!texte) return null;
@@ -92,14 +93,15 @@ const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, opt
   } else if (fieldType === "ref") {
     const options = db && fieldDef.coll && db[fieldDef.coll] ? db[fieldDef.coll] : [];
     inputEl = (
-      <select id={`f_${fieldDef.k}`} value={val} onChange={handleChange} disabled={disabled}>
-        <option value="">—</option>
-        {options.map(o => (
-          <option key={o.code} value={o.code}>
-            {(o[fieldDef.cle] || o.code) + " · " + o.code}
-          </option>
-        ))}
-      </select>
+      <SearchableSelect
+        id={`f_${fieldDef.k}`}
+        options={options}
+        value={val}
+        onChange={handleChange}
+        labelKey={fieldDef.cle}
+        placeholder={`Rechercher ${fieldDef.l ? fieldDef.l.toLowerCase() : 'un élément'}…`}
+        disabled={disabled}
+      />
     );
   } else if (fieldType === "textarea") {
     inputEl = (
