@@ -13,7 +13,7 @@ import {
   UploadIcon, DownloadIcon, AlertIcon, CheckIcon, SearchIcon,
   DatabaseIcon, ShieldCheckIcon, EyeIcon, KeyIcon, SyncIcon, ClockIcon, PlayIcon
 } from '../common/Icons';
-import { FolderOpen, ClipboardList, History, ScrollText, Settings2 } from 'lucide-react';
+import { FolderOpen, ClipboardList, History, FileText, Settings2 } from 'lucide-react';
 import { effectuerOCRImage, effectuerOCRPdf, extraireChampsMetier } from '../../utils/ocrEngine';
 import { parsePdfBackend } from '../../services/api';
 
@@ -638,7 +638,7 @@ export default function ImportCentre() {
             }}
             onClick={() => document.getElementById('multiFileInput').click()}
           >
-            <div style={{ fontSize: '48px', marginBottom: '12px' }}>📥</div>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px', color: 'var(--vert)' }}><FolderOpen size={44} /></div>
             <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '26px', color: 'var(--vert)', marginBottom: '8px' }}>
               Glissez-déposez vos fichiers ou dossiers ici
             </h3>
@@ -649,10 +649,10 @@ export default function ImportCentre() {
 
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
               <button className="btn" type="button" onClick={(e) => { e.stopPropagation(); document.getElementById('multiFileInput').click(); }}>
-                📄 Sélectionner un ou plusieurs fichiers
+                <FileText size={14} /> Sélectionner un ou plusieurs fichiers
               </button>
               <button className="btn doux" type="button" onClick={(e) => { e.stopPropagation(); document.getElementById('folderInput').click(); }}>
-                📁 Importer un dossier complet / ZIP
+                <FolderOpen size={14} /> Importer un dossier complet / ZIP
               </button>
             </div>
 
@@ -677,8 +677,8 @@ export default function ImportCentre() {
           {/* Pending Queue List Table */}
           {fileQueue.length > 0 ? (
             <div className="panneau">
-              <h4 style={{ padding: '14px 20px', borderBottom: '1px solid var(--bord)', background: '#FBFCFA', fontSize: '16px', color: 'var(--vert)' }}>
-                📋 File d'attente des fichiers à importer ({fileQueue.length})
+              <h4 className="panneau-header" style={{ fontSize: '16px' }}>
+                <ClipboardList size={16} /> File d'attente des fichiers à importer ({fileQueue.length})
               </h4>
               <div className="defile">
                 <table>
@@ -711,7 +711,7 @@ export default function ImportCentre() {
                         <td>
                           <div className="acts">
                             <button className="btn mini" onClick={() => handleOpenPreview(item)}>
-                              🔍 Analyser & Importer
+                              <SearchIcon size={13} /> Analyser & Importer
                             </button>
                             <button className="btn mini rouge" onClick={() => setFileQueue(prev => prev.filter(f => f.id !== item.id))}>
                               Supprimer
@@ -739,7 +739,7 @@ export default function ImportCentre() {
       {activeTab === 'modeles' && (
         <div className="panneau">
           <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--bord)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h4 style={{ fontSize: '18px', color: 'var(--vert)', margin: 0 }}>📋 Profils & Modèles d’importation ULTEx</h4>
+            <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', color: 'var(--vert)', margin: 0 }}><ClipboardList size={17} /> Profils & Modèles d’importation ULTEx</h4>
             {estDirection() && (
               <button className="btn mini" onClick={() => {
                 setShowMappingModal(true);
@@ -783,8 +783,8 @@ export default function ImportCentre() {
       {/* ==================================================== */}
       {activeTab === 'historique' && (
         <div className="panneau">
-          <h4 style={{ padding: '16px 20px', borderBottom: '1px solid var(--bord)', fontSize: '18px', color: 'var(--vert)' }}>
-            📜 Historique permanent des importations
+          <h4 className="panneau-header" style={{ fontSize: '18px' }}>
+            <History size={17} /> Historique permanent des importations
           </h4>
           <div className="defile">
             <table>
@@ -837,8 +837,8 @@ export default function ImportCentre() {
       {/* ==================================================== */}
       {activeTab === 'erreurs' && (
         <div className="panneau">
-          <h4 style={{ padding: '16px 20px', borderBottom: '1px solid var(--bord)', fontSize: '18px', color: 'var(--vert)' }}>
-            ⚠️ Registre des erreurs et anomalies d'importation
+          <h4 className="panneau-header" style={{ fontSize: '18px' }}>
+            <AlertIcon size={17} /> Registre des erreurs et anomalies d'importation
           </h4>
           {erreursImport.length ? (
             <div className="defile">
@@ -881,7 +881,7 @@ export default function ImportCentre() {
       {/* ==================================================== */}
       {activeTab === 'export' && (
         <div className="panneau" style={{ padding: '24px' }}>
-          <h4 style={{ fontSize: '20px', color: 'var(--vert)', marginBottom: '16px' }}>📤 Centre d'exportation ciblée par module</h4>
+          <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '20px', color: 'var(--vert)', marginBottom: '16px' }}><DownloadIcon size={18} /> Centre d'exportation ciblée par module</h4>
           <div className="corps" style={{ gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
             <div className="champ">
               <label>SELECTIONNER LE MODULE À EXPORTER</label>
@@ -899,7 +899,7 @@ export default function ImportCentre() {
             </div>
           </div>
           <button className="btn or" style={{ marginTop: '20px', width: '100%', padding: '12px' }} onClick={handleExportTargeted}>
-            📤 Télécharger le classeur Excel ({exportModule.toUpperCase()})
+            <DownloadIcon size={14} /> Télécharger le classeur Excel ({exportModule.toUpperCase()})
           </button>
         </div>
       )}
@@ -910,7 +910,7 @@ export default function ImportCentre() {
       {activePreviewItem && (
         <Modal
           large={true}
-          title={`🔍 Prévisualisation & Validation — ${activePreviewItem.nom}`}
+          title={<span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><SearchIcon size={18} /> Prévisualisation & Validation — {activePreviewItem.nom}</span>}
           onClose={() => setActivePreviewItem(null)}
           footer={
             <>
@@ -988,7 +988,7 @@ export default function ImportCentre() {
       {showPdfModal && pdfFileItem && (
         <Modal
           large={true}
-          title={`📄 Traitement OCR & Analyse de Document — ${pdfFileItem.nom}`}
+          title={<span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={18} /> Traitement OCR & Analyse de Document — {pdfFileItem.nom}</span>}
           onClose={() => setShowPdfModal(false)}
           footer={
             <>
@@ -1003,13 +1003,13 @@ export default function ImportCentre() {
             <div className="champ large" style={{ background: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid var(--bord)', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                 <div>
-                  <b style={{ fontSize: '15px', color: 'var(--vert)' }}>🔍 Moteur OCR Tesseract.js & Extracteur PDF</b>
+                  <b style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '15px', color: 'var(--vert)' }}><SearchIcon size={15} /> Moteur OCR Tesseract.js & Extracteur PDF</b>
                   <div style={{ fontSize: '12px', color: 'var(--gris)' }}>
                     Format : <b>{pdfFileItem.format}</b> ({pdfFileItem.tailleMo} Mo) · Reconnaissance optique et analyse sémantique
                   </div>
                 </div>
                 <button className="btn or" onClick={lancerOCR} disabled={ocrRunning}>
-                  {ocrRunning ? '⏳ OCR en cours...' : '🚀 Exécuter l\'OCR maintenant'}
+                  {ocrRunning ? <><ClockIcon size={14} /> OCR en cours...</> : <><PlayIcon size={14} /> Exécuter l'OCR maintenant</>}
                 </button>
               </div>
 
@@ -1027,7 +1027,7 @@ export default function ImportCentre() {
 
             {extractedOcrText ? (
               <div className="champ large" style={{ marginBottom: '16px' }}>
-                <label style={{ color: '#059669', fontWeight: 700 }}>✅ TEXTE RECONNU & EXTRAIT DU DOCUMENT :</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#059669', fontWeight: 700 }}><CheckIcon size={13} /> TEXTE RECONNU & EXTRAIT DU DOCUMENT :</label>
                 <textarea 
                   rows={5} 
                   value={extractedOcrText} 
@@ -1104,7 +1104,7 @@ export default function ImportCentre() {
               <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                 <input 
                   type="text" 
-                  placeholder="🔍 Tapez un nom, un code (ex: 0826IM9402) ou un téléphone pour filtrer..."
+                  placeholder="Tapez un nom, un code (ex: 0826IM9402) ou un téléphone pour filtrer..."
                   value={clientSearchQuery}
                   onChange={e => setClientSearchQuery(e.target.value)}
                   style={{ flex: 1, padding: '8px 12px', fontSize: '13px', borderRadius: '8px', border: '1px solid var(--bord)' }}
@@ -1162,7 +1162,7 @@ export default function ImportCentre() {
       {showMappingModal && mappingState && (
         <Modal
           large={true}
-          title={`⚙️ Assistant de Correspondance des Colonnes — ${mappingState.fileName}`}
+          title={<span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Settings2 size={18} /> Assistant de Correspondance des Colonnes — {mappingState.fileName}</span>}
           onClose={() => setShowMappingModal(false)}
           footer={
             <>
