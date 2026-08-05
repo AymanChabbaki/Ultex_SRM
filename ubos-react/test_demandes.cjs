@@ -45,7 +45,12 @@ const { chromium } = require('playwright');
   // Go to the demandes list and open the newest one (should be first row)
   await page.goto('http://localhost:5173/#demandes');
   await page.waitForTimeout(600);
-  const ficheLink = page.locator('table tbody tr').first().locator('a:has-text("Fiche")');
+  const rowCount = await page.locator('table tbody tr').count();
+  console.log('Demandes list row count:', rowCount);
+  if (!rowCount) {
+    console.log('PAGE BODY:', (await page.locator('body').innerText()).slice(0, 500));
+  }
+  const ficheLink = page.locator('table tbody tr').first().locator('td.code a');
   await ficheLink.click();
   await page.waitForTimeout(800);
 
