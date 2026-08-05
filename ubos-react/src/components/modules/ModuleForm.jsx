@@ -8,15 +8,15 @@ import { MODS as MODS_DATA } from '../../data/modules';
 import { detecterMentions } from '../../data/db';
 import { USERS } from '../../data/constants';
 
-export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, onClose }) {
+export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, initialData, onClose }) {
   const { db, updateDB, genCode, audit, notifier } = useDB();
   const { userCourant } = useAuth();
   const { toast } = useToast();
-  
+
   const M = MODS[moduleId];
   const isEdit = !!recordCode;
-  
-  const [formData, setFormData] = useState({});
+
+  const [formData, setFormData] = useState(() => (!recordCode && initialData) ? { ...initialData } : {});
 
   useEffect(() => {
     if (isEdit && M && db[M.coll]) {
@@ -25,7 +25,7 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, onC
         setFormData({ ...record });
       }
     } else {
-      setFormData({});
+      setFormData(initialData ? { ...initialData } : {});
     }
   }, [isEdit, recordCode, M, db]);
 

@@ -12,6 +12,22 @@ import { MODS } from '../../data/modules';
 import * as Actions from '../../utils/businessActions';
 import { PrinterIcon } from '../common/Icons';
 
+function colsToDataTableColumns(cols, db) {
+  return (cols || []).map(([key, label, fmt]) => ({
+    key,
+    label,
+    render: (val, row) => {
+      if (!fmt) return val ?? '—';
+      const formatted = fmt(val, row, db);
+      if (React.isValidElement(formatted)) return formatted;
+      if (typeof formatted === 'string' && formatted.includes('<')) {
+        return <span dangerouslySetInnerHTML={{ __html: formatted }} />;
+      }
+      return formatted ?? '—';
+    }
+  }));
+}
+
 const FicheDossier = ({ codeProp, code: codeFromProp }) => {
   const { db, updateDB, genCode, audit, userCourant, notifier } = useDB();
   const { peut } = useAuth();
@@ -19,6 +35,7 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
   const [showEdit, setShowEdit] = useState(false);
+  const [ajoutSection, setAjoutSection] = useState(null);
 
   useEffect(() => {
     const c = codeProp || codeFromProp;
@@ -48,19 +65,27 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
   const client = db.clients?.find(c => c.code === dossier.client) || {};
   
   const sousSections = [
-    {id: 'sourcing', titre: 'Sourcing'},
-    {id: 'etude', titre: 'Études & Chiffrage'},
-    {id: 'closing', titre: 'Offres / Closing'},
-    {id: 'paiement', titre: 'Paiements'},
-    {id: 'analyse', titre: 'Analyse Dossier'},
-    {id: 'transport', titre: 'Transport International'},
-    {id: 'transit', titre: 'Transit & Douane'},
-    {id: 'certification', titre: 'Certification'},
-    {id: 'livraison', titre: 'Transport National'},
-    {id: 'litige', titre: 'Réclamations & Litiges'},
-    {id: 'docs', titre: 'Documents'},
-    {id: 'facturation', titre: 'Factures Finales'},
+    {id: 'sourcing', titre: 'Sourcing', moduleId: 'sourcings'},
+    {id: 'etude', titre: 'Études & Chiffrage', moduleId: 'etudes'},
+    {id: 'closing', titre: 'Offres / Closing', moduleId: 'offres'},
+    {id: 'paiement', titre: 'Paiements', moduleId: 'paiements'},
+    {id: 'analyse', titre: 'Analyse Dossier', moduleId: 'analyses'},
+    {id: 'transport', titre: 'Transport International', moduleId: 'transports'},
+    {id: 'transit', titre: 'Transit & Douane', moduleId: 'transits'},
+    {id: 'certification', titre: 'Certification', moduleId: 'certifs'},
+    {id: 'livraison', titre: 'Transport National', moduleId: 'transportsNat'},
+    {id: 'litige', titre: 'Réclamations & Litiges', moduleId: 'reclamations'},
+    {id: 'docs', titre: 'Documents', moduleId: 'documents'},
+    {id: 'facturation', titre: 'Factures Finales', moduleId: 'facturation'},
   ];
+
+  const handleAjouterSection = (sec) => {
+    if (sec.id === 'facturation') {
+      Actions.creerFactureDepuisDossier(code, db, genCode, audit, userCourant, updateDB, toast, peut('ajouter'));
+      return;
+    }
+    setAjoutSection(sec);
+  };
 
   const mainFields = [
     {k: "client", l: "Client"},
@@ -119,12 +144,30 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
           </div>
         </div>
 
-        {sousSections.map(sec => (
-          <div className="bloc-fiche large" key={sec.id}>
-            <h4>{sec.titre} <button className="btn mini" style={{float:'right'}}>+ Ajouter</button></h4>
-            <div className="vide">Aucun enregistrement pour le moment.</div>
-          </div>
-        ))}
+        {sousSections.map(sec => {
+          const M = MODS[sec.moduleId];
+          const records = (db[M.coll] || []).filter(r => r.dossier === code);
+          return (
+            <div className="bloc-fiche large" key={sec.id}>
+              <h4>
+                {sec.titre}
+                {peut('ajouter') && (
+                  <button className="btn mini" style={{float:'right'}} onClick={() => handleAjouterSection(sec)}>+ Ajouter</button>
+                )}
+              </h4>
+              <DataTable columns={colsToDataTableColumns(M.cols, db)} data={records} />
+            </div>
+          );
+        })}
+
+        {ajoutSection && (
+          <ModuleForm
+            moduleId={ajoutSection.moduleId}
+            MODS={MODS}
+            initialData={{ dossier: code }}
+            onClose={() => setAjoutSection(null)}
+          />
+        )}
       </div>
     </div>
   );
