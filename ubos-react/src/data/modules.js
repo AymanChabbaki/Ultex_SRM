@@ -84,7 +84,7 @@ commandes:{label:"Commandes", ic:ShoppingCart, grp:"Commercial", coll:"commandes
   {k:"demande",l:"Demande d'origine",t:"ref",coll:"demandes",cle:"code"},
   {k:"condition",l:"Condition de confirmation",t:"select",opts:CONDITIONS_COMMANDE},
   {k:"formuleUltex",l:"Package commercial (raccourci)",t:"select",opts:FORMULES_ULTEX,req:1},
-  {k:"devisAccepte",l:"Devis accepté (référence)",t:"text"},
+  {k:"devisAccepte",l:"Devis accepté (pièce jointe)",t:"file"},
   {k:"calculValide",l:"Calcul validé (référence)",t:"text"},
   {k:"documents",l:"Documents",t:"text"},
   {k:"paiement",l:"Paiement",t:"text"},

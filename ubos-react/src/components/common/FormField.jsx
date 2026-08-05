@@ -103,6 +103,34 @@ const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, opt
         disabled={disabled}
       />
     );
+  } else if (fieldType === "file") {
+    const handleFile = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => resolve(ev.target.result);
+          reader.onerror = () => reject(new Error("Lecture du fichier impossible."));
+          reader.readAsDataURL(file);
+        });
+        handleChange(dataUrl);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Erreur de lecture du fichier joint:", err);
+      }
+    };
+    inputEl = (
+      <div className="champ-file">
+        <input id={`f_${fieldDef.k}`} type="file" onChange={handleFile} disabled={disabled} />
+        {val && (
+          <div className="champ-file-apercu">
+            <a href={val} target="_blank" rel="noreferrer">Voir la pièce jointe</a>
+            <button type="button" onClick={() => handleChange('')}>Retirer</button>
+          </div>
+        )}
+      </div>
+    );
   } else if (fieldType === "textarea") {
     inputEl = (
       <textarea id={`f_${fieldDef.k}`} value={val} onChange={handleChange} disabled={disabled} />

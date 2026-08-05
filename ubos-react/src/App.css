@@ -419,6 +419,13 @@ td .acts{display:flex;gap:6px;flex-wrap:wrap}
 .ref-select-option:hover{background:var(--vert-pale)}
 .ref-select-option.actif{background:var(--vert-pale);color:var(--vert);font-weight:600}
 .ref-select-empty{padding:10px 12px;font-size:12.5px;color:var(--gris)}
+
+.champ-file{display:flex;flex-direction:column;gap:6px}
+.champ-file input[type=file]{padding:7px;font-size:12.5px}
+.champ-file-apercu{display:flex;align-items:center;gap:10px;font-size:12.5px}
+.champ-file-apercu a{color:var(--vert);font-weight:600;text-decoration:none;border-bottom:1px dotted var(--or)}
+.champ-file-apercu a:hover{color:var(--or)}
+.champ-file-apercu button{background:none;border:none;color:var(--rouge);font-size:12px;cursor:pointer;text-decoration:underline;padding:0}
 /* ---------- Assistant (Wizard) ---------- */
 .assistant{background:var(--carte);border-radius:14px;max-width:680px;margin:0 auto;box-shadow:var(--ombre)}
 .assist-barre{display:flex;gap:4px;padding:16px 20px 0}

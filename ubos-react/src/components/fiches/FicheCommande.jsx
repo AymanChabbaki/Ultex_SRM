@@ -50,7 +50,11 @@ const FicheCommande = ({ codeProp, code: codeFromProp }) => {
     {k: 'demande', l: 'Demande', render: () => commande.demande ? <a href={`#ficheDemande:${commande.demande}`}>{commande.demande}</a> : '—'},
     {k: 'condition', l: 'Condition'},
     {k: 'formuleUltex', l: 'Formule'},
-    {k: 'devisAccepte', l: 'Devis'},
+    {k: 'devisAccepte', l: 'Devis', render: (v) => v ? (
+      v.startsWith('data:') || v.startsWith('http')
+        ? <a href={v} target="_blank" rel="noreferrer">Voir la pièce jointe</a>
+        : v
+    ) : '—'},
     {k: 'statut', l: 'Statut', render: (s) => <Pill type={s} texte={s} />}
   ];
 
