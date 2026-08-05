@@ -17,7 +17,7 @@ export default function DashboardLimex() {
     <>
       <Topbar titre="Tableau de bord LIMEX" />
       <div className="outils">
-        <span style={{ flex: 1, color: "var(--gris)" }}>
+        <span className="spacer" style={{ color: "var(--gris)" }}>
           Centre de pilotage LIMEX — {arrivagesActifs.length} arrivage(s) actif(s)
         </span>
         <button className="btn" onClick={() => window.location.hash = "arrivages"}>

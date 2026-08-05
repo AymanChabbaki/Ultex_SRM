@@ -74,7 +74,7 @@ export default function Notifications() {
           miennes.slice(0, 120).map(n => (
             <div key={n.code || n.ts} className={`notif ${n.lu ? 'lu' : 'nonlu'}`}>
               <div className="pt-n"></div>
-              <div style={{ flex: 1 }}>
+              <div className="spacer">
                 <div>{esc(n.texte)}</div>
                 <div className="qui">
                   De {esc(n.de)} → {esc(n.dest)} · {esc(n.module)} · {esc(n.date)}

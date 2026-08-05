@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
+import Topbar from '../layout/Topbar';
 import { MODS } from '../../data/modules';
 
 export default function RechercheGlobale() {
@@ -41,18 +42,16 @@ export default function RechercheGlobale() {
 
   return (
     <>
-      <div className="topbar">
-        <h2>Recherche globale</h2>
-      </div>
-      
-      <div className="outils" style={{ display: 'flex', gap: 10 }}>
-        <form onSubmit={handleSearch} style={{ display: 'flex', gap: 10, flex: 1 }}>
-          <input 
-            type="search" 
-            placeholder="Rechercher (clients, dossiers, documents...)" 
+      <Topbar titre="Recherche globale" />
+
+      <div className="outils">
+        <form onSubmit={handleSearch} className="spacer" style={{ display: 'flex', gap: 10 }}>
+          <input
+            type="search"
+            placeholder="Rechercher (clients, dossiers, documents...)"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            style={{ flex: 1, padding: '8px 12px' }}
+            className="spacer"
           />
           <button type="submit" className="btn">Rechercher</button>
         </form>
