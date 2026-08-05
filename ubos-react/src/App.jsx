@@ -12,6 +12,7 @@ import PersonalDashboard from './components/dashboard/PersonalDashboard';
 import FicheClient from './components/fiches/FicheClient';
 import FicheDossier from './components/fiches/FicheDossier';
 import FicheDemande from './components/fiches/FicheDemande';
+import FicheDemandeLigne from './components/fiches/FicheDemandeLigne';
 import FicheCommande from './components/fiches/FicheCommande';
 import FicheArrivage from './components/fiches/FicheArrivage';
 import FicheDocument from './components/fiches/FicheDocument';
@@ -85,6 +86,7 @@ const Router = () => {
       case 'ficheClient': return <FicheClient codeProp={params} code={params} />;
       case 'ficheDossier': return <FicheDossier codeProp={params} code={params} />;
       case 'ficheDemande': return <FicheDemande codeProp={params} code={params} />;
+      case 'ficheDemandeLigne': return <FicheDemandeLigne codeProp={params} code={params} />;
       case 'ficheCommande': return <FicheCommande codeProp={params} code={params} />;
       case 'ficheArrivage': return <FicheArrivage codeProp={params} code={params} />;
       case 'ficheDocument': return <FicheDocument codeProp={params} code={params} />;

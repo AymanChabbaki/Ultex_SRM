@@ -19,7 +19,8 @@ export function baseVide() {
     importRows: [], importErrors: [], importHistory: [], importDetectedTypes: [],
     importExtractedData: [], importAttachments: [], importRollbacks: [],
     controlesLimex: [], dossierControlesLimex: [], limexDiagnosticOumaima: [],
-    limexPortesValidation: [], limexImportHistory: []
+    limexPortesValidation: [], limexImportHistory: [],
+    demandeLignes: [], demandeRoutages: []
   };
 }
 

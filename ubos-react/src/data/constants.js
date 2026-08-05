@@ -125,9 +125,14 @@ export const PROPRIETAIRES_MARCHANDISE = ["Client ULTEx","ULTEx pour compte prop
 export const TYPES_PARTENAIRE = ["Transitaire","Freight forwarder","Compagnie maritime","Compagnie aérienne","Transporteur international","Transporteur national","Agent origine","Agent destination","Courtier","Entrepôt","Manutentionnaire","Laboratoire","Organisme certification","Assureur","Autre"];
 export const STATUTS_PARTENAIRE = ["Prospect","En test","Actif","Préféré","Suspendu","Blacklisté","Ancien partenaire","À réévaluer"];
 
-export const STATUTS_DEMANDE = ["En cours d'étude","Envoyée au sourcing","Envoyée au calcul","Envoyée à une étude technique","Envoyée à la cotation transport","Non confirmée","Confirmée","Partiellement confirmée"];
-export const STATUTS_LIGNE_DEMANDE = ["Nouvelle","En sourcing","En calcul","En étude technique","En cotation transport","En réglementation","Attente informations client","Prête à confirmer","Confirmée","Clôturée"];
-export const ROUTES_LIGNE_DEMANDE = ["Sourcing","Calcul direct","Étude technique","Cotation transport","Réglementation","Attente informations client"];
+export const STATUTS_DEMANDE = ["Brouillon","Nouvelle","À compléter","En traitement","En sourcing","En étude technique","En calcul","En cotation transport","En analyse réglementaire","Prête pour Closing","En Closing","Partiellement confirmée","Confirmée","Non confirmée","Reportée","Clôturée"];
+export const STATUTS_LIGNE_DEMANDE = ["Brouillon","Nouvelle","À compléter","En sourcing","Fournisseur trouvé","En étude technique","En calcul","Calcul terminé","En transport","Transport reçu","En réglementation","Prête pour offre","Offre envoyée","Confirmée","Non confirmée","Reportée","Clôturée"];
+export const ROUTES_LIGNE_DEMANDE = ["Sourcing","Vérification fournisseur","Étude technique","Calcul & Chiffrage","Cotation transport","Analyse réglementaire","Closing","Direction"];
+export const CANAUX_RECEPTION_DEMANDE = ["WhatsApp","Appel téléphonique","Visite bureau","Email","Site web","Réseaux sociaux","Recommandation","Ancienne relation","Autre"];
+export const TYPES_PROJET_DEMANDE = ["Première importation","Réapprovisionnement","Nouveau produit","Création d'activité","Développement d'activité existante","Machine ou équipement","Matière première","Import ponctuel","Projet industriel","Autre"];
+export const TYPES_USAGE_DEMANDE = ["Revente","Usage professionnel","Usage personnel"];
+export const STATUTS_HS_CODE = ["Fourni par le fournisseur","À analyser","Proposé","Vérifié","Validé","Contesté"];
+export const CRITERES_CLIENT_DEMANDE = ["Prix","Qualité","Rapidité","Certification","Marque","Exclusivité","Faible MOQ","Personnalisation","Autre"];
 export const STATUTS_CONSULTATION_FOURN = ["À contacter","Contacté","Attente réponse","Offre reçue","Offre incomplète","En négociation","Recommandé","Non retenu","Refusé","Sans réponse"];
 export const CONDITIONS_COMMANDE = ["Devis accepté","Bon de commande signé","Contrat signé","Acompte reçu","Preuve de paiement reçue","Validation exceptionnelle de la Direction"];
 export const METHODES_REPARTITION = ["Par poids","Par CBM","Par valeur marchandise","Par nombre de colis","Montant égal par dossier","Montant manuel","Non réparti","Entièrement affecté à ULTEx","Entièrement affecté à un dossier précis"];
@@ -223,7 +228,7 @@ export const TYPES_MESSAGE = ["Information","Action demandée","Validation deman
 export const PRIORITES_MESSAGE = ["Normale","Élevée","Urgente"];
 
 export const PFX_ANNEE = ["DOS","FF","AV","REL","ABD","IMP","RMB","CMD","DMD","ARR"];
-export const COLLS = ["clients","leads","fournisseurs","produits","dossiers","sourcings","etudes","offres","paiements","analyses","transports","transits","documents","taches","rapports","reclamations","stockage","certifs","transportsNat","pmtIntl","erreurs","utilisateurs","facturesFinales","avoirsFF","abandons","impayes","remboursements","contacts","demandes","commandes","arrivages","analysesLimex","bonsLancement","stocks","mouvementsStock","livraisons","transfertsServices","communicationsDossier","partenaires","importJobs","importFiles","importModels","importMappings","importRows","importErrors","importHistory","importDetectedTypes","importExtractedData","importAttachments","importRollbacks","controlesLimex","dossierControlesLimex","limexDiagnosticOumaima","limexPortesValidation","limexImportHistory"];
+export const COLLS = ["clients","leads","fournisseurs","produits","dossiers","sourcings","etudes","offres","paiements","analyses","transports","transits","documents","taches","rapports","reclamations","stockage","certifs","transportsNat","pmtIntl","erreurs","utilisateurs","facturesFinales","avoirsFF","abandons","impayes","remboursements","contacts","demandes","commandes","arrivages","analysesLimex","bonsLancement","stocks","mouvementsStock","livraisons","transfertsServices","communicationsDossier","partenaires","importJobs","importFiles","importModels","importMappings","importRows","importErrors","importHistory","importDetectedTypes","importExtractedData","importAttachments","importRollbacks","controlesLimex","dossierControlesLimex","limexDiagnosticOumaima","limexPortesValidation","limexImportHistory","demandeLignes","demandeRoutages"];
 
 // ---------- Checklist Maître LIMEX (import CHECKLIST_MAITRE_ULTEX_LIMEX.xlsx, onglet 3_Checklist_Maitre) ----------
 export const STATUTS_CONTROLE_LIMEX = [
