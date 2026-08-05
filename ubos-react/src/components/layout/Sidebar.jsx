@@ -77,7 +77,7 @@ const Sidebar = ({ ouvert }) => {
                 const nb = nbNonLues();
                 return (
                   <a key={id} href={`#${id}`} className={currentHash === id ? "on" : ""} title={M.label}>
-                    <span className="ic">{M.ic}</span>
+                    <span className="ic"><M.ic size={16} /></span>
                     <span className="nav-text">{M.label}</span>
                     {id === "notifications" && nb > 0 ? <span className="bulle">{nb}</span> : null}
                   </a>
