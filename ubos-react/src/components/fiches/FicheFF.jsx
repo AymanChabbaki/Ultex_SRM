@@ -1,15 +1,33 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
 import Pill from '../common/Pill';
-import { PrinterIcon, SearchIcon, CheckIcon } from '../common/Icons';
+import Modal from '../common/Modal';
+import LigneModal from '../common/LigneModal';
+import ModuleForm from '../modules/ModuleForm';
+import { MODS } from '../../data/modules';
+import { calculerLigne } from '../../utils/businessActions';
+import { PrinterIcon, SearchIcon, CheckIcon, AlertIcon } from '../common/Icons';
 
 const SEUIL_ECART_DEVIS_PCT = 15;
 
 const fmtMAD = (v) => new Intl.NumberFormat('fr-MA', { style: 'currency', currency: 'MAD' }).format(v||0);
+
+const LIGNE_CHAMPS = [
+  {k: 'designation', l: 'Désignation', t: 'text', req: 1},
+  {k: 'categorie', l: 'Catégorie', t: 'select', opts: ['Valeur marchandise', 'Transport international', 'Droits de douane', 'Transit', 'Transport national', 'Autre']},
+  {k: 'quantite', l: 'Quantité', t: 'number'},
+  {k: 'prixUnitaire', l: 'Prix unitaire (MAD)', t: 'number', req: 1},
+  {k: 'tauxTVA', l: 'Taux TVA (%)', t: 'number'},
+  {k: 'fournisseur', l: 'Fournisseur', t: 'text'},
+  {k: 'reference', l: 'Référence', t: 'text'},
+  {k: 'commentaire', l: 'Commentaire', t: 'textarea', large: 1},
+  {k: 'statut', l: 'Statut', t: 'select', opts: ['Estimée', 'Justifiée', 'Annulée']}
+];
 
 function calculFF(f, db) {
   const lignes = f.lignes || [];
@@ -17,33 +35,37 @@ function calculFF(f, db) {
   const totalHT = actives.reduce((s, l) => s + (+l.montantHT || 0), 0);
   const totalTVA = actives.reduce((s, l) => s + (+l.montantTVA || 0), 0);
   const totalTTC = actives.reduce((s, l) => s + (+l.montantTTC || 0), 0);
-  
+
   const reducValidees = (f.reductions || []).filter(r => r.statut === "Validée").reduce((s, r) => s + (+r.montant || 0), 0);
   const reducAttente = (f.reductions || []).filter(r => r.statut === "En attente").reduce((s, r) => s + (+r.montant || 0), 0);
-  
+
   const avoirs = (db.avoirsFF || []).filter(a => a.facture === f.code).reduce((s, a) => s + (+a.montant || 0), 0);
-  
+
   const paiementsUBOS = (db.paiements || []).filter(p => p.dossier === f.dossier && p.statut === "Payé" && ["Acompte","Solde","Reliquat"].includes(p.nature)).reduce((s, p) => s + (+p.montant || 0), 0);
   const paiementsHorsSysteme = +f.paiementsHorsSysteme || 0;
   const paiementsRecus = paiementsUBOS + paiementsHorsSysteme;
-  
+
   const remboursements = (db.remboursements || []).filter(r => r.facture === f.code && r.statut === "Effectué").reduce((s, r) => s + (+r.montant || 0), 0);
-  
+
   const soldeDu = totalTTC - reducValidees - avoirs - paiementsRecus + remboursements;
-  
+
   const joursRetard = (f.echeance && soldeDu > 0) ? Math.floor((Date.now() - new Date(f.echeance).getTime()) / 864e5) : 0;
   const devis = +f.devisInitial || 0;
   const ecartDevis = devis ? totalTTC - devis : null;
   const ecartDevisPct = devis ? Math.round((totalTTC - devis) / devis * 1000) / 10 : null;
-  
+
   return { lignes, actives, totalHT, totalTVA, totalTTC, reducValidees, reducAttente, avoirs, paiementsUBOS, paiementsHorsSysteme, paiementsRecus, remboursements, soldeDu, joursRetard, ecartDevis, ecartDevisPct };
 }
 
 const FicheFF = ({ codeProp, code: codeFromProp }) => {
-  const { db } = useDB();
-  const { peut, estDirection } = useAuth();
+  const { db, updateDB, audit, notifier } = useDB();
+  const { peut } = useAuth();
+  const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showCoherence, setShowCoherence] = useState(false);
+  const [ligneEnCours, setLigneEnCours] = useState(null);
 
   useEffect(() => {
     const c = codeProp || codeFromProp;
@@ -58,7 +80,7 @@ const FicheFF = ({ codeProp, code: codeFromProp }) => {
   }, [codeProp, codeFromProp, window.location.hash]);
 
   const f = (db?.facturesFinales || []).find(x => x.code === code);
-  
+
   if (!f) {
     return (
       <div>
@@ -74,6 +96,45 @@ const FicheFF = ({ codeProp, code: codeFromProp }) => {
   const d = (db.dossiers || []).find(x => x.code === f.dossier);
   const cl = (db.clients || []).find(x => x.code === f.client);
   const ct = (db.documents || []).find(x => x.dossier === f.dossier && x.type === "Contrat");
+
+  const sauverFF = (patch) => {
+    const nextF = { ...f, ...patch };
+    updateDB({ ...db, facturesFinales: (db.facturesFinales || []).map(x => x.code === code ? nextF : x) });
+    return nextF;
+  };
+
+  const handleValider = () => {
+    if (!window.confirm(`Valider la facture ${code} ? Cette action confirme le montant total facturé.`)) return;
+    const dateJour = new Date().toLocaleDateString('fr-FR');
+    sauverFF({ validee: true, valideeLe: dateJour });
+    audit('Facturation finale', 'Validation', code, 'validee', 'false', 'true');
+    notifier('Direction', `Facture finale ${code} validée (${fmtMAD(c.totalTTC)}).`, 'Facturation finale');
+    toast(`${code} validée.`);
+  };
+
+  const handleSaveLigne = (data) => {
+    const ligne = calculerLigne({ ...data });
+    const isEdit = !!ligneEnCours?.id;
+    let lignes, seq = f._seqLigne || 0;
+    if (isEdit) {
+      lignes = (f.lignes || []).map(l => l.id === ligneEnCours.id ? { ...l, ...ligne, id: l.id } : l);
+    } else {
+      seq += 1;
+      lignes = [...(f.lignes || []), { ...ligne, id: 'l' + seq }];
+    }
+    sauverFF({ lignes, _seqLigne: seq });
+    audit('Facturation finale', isEdit ? 'Ligne modifiée' : 'Ligne ajoutée', code, 'lignes', '—', `${ligne.designation} : ${fmtMAD(ligne.montantTTC)}`);
+    toast(isEdit ? 'Ligne mise à jour.' : 'Ligne ajoutée.');
+    setLigneEnCours(null);
+  };
+
+  const verifications = [
+    { label: 'Dossier lié', ok: !!d, detail: d ? d.code : 'Aucun dossier associé — la facture est orpheline.' },
+    { label: 'Écart devis / facturé', ok: c.ecartDevisPct === null || Math.abs(c.ecartDevisPct) <= SEUIL_ECART_DEVIS_PCT, detail: c.ecartDevisPct === null ? 'Pas de devis initial renseigné.' : `Écart de ${c.ecartDevisPct > 0 ? '+' : ''}${c.ecartDevisPct}% par rapport au devis.` },
+    { label: 'Solde dû', ok: c.joursRetard <= 0, detail: c.joursRetard > 0 ? `Solde en retard de ${c.joursRetard} jour(s).` : 'Aucun retard de paiement.' },
+    { label: 'Lignes justifiées', ok: c.actives.filter(l => l.statut === 'Estimée').length === 0, detail: `${c.actives.filter(l => l.statut === 'Estimée').length} ligne(s) encore au statut « Estimée ».` },
+    { label: 'Réductions en attente', ok: c.reducAttente === 0, detail: c.reducAttente > 0 ? `${fmtMAD(c.reducAttente)} de réduction(s) en attente de validation.` : 'Aucune réduction en attente.' }
+  ];
 
   const lienDossierFields = [
     { k: 'client', l: 'Code client', render: () => cl ? <a href={`#ficheClient:${cl.code}`}>{cl.nom} ({cl.code})</a> : '—' },
@@ -129,16 +190,43 @@ const FicheFF = ({ codeProp, code: codeFromProp }) => {
     <div>
       <Topbar titre={`Facture finale : ${f.code}`} />
       <div className="panneau">
-        
+
         <div className="outils">
           <span className="pill p-or" style={{fontSize:'14px', padding:'6px 14px'}}>{f.code}</span>
           {f.validee ? <Pill type="p-vert" texte={`Validée le ${f.valideeLe}`} /> : <Pill type="p-gris" texte="Brouillon" />}
           <span className="spacer"></span>
-          {peut("modifier") && <button className="btn doux">Modifier l'entête</button>}
-          <button className="btn doux"><SearchIcon size={14} /> Vérifier la cohérence</button>
-          {!f.validee && peut("valider") && <button className="btn"><CheckIcon size={14} /> Valider</button>}
+          {peut("modifier") && <button className="btn doux" onClick={() => setShowEdit(true)}>Modifier l'entête</button>}
+          <button className="btn doux" onClick={() => setShowCoherence(true)}><SearchIcon size={14} /> Vérifier la cohérence</button>
+          {!f.validee && peut("valider") && <button className="btn" onClick={handleValider}><CheckIcon size={14} /> Valider</button>}
           <button className="btn or" onClick={() => window.print()}><PrinterIcon size={14} /> Imprimer</button>
         </div>
+
+        {showEdit && (
+          <ModuleForm
+            moduleId="facturation"
+            MODS={MODS}
+            recordCode={code}
+            onClose={() => setShowEdit(false)}
+          />
+        )}
+
+        {showCoherence && (
+          <Modal title="Vérification de cohérence" onClose={() => setShowCoherence(false)} footer={
+            <button className="btn" onClick={() => setShowCoherence(false)}>Fermer</button>
+          }>
+            <div className="corps" style={{ gridTemplateColumns: '1fr' }}>
+              {verifications.map((v, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '8px 0', borderTop: i ? '1px solid var(--bord)' : 'none' }}>
+                  {v.ok ? <CheckIcon size={16} color="var(--ok)" /> : <AlertIcon size={16} color="var(--rouge)" />}
+                  <div>
+                    <b style={{ color: v.ok ? 'var(--ok)' : 'var(--rouge)' }}>{v.label}</b>
+                    <div style={{ fontSize: '12.5px', color: 'var(--gris)' }}>{v.detail}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Modal>
+        )}
 
         <div className="fiche-grille">
           <div className="bloc-fiche">
@@ -153,8 +241,8 @@ const FicheFF = ({ codeProp, code: codeFromProp }) => {
         </div>
 
         <div className="bloc-fiche large">
-          <h4>Lignes de facture <button className="btn mini" style={{float:'right'}}>+ Ajouter une ligne</button></h4>
-          <DataTable 
+          <h4>Lignes de facture {peut('modifier') && <button className="btn mini" style={{float:'right'}} onClick={() => setLigneEnCours({})}>+ Ajouter une ligne</button>}</h4>
+          <DataTable
             columns={[
               {key: 'designation', label: 'Désignation'},
               {key: 'categorie', label: 'Catégorie'},
@@ -165,11 +253,21 @@ const FicheFF = ({ codeProp, code: codeFromProp }) => {
               {key: 'montantTVA', label: 'Montant TVA', render: (v) => fmtMAD(v)},
               {key: 'montantTTC', label: 'Montant TTC', render: (v) => <b>{fmtMAD(v)}</b>},
               {key: 'statut', label: 'Statut', render: (s) => <Pill type={s==="Justifiée"?"p-vert":s==="Estimée"?"p-ambre":"p-gris"} texte={s} />},
-              {key: 'actions', label: 'Actions', render: () => <button className="btn mini">Modifier</button>}
+              {key: 'actions', label: 'Actions', render: (v, row) => peut('modifier') && <button className="btn mini" onClick={() => setLigneEnCours(row)}>Modifier</button>}
             ]}
             data={c.lignes}
           />
         </div>
+
+        {ligneEnCours && (
+          <LigneModal
+            title={ligneEnCours.id ? `Modifier la ligne ${ligneEnCours.id}` : 'Ajouter une ligne'}
+            champs={LIGNE_CHAMPS}
+            initialData={ligneEnCours}
+            onSave={handleSaveLigne}
+            onClose={() => setLigneEnCours(null)}
+          />
+        )}
 
         <div className="bloc-fiche large" style={{background: 'var(--fond-jaune)'}}>
           <h4>B. État de compte / Reliquat</h4>

@@ -82,12 +82,13 @@ export const avancerDossier = (code, db, genCode, audit, userCourant, sauver, to
   toast(`Dossier avancé à l'étape: ${d.etape}`);
 };
 
-const calculerLigne = (l) => {
+export const calculerLigne = (l) => {
   l.quantite = l.quantite === "" || l.quantite === undefined ? 1 : +l.quantite;
   l.prixUnitaire = +l.prixUnitaire || 0;
   l.tauxTVA = l.tauxTVA === "" || l.tauxTVA === undefined ? 0 : +l.tauxTVA;
   l.montantHT = Math.round((l.quantite * l.prixUnitaire) * 100) / 100;
   l.montantTVA = Math.round(l.montantHT * (l.tauxTVA / 100) * 100) / 100;
+  l.montantTTC = Math.round((l.montantHT + l.montantTVA) * 100) / 100;
   return l;
 };
 
