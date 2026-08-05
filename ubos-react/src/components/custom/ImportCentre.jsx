@@ -9,10 +9,11 @@ import { MODS } from '../../data/modules';
 import { PFX_ANNEE, COLLS } from '../../data/constants';
 import * as XLSX from 'xlsx';
 import { esc, pill, normTel } from '../../utils/format';
-import { 
-  UploadIcon, DownloadIcon, AlertIcon, CheckIcon, SearchIcon, 
-  DatabaseIcon, ShieldCheckIcon, EyeIcon, KeyIcon 
+import {
+  UploadIcon, DownloadIcon, AlertIcon, CheckIcon, SearchIcon,
+  DatabaseIcon, ShieldCheckIcon, EyeIcon, KeyIcon, SyncIcon, ClockIcon, PlayIcon
 } from '../common/Icons';
+import { FolderOpen, ClipboardList, History, ScrollText, Settings2 } from 'lucide-react';
 import { effectuerOCRImage, effectuerOCRPdf, extraireChampsMetier } from '../../utils/ocrEngine';
 import { parsePdfBackend } from '../../services/api';
 
@@ -577,18 +578,21 @@ export default function ImportCentre() {
       {/* Main Tab Navigation Bar */}
       <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '20px', paddingBottom: '4px', borderBottom: '1px solid var(--bord)' }}>
         {[
-          { id: 'import', label: '1. Import intelligent', icon: '📥' },
-          { id: 'modeles', label: '2. Modèles d’import', icon: '📋' },
-          { id: 'attente', label: `3. File d'attente (${fileQueue.length})`, icon: '⏳' },
-          { id: 'historique', label: `4. Historique (${historique.length})`, icon: '📜' },
-          { id: 'erreurs', label: `5. Erreurs (${erreursImport.length})`, icon: '⚠️' },
-          { id: 'export', label: '6. Exportation', icon: '📤' },
-          { id: 'synchro', label: '7. Synchronisations', icon: '🔄' }
+          { id: 'import', label: '1. Import intelligent', icon: UploadIcon },
+          { id: 'modeles', label: '2. Modèles d’import', icon: ClipboardList },
+          { id: 'attente', label: `3. File d'attente (${fileQueue.length})`, icon: ClockIcon },
+          { id: 'historique', label: `4. Historique (${historique.length})`, icon: History },
+          { id: 'erreurs', label: `5. Erreurs (${erreursImport.length})`, icon: AlertIcon },
+          { id: 'export', label: '6. Exportation', icon: DownloadIcon },
+          { id: 'synchro', label: '7. Synchronisations', icon: SyncIcon }
         ].map(t => (
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id)}
             style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
               padding: '10px 16px',
               borderRadius: '10px',
               border: 'none',
@@ -602,7 +606,7 @@ export default function ImportCentre() {
               border: `1px solid ${activeTab === t.id ? 'var(--vert)' : 'var(--bord)'}`
             }}
           >
-            {t.icon} {t.label}
+            <t.icon size={14} /> {t.label}
           </button>
         ))}
       </div>

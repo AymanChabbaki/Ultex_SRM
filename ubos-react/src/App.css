@@ -122,9 +122,10 @@ nav a {
 }
 nav a .ic {
   width: 20px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--or-clair);
-  font-size: 14px;
   flex-shrink: 0;
 }
 nav a:hover {

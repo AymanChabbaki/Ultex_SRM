@@ -7,6 +7,7 @@ import StatCard from '../common/StatCard';
 import CheminDossier from '../common/CheminDossier';
 import DataTable from '../common/DataTable';
 import PersonalDashboard from './PersonalDashboard';
+import { FileBarChart } from 'lucide-react';
 
 const ETAPES = ["Sourcing","Études & Chiffrage","Closing","Paiement","Analyse Dossier","Transport","Transit & Douane","Certification","Livraison","Suivi Client","Clôturé"];
 
@@ -96,7 +97,7 @@ export default function Dashboard() {
           Alertes automatiques
           {alertes.length ? <span className="pill p-rouge">{alertes.length}</span> : <span className="pill p-vert">Aucune</span>}
           <span className="spacer"></span>
-          <button className="btn mini or" onClick={() => window.location.hash = 'rapportDirection'}>⎙ Rapport Direction</button>
+          <button className="btn mini or" onClick={() => window.location.hash = 'rapportDirection'}><FileBarChart size={13} /> Rapport Direction</button>
         </h4>
         {alertes.length ? (
           <div className="liste-notif">
