@@ -5,7 +5,6 @@ import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
-import Pill from '../common/Pill';
 import CheminDossier from '../common/CheminDossier';
 import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
