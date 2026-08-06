@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
-import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
@@ -15,7 +14,6 @@ import { STATUTS_LIGNE_DEMANDE } from '../../data/constants';
 const FicheDemande = ({ codeProp, code: codeFromProp }) => {
   const { db, updateDB, genCode, audit } = useDB();
   const { peut } = useAuth();
-  const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
   const [showEdit, setShowEdit] = useState(false);
