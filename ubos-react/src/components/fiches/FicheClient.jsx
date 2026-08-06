@@ -119,8 +119,8 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
 
   const handleMarquerContacte = () => {
     const ajd = new Date().toISOString().slice(0, 10);
+    const prochaine = calculerRelanceSuivante(client.nbRelances || 0);
     const nbRelances = (client.nbRelances || 0) + 1;
-    const prochaine = calculerRelanceSuivante(nbRelances);
     const nextClients = (db.clients || []).map(c => c.code === code ? { ...c, dernierContact: ajd, nbRelances, echeanceActionSuivante: prochaine } : c);
     updateDB({ ...db, clients: nextClients });
     audit('Clients', 'Contact effectué', code, 'dernierContact', client.dernierContact, ajd);

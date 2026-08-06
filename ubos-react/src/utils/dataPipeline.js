@@ -110,7 +110,7 @@ export function genererAlertesData(db, user) {
 
   push('Relances dépassées', clientsAgent.filter(c => c.echeanceActionSuivante && new Date(c.echeanceActionSuivante) < auj));
 
-  push('Clients jamais contactés', clientsAgent.filter(c => !c.dernierContact && c.segment === 'Prospect'));
+  push('Clients jamais contactés', clientsAgent.filter(c => !c.dernierContact && c.segment !== 'Inactif'));
 
   const nom = user?.nomComplet || user?.identifiant;
   const lignesIncompletes = (db.demandeLignes || []).filter(l => {
