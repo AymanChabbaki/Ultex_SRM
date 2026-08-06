@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useDB } from '../../context/DBContext';
-import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
@@ -80,7 +79,6 @@ const CHAMPS_COMPORTEMENTAL = [
 
 const FicheClient = ({ codeProp, code: codeFromProp }) => {
   const { db, updateDB, audit } = useDB();
-  const { userCourant } = useAuth();
   const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
@@ -266,7 +264,7 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
         {onglet === "dossiers" && (
           <div className="bloc-fiche large">
             <h4>Dossiers Import</h4>
-            <DataTable 
+            <DataTable
               columns={[
                 {key: 'code', label: 'Code', render: (val) => <a href={`#ficheDossier:${val}`}>{val}</a>},
                 {key: 'produit', label: 'Produit'},
@@ -274,6 +272,26 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
               ]}
               data={doss}
             />
+          </div>
+        )}
+
+        {onglet === "suiviData" && (
+          <div className="bloc-fiche large">
+            <h4>
+              Suivi Data
+              <span style={{float:'right'}}>{pill(calculerPrioriteClient(client).tag, 'p-or')}</span>
+            </h4>
+            <KVDisplay data={client} fields={CHAMPS_SUIVI_DATA} />
+            <div style={{display:'flex', gap:'10px', alignItems:'flex-end', marginTop:'14px', flexWrap:'wrap'}}>
+              <div className="champ" style={{maxWidth:'320px'}}>
+                <label>Changer l'étape du pipeline</label>
+                <select value={client.etapePipeline || ''} onChange={e => handleChangeEtape(e.target.value)}>
+                  <option value="">—</option>
+                  {PIPELINE_ETAPES_CLIENT.map(e => <option key={e} value={e}>{e}</option>)}
+                </select>
+              </div>
+              <button className="btn or" onClick={handleMarquerContacte}>Marquer comme contacté aujourd'hui</button>
+            </div>
           </div>
         )}
 
@@ -287,7 +305,7 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
               {key: 'champ', label: 'Champ'},
               {key: 'apres', label: 'Valeur'}
             ]}
-            data={audit}
+            data={historiqueAudit}
           />
         </div>
 
