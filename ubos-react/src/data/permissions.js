@@ -5,7 +5,7 @@ export const MODELES = [
   ["Oumaima","oumaima","Gérante","Direction",["Direction"],[],{voir:1,ajouter:1,modifier:1,supprimer:1,valider:1,exporter:1}],
   ["Imane","imane","Transport international & Études","Opérations Internationales",["Transport","Études & Chiffrage"],["transports","transportsNat","etudes","documents","taches","dossiers"],{voir:1,ajouter:1,modifier:1}],
   ["Mansouri","mansouri","Closing & Suivi Client","Commercial",["Closing","Suivi Client"],["offres","reclamations","clients","dossiers","taches","documents"],{voir:1,ajouter:1,modifier:1,valider:1}],
-  ["Ouiam","ouiam","Data & Demandes","Commercial",["Data"],["demandes","clients","contacts","dossiers","taches"],{voir:1,ajouter:1,modifier:1,valider:1}],
+  ["Ouiam","ouiam","Data & Demandes","Commercial",["Data"],["demandes","clients","contacts","dossiers","taches","tableauBordData"],{voir:1,ajouter:1,modifier:1,valider:1}],
   ["Zoubida","zoubida","Analyse, Transit & Certification","Opérations Internationales",["Analyse Dossiers","Transit & Douane"],["analyses","transits","certifs","documents","dossiers","taches"],{voir:1,ajouter:1,modifier:1,valider:1}],
   ["Yasser","yasser","Sourcing & PortNet","Études Commerciales",["Sourcing","Transit & Douane"],["sourcings","fournisseurs","produits","transits","documents","dossiers","taches"],{voir:1,ajouter:1,modifier:1}],
   ["Mohammed Digital","mohammed","Digital","Digital",["Digital","Data"],["leads","taches"],{voir:1,ajouter:1,modifier:1}],
@@ -29,7 +29,7 @@ export function peut(session, action) {
 }
 
 const MODULES_LIBRES = ["dashboard", "monAgenda", "notifications", "rapports"];
-const MODULES_DIRECTION = ["auditGlobal", "utilisateurs", "rapportDirection", "performance", "importCentre", "risquesClients"];
+const MODULES_DIRECTION = ["auditGlobal", "utilisateurs", "rapportDirection", "performance", "importCentre", "risquesClients", "objectifsData"];
 
 export function moduleVisible(session, id) {
     if (!session) return false;

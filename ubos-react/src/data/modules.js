@@ -5,7 +5,8 @@ import {
     STATUTS_PARTENAIRE, CATEGORIES_DOCUMENT, TYPES_FICHIER_DOCUMENT, STATUTS_DOCUMENT,
     TYPES_MESSAGE, PRIORITES_MESSAGE,
     CANAUX_RECEPTION_DEMANDE, TYPES_PROJET_DEMANDE, TYPES_USAGE_DEMANDE,
-    STATUTS_LIGNE_DEMANDE, STATUTS_HS_CODE, CRITERES_CLIENT_DEMANDE, TYPES_TRAITEMENT_LIGNE
+    STATUTS_LIGNE_DEMANDE, STATUTS_HS_CODE, CRITERES_CLIENT_DEMANDE, TYPES_TRAITEMENT_LIGNE,
+    PIPELINE_ETAPES_CLIENT
 } from './constants';
 import { pill, pillStatut, esc, refLabel, fmtMAD } from '../utils/format';
 import { PERS_ET_SERVICES } from './permissions';
@@ -43,8 +44,15 @@ clients:{label:"Clients", ic:Building2, grp:"Commercial", coll:"clients", pfx:"C
   {k:"rc",l:"RC",t:"text"},
   {k:"idFiscal",l:"Identifiant fiscal (IF)",t:"text"},
   {k:"segment",l:"Segment",t:"select",opts:["Prospect","Client","Client récurrent","Client VIP","Inactif"]},
+  {k:"responsableCommercial",l:"Responsable commercial",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB)},
+  {k:"etapePipeline",l:"Étape du pipeline",t:"select",opts:PIPELINE_ETAPES_CLIENT},
+  {k:"dernierContact",l:"Dernier contact",t:"date"},
+  {k:"actionSuivante",l:"Action suivante",t:"text"},
+  {k:"respActionSuivante",l:"Responsable de l'action suivante",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB)},
+  {k:"echeanceActionSuivante",l:"Échéance / prochaine relance",t:"date"},
   {k:"remarque",l:"Remarques",t:"textarea",large:1}
  ],
+ avantSauve: (DB, o) => { if(o.nbRelances===undefined) o.nbRelances = 0; },
  fiche:"ficheClient",
  cols:[["nom","Nom"],["telephone","Téléphone"],["ville","Ville"],["segment","Segment",v=>pillStatut(v)]],
  actions:[{txt:"Fiche", cls:"btn mini or", fn:"ouvrirFicheClient"}]},
@@ -203,6 +211,18 @@ demandeLignes:{label:"Lignes de demande", ic:ClipboardEdit, grp:"Commercial", co
  fiche:"ficheDemandeLigne",
  cols:[["nomProduit","Produit"],["quantite","Quantité"],["prixUnitaire","Prix",(v,o)=>v?`${v} ${o.devise||''}`:"—"],["fournisseur","Fournisseur",(v,o,DB)=>v?esc(refLabel(DB,"fournisseurs",v,"nom")):"—"],["statut","Statut",v=>pillStatut(v)]],
  actions:[{txt:"Fiche", cls:"btn mini or", fn:"ouvrirFicheDemandeLigne"}]},
+
+objectifsData:{label:"Objectifs Service Data", ic:Gauge, grp:"Pilotage", coll:"objectifsData", pfx:"OBJ", statut:"label",
+ champs:[
+  {k:"label",l:"Nom de la période",t:"text",req:1,aide:"Ex. « Janvier 2026 », « Campagne publicitaire ». Sert uniquement de repère."},
+  {k:"dateDebut",l:"Date de début",t:"date",req:1},
+  {k:"dateFin",l:"Date de fin",t:"date",req:1},
+  {k:"demandesParJour",l:"Demandes créées / jour",t:"number"},
+  {k:"clientsContactesParJour",l:"Clients contactés / jour",t:"number"},
+  {k:"relancesParJour",l:"Relances effectuées / jour",t:"number"},
+  {k:"nouveauxClientsParJour",l:"Nouveaux clients créés / jour",t:"number"}
+ ],
+ cols:[["label","Période"],["dateDebut","Début"],["dateFin","Fin"],["demandesParJour","Demandes/j"],["clientsContactesParJour","Contacts/j"],["relancesParJour","Relances/j"],["nouveauxClientsParJour","Nouv. clients/j"]]},
 
 commandes:{label:"Commandes", ic:ShoppingCart, grp:"Commercial", coll:"commandes", pfx:"CMD", statut:"statut",
  champs:[
@@ -682,12 +702,13 @@ performance:{label:"Performance équipe", ic:TrendingUp, grp:"Pilotage"},
 importCentre:{label:"Centre d'importation", ic:UploadCloud, grp:"Pilotage"},
 risquesClients:{label:"Factures & Risques clients", ic:ShieldAlert, grp:"Pilotage"},
 rapportDirection:{label:"Rapport Direction", ic:FileBarChart, grp:"Pilotage"},
-auditGlobal:{label:"Journal d'audit", ic:History, grp:"Pilotage"}
+auditGlobal:{label:"Journal d'audit", ic:History, grp:"Pilotage"},
+tableauBordData:{label:"Tableau de bord Data", ic:Gauge, grp:"Mon espace"}
 };
 
 export const ORDRE_NAV = [
- ["Mon espace",["dashboard","monAgenda","notifications"]],
- ["Pilotage",["rapportDirection","risquesClients","performance","importCentre","rapports","erreurs","utilisateurs","auditGlobal"]],
+ ["Mon espace",["dashboard","tableauBordData","monAgenda","notifications"]],
+ ["Pilotage",["rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal"]],
  ["Commercial",["clients","contacts","demandes","commandes","dossiers","offres","reclamations"]],
  ["Études",["sourcings","etudes"]],
  ["LIMEX",["dashboardLimex","arrivages","rapportLimexDirection"]],

@@ -433,6 +433,11 @@ td .acts{display:flex;gap:6px;flex-wrap:wrap}
 .onglet{background:none;border:none;padding:10px 16px;font-size:13px;font-weight:600;color:var(--gris);cursor:pointer;border-radius:8px 8px 0 0;transition:all .15s ease;position:relative;top:2px}
 .onglet:hover{background:var(--vert-pale);color:var(--vert)}
 .onglet.actif{background:var(--carte);color:var(--vert);border:2px solid var(--bord);border-bottom:2px solid var(--carte)}
+
+.barre-progression{background:var(--ivoire);border-radius:99px;height:8px;overflow:hidden;margin-top:6px}
+.barre-progression>div{height:100%;background:var(--vert);border-radius:99px;transition:width .3s ease}
+.barre-progression.attention>div{background:var(--ambre)}
+.barre-progression.alerte>div{background:var(--rouge)}
 /* ---------- Assistant (Wizard) ---------- */
 .assistant{background:var(--carte);border-radius:14px;max-width:680px;margin:0 auto;box-shadow:var(--ombre)}
 .assist-barre{display:flex;gap:4px;padding:16px 20px 0}

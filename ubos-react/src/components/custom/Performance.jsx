@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import Topbar from '../layout/Topbar';
 import { pill, esc } from '../../utils/format';
 import { PrinterIcon } from '../common/Icons';
+import { calculerObjectifActif, calculerProgressionJour } from '../../utils/dataPipeline';
 
 export default function Performance() {
   const { db } = useDB();
@@ -27,6 +28,10 @@ export default function Performance() {
   const auj = new Date(new Date().toDateString());
 
   const utilisateursActifs = (db.utilisateurs || []).filter(x => x.actif);
+  const objectifActif = calculerObjectifActif(db);
+  const contactsTotal = (db.contacts || []).length;
+  const contactsConvertis = (db.contacts || []).filter(c => !!c.codeClientAssocie).length;
+  const tauxTransformation = contactsTotal ? Math.round((contactsConvertis / contactsTotal) * 100) : 0;
 
   return (
     <>
@@ -43,6 +48,10 @@ export default function Performance() {
         <small>{new Date().toLocaleDateString("fr-FR")}</small>
       </div>
 
+      <p style={{ color: "var(--gris)", fontSize: "13px" }}>
+        Taux de transformation Contacts → Clients (global) : <b>{tauxTransformation}%</b> ({contactsConvertis} / {contactsTotal})
+      </p>
+
       <div className="panneau">
         <div className="defile">
           <table>
@@ -52,6 +61,8 @@ export default function Performance() {
                 <th>Tâches terminées</th>
                 <th>Tâches en retard</th>
                 <th>Dossiers actifs</th>
+                <th>Demandes créées (30 j)</th>
+                <th>Objectif du jour atteint</th>
                 <th>Actions 7 j</th>
                 <th>Actions 30 j</th>
                 <th>Rapports déposés (30 j)</th>
@@ -68,9 +79,15 @@ export default function Performance() {
                 const dossA = (db.dossiers || []).filter(d => d.statut === "Actif" && d.etape !== "Clôturé" && (d.responsable === x.nomComplet || d.respActionSuivante === x.nomComplet || (x.services || []).includes(d.responsable))).length;
                 const a7 = (db.audit || []).filter(a => a.ts >= lim7 && a.utilisateur === x.nomComplet).length;
                 const a30 = (db.audit || []).filter(a => a.ts >= lim30 && a.utilisateur === x.nomComplet).length;
+                const demandes30 = (db.audit || []).filter(a => a.ts >= lim30 && a.utilisateur === x.nomComplet && a.module === "Demandes" && a.action === "Création").length;
                 const rap = (db.rapports || []).filter(r => r.par === x.nomComplet && (r.ts || 0) >= lim30).length;
                 const errRep = (db.erreurs || []).filter(e => e.repetition === "Répétée" && (e.responsable === x.nomComplet || (x.services || []).includes(e.service))).length;
                 const conn = (db.audit || []).find(a => a.action === "Connexion" && a.utilisateur === x.nomComplet);
+                const estData = (x.services || []).includes("Data");
+                const progressionJour = estData ? calculerProgressionJour(db, x) : null;
+                const objectifPct = estData && objectifActif.demandesParJour
+                  ? Math.round((progressionJour.demandesCreees / objectifActif.demandesParJour) * 100)
+                  : null;
 
                 return (
                   <tr key={x.code}>
@@ -81,6 +98,8 @@ export default function Performance() {
                     <td>{term}</td>
                     <td>{ret ? <b style={{ color: "var(--rouge)" }}>{ret}</b> : "0"}</td>
                     <td>{dossA}</td>
+                    <td>{demandes30}</td>
+                    <td>{objectifPct !== null ? pill(`${objectifPct}%`, objectifPct >= 100 ? "p-vert" : objectifPct >= 50 ? "p-ambre" : "p-rouge") : "—"}</td>
                     <td>{a7}</td>
                     <td>{a30}</td>
                     <td>{rap}</td>
@@ -90,6 +109,11 @@ export default function Performance() {
                       <button className="btn mini doux" onClick={() => window.location.hash = `dashUser:${x.identifiant}`}>
                         Son tableau de bord
                       </button>
+                      {estData && (
+                        <button className="btn mini or" style={{ marginLeft: "4px" }} onClick={() => window.location.hash = `tableauBordData:${x.identifiant}`}>
+                          Tableau de bord Data
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -99,7 +123,7 @@ export default function Performance() {
         </div>
       </div>
       <p style={{ color: "var(--gris)", fontSize: "12px", marginTop: "10px" }}>
-        Les « actions » comptent chaque création, modification, validation ou transfert enregistré au journal d'audit. Les erreurs répétées proviennent du Registre des erreurs.
+        Les « actions » comptent chaque création, modification, validation ou transfert enregistré au journal d'audit. Les erreurs répétées proviennent du Registre des erreurs. L'« Objectif du jour atteint » n'est calculé que pour les agents du service Data, à partir de l'objectif actif configuré dans Objectifs Service Data.
       </p>
     </>
   );

@@ -32,6 +32,7 @@ import ImportCentre from './components/custom/ImportCentre';
 import RisquesClients from './components/custom/RisquesClients';
 import DashboardLimex from './components/custom/DashboardLimex';
 import RapportLimexDirection from './components/custom/RapportLimexDirection';
+import TableauBordData from './components/custom/TableauBordData';
 
 // Generic
 import GenericModule from './components/modules/GenericModule';
@@ -63,6 +64,34 @@ const DashUserRoute = ({ identifiant }) => {
   return <PersonalDashboard user={targetUser} isAdminView />;
 };
 
+const TableauBordDataRoute = ({ identifiant }) => {
+  const { db } = useDB();
+  const { session, estDirection } = useAuth();
+
+  if (!identifiant) {
+    return <TableauBordData user={session} />;
+  }
+
+  if (!estDirection()) {
+    return (
+      <div className="panneau">
+        <div className="note-verrou"><b>Réservé à la Direction</b></div>
+      </div>
+    );
+  }
+
+  const targetUser = (db.utilisateurs || []).find(u => u.identifiant === identifiant || u.code === identifiant);
+  if (!targetUser) {
+    return (
+      <div className="panneau">
+        <div className="vide"><b>Utilisateur introuvable</b> ({identifiant})</div>
+      </div>
+    );
+  }
+
+  return <TableauBordData user={targetUser} isAdminView />;
+};
+
 const Router = () => {
   const [currentHash, setCurrentHash] = useState(window.location.hash.replace('#', '') || 'dashboard');
 
@@ -83,6 +112,7 @@ const Router = () => {
     switch (route) {
       case 'dashboard': return <Dashboard />;
       case 'dashUser': return <DashUserRoute identifiant={params} />;
+      case 'tableauBordData': return <TableauBordDataRoute identifiant={params} />;
       case 'ficheClient': return <FicheClient codeProp={params} code={params} />;
       case 'ficheDossier': return <FicheDossier codeProp={params} code={params} />;
       case 'ficheDemande': return <FicheDemande codeProp={params} code={params} />;

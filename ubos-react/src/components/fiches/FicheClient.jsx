@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useDB } from '../../context/DBContext';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
@@ -7,6 +9,9 @@ import Pill from '../common/Pill';
 import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
 import { PrinterIcon } from '../common/Icons';
+import { PIPELINE_ETAPES_CLIENT } from '../../data/constants';
+import { calculerRelanceSuivante, calculerPrioriteClient } from '../../utils/dataPipeline';
+import { pill } from '../../utils/format';
 
 const ONGLETS_360 = [
   ["identite", "1. Identité"],
@@ -18,7 +23,15 @@ const ONGLETS_360 = [
   ["contacts", "7. Contacts associés"],
   ["demandes", "8. Demandes & Consultations"],
   ["commandes", "9. Commandes"],
-  ["dossiers", "10. Dossiers Import"]
+  ["dossiers", "10. Dossiers Import"],
+  ["suiviData", "11. Suivi Data"]
+];
+
+const CHAMPS_SUIVI_DATA = [
+  {k:"responsableCommercial",l:"Responsable commercial"}, {k:"etapePipeline",l:"Étape du pipeline"},
+  {k:"dernierContact",l:"Dernier contact"}, {k:"actionSuivante",l:"Action suivante"},
+  {k:"respActionSuivante",l:"Responsable de l'action"}, {k:"echeanceActionSuivante",l:"Prochaine relance"},
+  {k:"nbRelances",l:"Nombre de relances effectuées"}
 ];
 
 const CHAMPS_IDENTITE = [
@@ -66,7 +79,9 @@ const CHAMPS_COMPORTEMENTAL = [
 ];
 
 const FicheClient = ({ codeProp, code: codeFromProp }) => {
-  const { db } = useDB();
+  const { db, updateDB, audit } = useDB();
+  const { userCourant } = useAuth();
+  const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
   const [onglet, setOnglet] = useState('identite');
@@ -102,7 +117,23 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
   const demandes = (db?.demandes || []).filter(d => d.client === code);
   const contacts = (db?.contacts || []).filter(c => c.codeClientAssocie === code || c.client === code);
   const docs = (db?.documents || []).filter(d => d.client === code);
-  const audit = (db?.audit || []).filter(a => a.ref === code);
+  const historiqueAudit = (db?.audit || []).filter(a => a.ref === code);
+
+  const handleMarquerContacte = () => {
+    const ajd = new Date().toISOString().slice(0, 10);
+    const nbRelances = (client.nbRelances || 0) + 1;
+    const prochaine = calculerRelanceSuivante(nbRelances);
+    const nextClients = (db.clients || []).map(c => c.code === code ? { ...c, dernierContact: ajd, nbRelances, echeanceActionSuivante: prochaine } : c);
+    updateDB({ ...db, clients: nextClients });
+    audit('Clients', 'Contact effectué', code, 'dernierContact', client.dernierContact, ajd);
+    toast(`Contact enregistré. Prochaine relance : ${prochaine}.`);
+  };
+
+  const handleChangeEtape = (etape) => {
+    const nextClients = (db.clients || []).map(c => c.code === code ? { ...c, etapePipeline: etape } : c);
+    updateDB({ ...db, clients: nextClients });
+    audit('Clients', 'Étape pipeline modifiée', code, 'etapePipeline', client.etapePipeline, etape);
+  };
 
   return (
     <div>

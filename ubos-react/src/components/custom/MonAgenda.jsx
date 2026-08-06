@@ -77,6 +77,17 @@ export function collecterAgenda(db, user, estDirection) {
     }
   });
 
+  (db.clients || []).forEach(c => {
+    if (c.echeanceActionSuivante && mien("Data", c.responsableCommercial)) {
+      evts.push({
+        date: c.echeanceActionSuivante,
+        type: "Relance client",
+        libelle: c.code + " · " + (c.nom || "") + " — " + (c.actionSuivante || "Relance"),
+        statut: new Date(c.echeanceActionSuivante) < auj ? "Retard" : "À faire"
+      });
+    }
+  });
+
   return evts.sort((a, b) => a.date < b.date ? -1 : 1);
 }
 
@@ -119,7 +130,7 @@ export default function MonAgenda() {
           <option value="retard">En retard uniquement</option>
         </select>
         <span style={{ color: "var(--gris)" }}>
-          {filtres.length} élément(s) — tâches, échéances dossiers, paiements, certifications, transports, décisions
+          {filtres.length} élément(s) — tâches, échéances dossiers, paiements, certifications, transports, décisions, relances clients
         </span>
       </div>
 
