@@ -9,11 +9,11 @@ import Pill from '../common/Pill';
 import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
 import { pillStatut } from '../../utils/format';
-import { migrerLignesDemande, calculerIndicateursDemande, verifierMinimumCalcul } from '../../utils/demandes';
+import { migrerLignesDemande, calculerIndicateursDemande } from '../../utils/demandes';
 import { STATUTS_LIGNE_DEMANDE } from '../../data/constants';
 
 const FicheDemande = ({ codeProp, code: codeFromProp }) => {
-  const { db, updateDB, genCode, audit, notifier } = useDB();
+  const { db, updateDB, genCode, audit } = useDB();
   const { peut } = useAuth();
   const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
@@ -88,24 +88,8 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
     window.location.hash = `ficheDemandeLigne:${newCode}`;
   };
 
-  const handleEnvoyerCalcul = (ligne) => {
-    const verif = verifierMinimumCalcul(ligne);
-    const nextLignes = (db.demandeLignes || []).map(l => l.code === ligne.code ? { ...l, statut: 'En calcul' } : l);
-    const tacheCode = genCode('T');
-    const tache = {
-      code: tacheCode, titre: `Chiffrage — ${ligne.nomProduit || ligne.code}`, dossier: '', assigne: 'Études & Chiffrage',
-      echeance: '', priorite: 'Normale', origine: 'Tâche courante', statut: 'À faire',
-      remarque: `Ligne ${ligne.code} de la demande ${code}.${verif.ok ? '' : ' Sous réserve — manquant : ' + verif.manquants.join(', ') + '.'}`,
-      ts: Date.now()
-    };
-    const routage = { code: genCode('RT'), ligne: ligne.code, demande: code, service: 'Études & Chiffrage', statut: verif.ok ? 'Envoyée' : 'Envoyée sous réserve', dateEnvoi: Date.now() };
-    updateDB({ ...db, demandeLignes: nextLignes, taches: [tache, ...(db.taches || [])], demandeRoutages: [routage, ...(db.demandeRoutages || [])] });
-    audit('Demandes', 'Envoi au Calcul', ligne.code, 'statut', ligne.statut, 'En calcul', code);
-    notifier('Études & Chiffrage', verif.ok
-      ? `Nouvelle ligne à chiffrer : ${ligne.nomProduit || ligne.code} (${ligne.code}).`
-      : `Ligne à chiffrer envoyée sous réserve : ${ligne.nomProduit || ligne.code} (${ligne.code}). Manquant : ${verif.manquants.join(', ')}.`, 'Demandes');
-    toast(verif.ok ? 'Ligne envoyée au Calcul.' : `Ligne envoyée au Calcul sous réserve — informations manquantes : ${verif.manquants.join(', ')}.`);
-  };
+  const routagesDemande = (db.demandeRoutages || []).filter(r => r.demande === code).sort((a, b) => (b.dateEnvoi || 0) - (a.dateEnvoi || 0));
+  const lignesParCode = Object.fromEntries(lignes.map(l => [l.code, l]));
 
   return (
     <div>
@@ -159,6 +143,7 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
 
         <div className="onglets">
           <button className={`onglet ${onglet === 'lignes' ? 'actif' : ''}`} onClick={() => setOnglet('lignes')}>Produits</button>
+          <button className={`onglet ${onglet === 'routage' ? 'actif' : ''}`} onClick={() => setOnglet('routage')}>Routage</button>
           <button className={`onglet ${onglet === 'documents' ? 'actif' : ''}`} onClick={() => setOnglet('documents')}>Documents</button>
           <button className={`onglet ${onglet === 'historique' ? 'actif' : ''}`} onClick={() => setOnglet('historique')}>Historique</button>
         </div>
@@ -175,22 +160,34 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
               columns={[
                 { key: 'code', label: 'Ligne', render: (v) => <a href={`#ficheDemandeLigne:${v}`}>{v}</a> },
                 { key: 'nomProduit', label: 'Produit' },
+                { key: 'typeTraitement', label: 'Circuit', render: (v) => v ? <span className="pill p-bleu">{v}</span> : <span className="pill p-gris">À définir</span> },
                 { key: 'quantite', label: 'Quantité', render: (v, o) => v ? `${v} ${o.unite || ''}` : '—' },
                 { key: 'prixUnitaire', label: 'Prix', render: (v, o) => v ? `${v} ${o.devise || ''}` : '—' },
                 { key: 'fournisseur', label: 'Fournisseur', render: (v, o) => v ? v : (o.statutFournisseur || '—') },
                 { key: 'poidsBrutTotal', label: 'Poids (kg)' },
                 { key: 'cbmTotal', label: 'CBM' },
                 { key: 'statut', label: 'Statut', render: (s) => pillStatut(s) },
-                {
-                  key: 'actions', label: 'Actions', render: (v, row) => (
-                    <>
-                      <a className="btn mini doux" href={`#ficheDemandeLigne:${row.code}`}>Ouvrir</a>
-                      {peut('modifier') && <button className="btn mini or" onClick={() => handleEnvoyerCalcul(row)}>Envoyer au Calcul</button>}
-                    </>
-                  )
-                }
+                { key: 'actions', label: 'Actions', render: (v, row) => <a className="btn mini doux" href={`#ficheDemandeLigne:${row.code}`}>Ouvrir</a> }
               ]}
               data={lignes}
+            />
+          </div>
+        )}
+
+        {onglet === 'routage' && (
+          <div className="bloc-fiche large">
+            <h4>Routage — toutes les lignes de la demande</h4>
+            <DataTable
+              columns={[
+                { key: 'ligne', label: 'Ligne', render: (v) => <a href={`#ficheDemandeLigne:${v}`}>{v}</a> },
+                { key: 'ligne', label: 'Produit', render: (v) => lignesParCode[v]?.nomProduit || '—' },
+                { key: 'service', label: 'Service' },
+                { key: 'responsable', label: 'Responsable' },
+                { key: 'dateEnvoi', label: "Date d'envoi", render: (v) => v ? new Date(v).toLocaleDateString('fr-FR') : '—' },
+                { key: 'echeance', label: 'Échéance' },
+                { key: 'statut', label: 'Statut', render: (s) => pillStatut(s) }
+              ]}
+              data={routagesDemande}
             />
           </div>
         )}

@@ -5,7 +5,7 @@ import {
     STATUTS_PARTENAIRE, CATEGORIES_DOCUMENT, TYPES_FICHIER_DOCUMENT, STATUTS_DOCUMENT,
     TYPES_MESSAGE, PRIORITES_MESSAGE,
     CANAUX_RECEPTION_DEMANDE, TYPES_PROJET_DEMANDE, TYPES_USAGE_DEMANDE,
-    STATUTS_LIGNE_DEMANDE, STATUTS_HS_CODE, CRITERES_CLIENT_DEMANDE
+    STATUTS_LIGNE_DEMANDE, STATUTS_HS_CODE, CRITERES_CLIENT_DEMANDE, TYPES_TRAITEMENT_LIGNE
 } from './constants';
 import { pill, pillStatut, esc, refLabel, fmtMAD } from '../utils/format';
 import { PERS_ET_SERVICES } from './permissions';
@@ -90,6 +90,7 @@ demandes:{label:"Demandes", ic:ClipboardEdit, grp:"Commercial", coll:"demandes",
 demandeLignes:{label:"Lignes de demande", ic:ClipboardEdit, grp:"Commercial", coll:"demandeLignes", pfx:"DL", statut:"statut",
  champs:[
   {k:"demande",l:"Demande",t:"ref",coll:"demandes",cle:"code",req:1},
+  {k:"typeTraitement",l:"Type de traitement",t:"select",opts:TYPES_TRAITEMENT_LIGNE,req:1,aide:"Détermine le circuit (Sourcing, Études & Chiffrage, Réglementation, Transport…). UBOS propose une valeur, modifiable à tout moment."},
   // Identification
   {k:"nomProduit",l:"Nom commercial du produit",t:"text",req:1},
   {k:"designationTechnique",l:"Désignation technique",t:"text"},

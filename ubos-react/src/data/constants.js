@@ -133,6 +133,7 @@ export const TYPES_PROJET_DEMANDE = ["Première importation","Réapprovisionneme
 export const TYPES_USAGE_DEMANDE = ["Revente","Usage professionnel","Usage personnel"];
 export const STATUTS_HS_CODE = ["Fourni par le fournisseur","À analyser","Proposé","Vérifié","Validé","Contesté"];
 export const CRITERES_CLIENT_DEMANDE = ["Prix","Qualité","Rapidité","Certification","Marque","Exclusivité","Faible MOQ","Personnalisation","Autre"];
+export const TYPES_TRAITEMENT_LIGNE = ["Sourcing nécessaire","Fournisseur connu, Proforma disponible","Fournisseur connu, offre incomplète","Calcul direct possible","Étude technique nécessaire","Analyse réglementaire nécessaire","Cotation transport nécessaire","Informations client manquantes","Traitement combiné"];
 export const STATUTS_CONSULTATION_FOURN = ["À contacter","Contacté","Attente réponse","Offre reçue","Offre incomplète","En négociation","Recommandé","Non retenu","Refusé","Sans réponse"];
 export const CONDITIONS_COMMANDE = ["Devis accepté","Bon de commande signé","Contrat signé","Acompte reçu","Preuve de paiement reçue","Validation exceptionnelle de la Direction"];
 export const METHODES_REPARTITION = ["Par poids","Par CBM","Par valeur marchandise","Par nombre de colis","Montant égal par dossier","Montant manuel","Non réparti","Entièrement affecté à ULTEx","Entièrement affecté à un dossier précis"];
