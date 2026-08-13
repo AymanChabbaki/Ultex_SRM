@@ -13,6 +13,7 @@ import { pill, pillStatut, esc, refLabel, fmtMAD } from '../utils/format';
 import { PERS_ET_SERVICES } from './permissions';
 import { calculFF } from '../utils/businessActions';
 import { genererControlesDossier } from '../utils/limex';
+import { construireMessageTache } from '../utils/tachesPilotage';
 import {
   LayoutDashboard, Contact2, Building2, Archive, ClipboardEdit, ShoppingCart, FolderKanban,
   PackageSearch, Calculator, FileSignature, Wallet, ClipboardCheck, Ship, Scale, Award,
@@ -728,8 +729,14 @@ taches:{label:"Tâches & Décisions", ic:CheckSquare, grp:"Transverse", coll:"ta
  ],
  avantSauve: (DB, o) => { if(o.nbReports===undefined) o.nbReports = 0; },
  apresSauve: (DB, o, ancien, ctx) => {
-   if(!ancien && o.assigne && o.assigne!==ctx.userCourant) ctx.notifier(o.assigne, `Nouvelle tâche ${o.code} : ${o.titre} (échéance ${o.echeance||"—"})`, "Tâches");
-   if(ancien && o.statut==="Terminée" && ancien.statut!=="Terminée") ctx.notifier("Direction", `Tâche ${o.code} terminée : ${o.titre}`, "Tâches");
+   if(!ancien && o.assigne && o.assigne!==ctx.userCourant) {
+     ctx.notifier(o.assigne, construireMessageTache(o, { titre: `Nouvelle tâche ajoutée par ${o.par||ctx.userCourant} : ${o.titre}` }), "Tâches");
+   }
+   if(ancien && o.statut!==ancien.statut && ancien.statut==="À faire" && !o.priseEnChargeLe) o.priseEnChargeLe = new Date().toISOString();
+   if(ancien && o.statut==="Terminée" && ancien.statut!=="Terminée") {
+     ctx.notifier("Direction", construireMessageTache(o, { titre: `Tâche terminée par ${ctx.userCourant} : ${o.titre}` }), "Tâches");
+     if(o.par && o.par!==ctx.userCourant) ctx.notifier(o.par, construireMessageTache(o, { titre: `Tâche terminée par ${ctx.userCourant} : ${o.titre}` }), "Tâches");
+   }
  },
  fiche:"ficheTache",
  cols:[["titre","Titre"],["assigne","Responsable"],["echeance","Échéance",(v,o)=>{if(!v)return "—";const r=!String(o.statut||"").startsWith("Terminée") && o.statut!=="Annulée" && new Date(v) < new Date(new Date().toDateString());return r? `${esc(v)} ${pill("Retard","p-rouge")}` : esc(v)}],["priorite","Priorité",v=>["Critique","Très urgente","Urgente"].includes(v)?pill(v,"p-rouge"):v==="Haute"?pill(v,"p-ambre"):pill(v||"Normale","p-gris")],["type","Type"],["statut","Statut",v=>pillStatut(v)]]},

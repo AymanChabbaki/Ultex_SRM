@@ -111,6 +111,26 @@ export function estAjouteParDirection(db, tache) {
   return getUtilisateurParNom(db, tache.par)?.departement === 'Direction';
 }
 
+/**
+ * Single structured notification template reused for every task lifecycle
+ * event (création/terminée/reportée/bloquée/réaffectée…) — same principle
+ * as `construireMessageRoutage` in utils/demandes.js. Always ends with a
+ * direct link line so Notifications.jsx can render a real "Ouvrir" button.
+ */
+export function construireMessageTache(tache, { titre, extra } = {}) {
+  const objetLie = tache.dossier ? `Dossier ${tache.dossier}` : (tache.objetType && tache.objetCode ? `${tache.objetType} ${tache.objetCode}` : null);
+  return [
+    titre || tache.titre,
+    objetLie ? `Lié à : ${objetLie}` : null,
+    `Créé par : ${tache.par || '—'}`,
+    `Responsable : ${tache.assigne || '—'}`,
+    `Priorité : ${tache.priorite || 'Normale'}`,
+    `Échéance : ${tache.echeance || '—'}${tache.heure ? ' ' + tache.heure : ''}`,
+    extra || null,
+    `Lien : #ficheTache:${tache.code}`
+  ].filter(Boolean).join('\n');
+}
+
 /** Per-task alert flags, §11 — only what's derivable from real fields. */
 export function calculerAlertesTache(tache, opts = {}) {
   const alertes = [];
