@@ -227,9 +227,17 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
           <span className="spacer"></span>
           {peut('modifier') && <button className="btn doux" onClick={() => setShowEdit(true)}>Modifier</button>}
           {estDirection() && <button className="btn doux" onClick={() => setShowReaffecter(true)}>Réaffecter</button>}
+          {ouverte && !enValidation && tache.statut !== 'Bloquée' && peut('modifier') && <button className="btn doux" onClick={() => setShowBlocage(true)}>Signaler un blocage</button>}
           {ouverte && !enValidation && peut('modifier') && <button className="btn doux" onClick={() => setShowReporter(true)}>Reporter</button>}
           {ouverte && !enValidation && peut('modifier') && <button className="btn or" onClick={handleOuvrirTerminer}>Terminer la tâche</button>}
         </div>
+
+        {peutAccuserReception && (
+          <div className="bloc-fiche large" style={{ background: 'var(--fond-jaune)' }}>
+            <h4>Tâche ajoutée par la Direction</h4>
+            <button className="btn or" onClick={handleAccuserReception}>J'ai pris connaissance de cette tâche</button>
+          </div>
+        )}
 
         {peutValider && (
           <div className="bloc-fiche large" style={{ background: 'var(--fond-jaune)' }}>
@@ -332,6 +340,16 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
             initialData={{}}
             onSave={handleReporter}
             onClose={() => setShowReporter(false)}
+          />
+        )}
+
+        {showBlocage && (
+          <LigneModal
+            title="Signaler un blocage"
+            champs={[{ k: 'blocage', l: 'Motif du blocage', t: 'textarea', req: 1, large: 1 }]}
+            initialData={{}}
+            onSave={handleSignalerBlocage}
+            onClose={() => setShowBlocage(false)}
           />
         )}
 
