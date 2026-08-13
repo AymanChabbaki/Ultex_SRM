@@ -32,9 +32,11 @@ export default function PersonalDashboard({ user, isAdminView }) {
     (d.responsable === user.nomComplet || d.respActionSuivante === user.nomComplet || (user.services || []).includes(d.responsable))
   ), [db, user]);
 
-  const nonLues = useMemo(() => (db.notifs || [])
-    .filter(n => !n.lu && destinataireEstMoi(user, n))
-    .slice(0, 8), [db, user]);
+  const nonLuesTotal = useMemo(() => (db.notifs || []).filter(n => !n.lu && destinataireEstMoi(user, n)), [db, user]);
+  const nonLues = nonLuesTotal.slice(0, 8);
+  const nbNouvellesTaches = nonLuesTotal.filter(n => /nouvelle tâche/i.test(n.texte || '')).length;
+  const nbTermineesEquipe = nonLuesTotal.filter(n => /terminée/i.test(n.texte || '')).length;
+  const nbValidationsDemandees = nonLuesTotal.filter(n => /attente de votre validation/i.test(n.texte || '')).length;
 
   const agendaSemaine = useMemo(() => {
     const fin = new Date(auj.getTime() + 7 * 864e5);
@@ -110,12 +112,19 @@ export default function PersonalDashboard({ user, isAdminView }) {
           </div>
         </div>
         <div>
-          <h3 className="titre-sec">Notifications non lues</h3>
+          <h3 className="titre-sec">🔔 Notifications non lues : {nonLuesTotal.length}</h3>
+          {nonLuesTotal.length > 0 && (
+            <p style={{ color: 'var(--gris)', fontSize: '12px', marginTop: '-4px' }}>
+              {nbNouvellesTaches ? `${nbNouvellesTaches} nouvelle(s) tâche(s)` : ''}
+              {nbTermineesEquipe ? `${nbNouvellesTaches ? ', ' : ''}${nbTermineesEquipe} terminée(s) par l'équipe` : ''}
+              {nbValidationsDemandees ? `${(nbNouvellesTaches || nbTermineesEquipe) ? ', ' : ''}${nbValidationsDemandees} validation(s) demandée(s)` : ''}
+            </p>
+          )}
           <div className="panneau liste-notif">
             {nonLues.length ? nonLues.map(n => (
               <div key={n.code} className="notif nonlu">
                 <div className="pt-n"></div>
-                <div>
+                <div style={{ whiteSpace: 'pre-wrap' }}>
                   <div>{esc(n.texte)}</div>
                   <div className="qui">{n.de} · {n.module} · {n.date}</div>
                 </div>
