@@ -51,7 +51,7 @@ export default function MonRapportJournalier({ user, isAdminView }) {
       updateDB({ ...db, rapportsJournaliers: (db.rapportsJournaliers || []).map(r => r.code === existant.code ? { ...r, ...next } : r) });
       audit('Rapports journaliers', 'Mise à jour', existant.code, 'depose', existant.depose, true);
     } else {
-      const newCode = genCode('RJ');
+      const newCode = genCode('RJU');
       updateDB({ ...db, rapportsJournaliers: [{ code: newCode, ts: Date.now(), ...next }, ...(db.rapportsJournaliers || [])] });
       audit('Rapports journaliers', 'Dépôt', newCode, '—', '—', 'Rapport déposé');
     }

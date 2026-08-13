@@ -241,7 +241,7 @@ tacheEtapes:{label:"Étapes de tâche", ic:ClipboardCheck, grp:"Transverse", col
  ],
  cols:[["libelle","Étape"],["obligatoire","Obligatoire"],["responsable","Responsable"],["statut","Statut",v=>pillStatut(v)]]},
 
-rapportsJournaliers:{label:"Rapports journaliers", ic:FileBarChart2, grp:"Transverse", coll:"rapportsJournaliers", pfx:"RJ", statut:"depose",
+rapportsJournaliers:{label:"Rapports journaliers (par utilisateur)", ic:FileBarChart2, grp:"Transverse", coll:"rapportsJournaliers", pfx:"RJU", statut:"depose",
  champs:[
   {k:"utilisateur",l:"Utilisateur",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB),req:1},
   {k:"date",l:"Date",t:"date",req:1},
