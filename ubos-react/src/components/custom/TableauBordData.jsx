@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import Topbar from '../layout/Topbar';
 import DataTable from '../common/DataTable';
+import BarreProgression from '../common/BarreProgression';
 import { pill } from '../../utils/format';
 import {
   genererFileDeTravail, genererAlertesData, calculerObjectifActif, calculerProgressionJour,
@@ -28,19 +29,6 @@ export default function TableauBordData({ user, isAdminView }) {
     return map;
   }, [clientsAgent]);
 
-  const barre = (val, obj, label) => {
-    const pct = obj ? Math.min(100, Math.round((val / obj) * 100)) : 0;
-    const cls = pct >= 100 ? '' : pct >= 50 ? 'attention' : 'alerte';
-    return (
-      <div style={{ marginBottom: '14px' }} key={label}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-          <span>{label}</span><b>{val} / {obj || '—'}</b>
-        </div>
-        <div className={`barre-progression ${cls}`}><div style={{ width: `${pct}%` }}></div></div>
-      </div>
-    );
-  };
-
   return (
     <div>
       <Topbar titre={isAdminView ? `Tableau de bord Data — ${user.nomComplet}` : 'Mon tableau de bord Data'} />
@@ -57,10 +45,10 @@ export default function TableauBordData({ user, isAdminView }) {
 
       <div className="panneau mb-lg" style={{ padding: '18px 22px' }}>
         <h4 style={{ marginTop: 0 }}>Objectifs du jour {!objectif.parDefaut ? `— ${objectif.label}` : ''}</h4>
-        {barre(progression.demandesCreees, objectif.demandesParJour, "Demandes créées aujourd'hui")}
-        {barre(progression.clientsContactes, objectif.clientsContactesParJour, 'Clients contactés')}
-        {barre(progression.relancesEffectuees, objectif.relancesParJour, 'Relances effectuées')}
-        {barre(progression.nouveauxClients, objectif.nouveauxClientsParJour, 'Nouveaux clients créés')}
+        <BarreProgression val={progression.demandesCreees} obj={objectif.demandesParJour} label="Demandes créées aujourd'hui" />
+        <BarreProgression val={progression.clientsContactes} obj={objectif.clientsContactesParJour} label="Clients contactés" />
+        <BarreProgression val={progression.relancesEffectuees} obj={objectif.relancesParJour} label="Relances effectuées" />
+        <BarreProgression val={progression.nouveauxClients} obj={objectif.nouveauxClientsParJour} label="Nouveaux clients créés" />
         <div style={{ fontSize: '13px', color: 'var(--gris)', marginTop: '6px' }}>Sourcings obtenus (cumulé) : <b>{sourcings}</b></div>
       </div>
 

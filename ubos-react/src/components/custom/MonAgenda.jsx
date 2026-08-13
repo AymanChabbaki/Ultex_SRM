@@ -3,6 +3,7 @@ import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
 import Topbar from '../layout/Topbar';
 import { pill, pillStatut, esc, fmtMAD } from '../../utils/format';
+import { STATUTS_TERMINES } from '../../utils/tachesPilotage';
 
 export function collecterAgenda(db, user, estDirection) {
   if (!db || !user) return [];
@@ -12,12 +13,23 @@ export function collecterAgenda(db, user, estDirection) {
   const mien = (srv, resp) => dir || (user.services || []).includes(srv) || resp === user.nomComplet;
 
   (db.taches || []).forEach(t => {
-    if (t.echeance && (dir || (user.services || []).includes(t.assigne) || t.assigne === user.nomComplet)) {
+    const mienne = dir || (user.services || []).includes(t.assigne) || t.assigne === user.nomComplet;
+    if (!mienne) return;
+    const termine = STATUTS_TERMINES.includes(t.statut);
+    if (t.echeance) {
       evts.push({
         date: t.echeance,
         type: t.origine === "Décision de réunion" ? "Réunion / décision" : "Tâche",
         libelle: t.code + " · " + (t.titre || ""),
-        statut: t.statut === "Terminée" ? "Terminée" : (new Date(t.echeance) < auj ? "Retard" : (t.statut === "En cours" ? "En cours" : "À faire"))
+        statut: termine ? t.statut : (new Date(t.echeance) < auj ? "Retard" : (t.statut === "En cours" ? "En cours" : "À faire"))
+      });
+    }
+    if (t.datePrevue && t.datePrevue !== t.echeance && !termine) {
+      evts.push({
+        date: t.datePrevue,
+        type: "Tâche planifiée",
+        libelle: t.code + (t.heure ? " · " + t.heure : "") + " · " + (t.titre || ""),
+        statut: t.statut === "En cours" ? "En cours" : "À faire"
       });
     }
   });
@@ -100,7 +112,10 @@ export default function MonAgenda() {
 
   const filtres = useMemo(() => {
     const auj = new Date(new Date().toDateString());
-    if (filtreAgenda === "semaine") {
+    const ajd = new Date().toISOString().slice(0, 10);
+    if (filtreAgenda === "jour") {
+      return evts.filter(e => e.date === ajd);
+    } else if (filtreAgenda === "semaine") {
       const fin = new Date(auj.getTime() + 7 * 864e5);
       return evts.filter(e => {
         const d = new Date(e.date);

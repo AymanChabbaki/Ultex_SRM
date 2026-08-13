@@ -5,11 +5,17 @@ import Topbar from '../layout/Topbar';
 import StatCard from '../common/StatCard';
 import { pill, pillStatut, esc } from '../../utils/format';
 import { collecterAgenda } from '../custom/MonAgenda';
+import { calculerSyntheseJour } from '../../utils/tachesPilotage';
 
 const estDirectionFalse = () => false;
 
 export default function PersonalDashboard({ user, isAdminView }) {
   const { db } = useDB();
+  const suffixe = isAdminView && user?.identifiant ? `:${user.identifiant}` : '';
+  const synthese = useMemo(() => calculerSyntheseJour(db, user), [db, user]);
+  const aValider = useMemo(() => (db.taches || []).filter(t =>
+    t.statut === 'Terminée — En attente de validation' && t.validateur === (user.nomComplet || user.identifiant)
+  ), [db, user]);
 
   const auj = new Date(new Date().toDateString());
   const ajd = new Date().toISOString().slice(0, 10);
@@ -49,12 +55,41 @@ export default function PersonalDashboard({ user, isAdminView }) {
         </div>
       )}
 
+      <div className="outils">
+        <a className="btn mini doux" href={`#monProgramme${suffixe}`}>Programme du jour</a>
+        <a className="btn mini doux" href={`#mesTaches${suffixe}`}>Mes tâches (Kanban)</a>
+        <a className="btn mini doux" href={`#mesObjectifs${suffixe}`}>Mes objectifs</a>
+        <a className="btn mini doux" href={`#monRapportJournalier${suffixe}`}>Mon rapport du jour</a>
+      </div>
+
       <div className="stats">
-        <StatCard val={tJour.length} label="Tâches du jour" />
-        <StatCard val={tRetard.length} label="Tâches en retard" alerte={tRetard.length > 0} />
+        <StatCard val={synthese.prevues} label="Tâches prévues aujourd'hui" />
+        <StatCard val={synthese.terminees} label="Terminées" />
+        <StatCard val={synthese.enCours} label="En cours" />
+        <StatCard val={synthese.enRetard} label="En retard" alerte={synthese.enRetard > 0} />
+        <StatCard val={synthese.bloquees} label="Bloquées" alerte={synthese.bloquees > 0} />
+        <StatCard val={`${synthese.progressionPct}%`} label="Progression du jour" />
         <StatCard val={mesDossiers.length} label="Dossiers affectés" />
         <StatCard val={nonLues.length} label="Notifications non lues" alerte={nonLues.length > 0} />
       </div>
+
+      {aValider.length > 0 && (
+        <>
+          <h3 className="titre-sec">Tâches à valider</h3>
+          <div className="panneau liste-notif mb-lg">
+            {aValider.map(t => (
+              <div key={t.code} className="notif nonlu">
+                <div className="pt-n" style={{ background: 'var(--or)' }}></div>
+                <div className="spacer">
+                  <div><a href={`#ficheTache:${t.code}`}>{esc(t.titre)}</a></div>
+                  <div className="qui">{t.code} · {t.assigne}</div>
+                </div>
+                {pill('En attente de validation', 'p-ambre')}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="deux-col">
         <div>

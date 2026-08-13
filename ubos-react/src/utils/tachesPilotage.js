@@ -138,12 +138,65 @@ export function calculerAlertesTache(tache, opts = {}) {
 }
 
 /** Pure builder for automatically-generated tasks — caller assigns code (genCode) and ts. */
-export function genererTacheAuto({ titre, assigne, priorite, type, objetType, objetCode, resultatAttendu, echeance, datePrevue, remarque }) {
+export function genererTacheAuto({ titre, assigne, priorite, type, objetType, objetCode, dossier, resultatAttendu, echeance, datePrevue, remarque }) {
   return {
     titre, assigne, priorite: priorite || 'Normale', type: type || 'Autre',
-    objetType, objetCode, resultatAttendu, echeance, datePrevue, remarque,
+    dossier, objetType, objetCode, resultatAttendu, echeance, datePrevue, remarque,
     origine: 'Tâche automatique', statut: 'À faire', nbReports: 0
   };
+}
+
+const DELAI_ETA_HEURES = 48;
+const DELAI_FRANCHISE_HEURES = 48;
+
+/**
+ * §8 — only the two cleanest, well-dated triggers (ETA proche, fin de
+ * franchise proche). Returns ready-to-insert task objects (codes already
+ * assigned via genCode); dedup is by existing-open-task check, so calling
+ * this again the same day is harmless.
+ */
+export function verifierTachesAutomatiques(db, genCode) {
+  const maintenant = Date.now();
+  const nouvelles = [];
+
+  const dejaLieObjet = (objetType, objetCode) =>
+    (db.taches || []).some(t => t.objetType === objetType && t.objetCode === objetCode && estTacheOuverte(t));
+  const dejaLieeFranchise = (dossier) =>
+    (db.taches || []).some(t => t.dossier === dossier && t.titre?.startsWith('Fin de franchise proche') && estTacheOuverte(t));
+
+  (db.arrivages || []).forEach(a => {
+    if (!a.eta || dejaLieObjet('arrivages', a.code)) return;
+    const heures = (new Date(a.eta) - maintenant) / 36e5;
+    if (heures > 0 && heures <= DELAI_ETA_HEURES) {
+      nouvelles.push({
+        code: genCode('T'), ts: Date.now(), par: 'UBOS',
+        ...genererTacheAuto({
+          titre: `Préparer le transit — Arrivage ${a.code}`, assigne: 'Transport', priorite: 'Urgente',
+          type: 'Transport & Logistique', objetType: 'arrivages', objetCode: a.code,
+          resultatAttendu: 'Transit préparé', echeance: a.eta,
+          remarque: `ETA proche (${a.eta}) — préparer le transit pour l'arrivage ${a.code}.`
+        })
+      });
+    }
+  });
+
+  (db.transits || []).forEach(t => {
+    if (!t.franchiseFin || t.etapeDum === 'Sorti du port' || !t.dossier || dejaLieeFranchise(t.dossier)) return;
+    const heures = (new Date(t.franchiseFin) - maintenant) / 36e5;
+    if (heures > 0 && heures <= DELAI_FRANCHISE_HEURES) {
+      nouvelles.push({
+        code: genCode('T'), ts: Date.now(), par: 'UBOS',
+        ...genererTacheAuto({
+          titre: `Fin de franchise proche — ${t.code}`, assigne: 'Analyse Dossiers', priorite: 'Critique',
+          type: 'Réglementation & LIMEX', dossier: t.dossier,
+          resultatAttendu: 'Sortie du port confirmée', echeance: t.franchiseFin,
+          remarque: `Fin de franchise proche (${t.franchiseFin}) pour ${t.code}.`
+        })
+      });
+    }
+  });
+
+  return nouvelles;
 }
 
 /**
