@@ -11,7 +11,7 @@ import { MODS } from '../../data/modules';
 import { PERS_ET_SERVICES } from '../../data/permissions';
 import { pill, pillStatut } from '../../utils/format';
 import { OBJETS_LIABLES_TACHE } from '../../data/constants';
-import { estTacheOuverte, estAjouteParDirection, calculerAlertesTache, STATUTS_TERMINES } from '../../utils/tachesPilotage';
+import { estTacheOuverte, estAjouteParDirection, calculerAlertesTache, construireMessageTache } from '../../utils/tachesPilotage';
 
 const ETAPE_CHAMPS = [
   { k: 'libelle', l: 'Étape', t: 'text', req: 1, large: 1 },
