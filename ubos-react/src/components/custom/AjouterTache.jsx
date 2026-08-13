@@ -5,7 +5,7 @@ import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import FormField from '../common/FormField';
 import { MODS } from '../../data/modules';
-import { calculerChargeUtilisateur } from '../../utils/tachesPilotage';
+import { calculerChargeUtilisateur, construireMessageTache } from '../../utils/tachesPilotage';
 import { pill } from '../../utils/format';
 
 const CHARGE_PILL = { 'Sous-chargé': 'p-bleu', 'Charge normale': 'p-vert', 'Chargé': 'p-ambre', 'Surchargé': 'p-rouge' };
@@ -36,7 +36,7 @@ export default function AjouterTache() {
     const tache = { code, ts: Date.now(), par: userCourant, statut: formData.statut || 'À faire', nbReports: 0, ...formData };
     updateDB({ ...db, taches: [tache, ...(db.taches || [])] });
     audit('Tâches', 'Création (Direction)', code, '—', '—', formData.titre);
-    notifier(formData.assigne, `Nouvelle tâche ${code} assignée par la Direction : ${formData.titre} (échéance ${formData.echeance || '—'})`, 'Tâches');
+    notifier(formData.assigne, construireMessageTache(tache, { titre: `Nouvelle tâche ajoutée par Direction` }), 'Tâches');
     toast(`Tâche ${code} créée pour ${formData.assigne}.`);
     window.location.hash = `ficheTache:${code}`;
   };
