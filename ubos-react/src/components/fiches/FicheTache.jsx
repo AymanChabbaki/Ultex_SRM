@@ -43,6 +43,7 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
   const [showReporter, setShowReporter] = useState(false);
   const [showReaffecter, setShowReaffecter] = useState(false);
   const [showCorrection, setShowCorrection] = useState(false);
+  const [showBlocage, setShowBlocage] = useState(false);
 
   const tache = (db?.taches || []).find(t => t.code === code);
 
@@ -57,7 +58,8 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
 
   const etapes = (db.tacheEtapes || []).filter(e => e.tache === code);
   const historique = (db.audit || []).filter(a => a.objet === code).sort((a, b) => (b.ts || 0) - (a.ts || 0));
-  const alertes = calculerAlertesTache(tache, { ajouteParDirection: estAjouteParDirection(db, tache) });
+  const ajouteeParDirection = estAjouteParDirection(db, tache);
+  const alertes = calculerAlertesTache(tache, { ajouteParDirection: ajouteeParDirection });
   const ouverte = estTacheOuverte(tache);
   const etapesObligatoiresIncompletes = etapes.filter(e => e.obligatoire === 'Oui' && e.statut !== 'Terminée');
   const objLien = lienObjet(tache.objetType, tache.objetCode);
@@ -85,8 +87,14 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
     { k: 'causeReport', l: 'Cause du blocage' },
     { k: 'responsableBlocage', l: 'Responsable du blocage' },
     { k: 'nbReports', l: 'Nombre de reports' },
-    { k: 'assigneOriginal', l: 'Responsable d\'origine (avant réaffectation)' }
+    { k: 'assigneOriginal', l: 'Responsable d\'origine (avant réaffectation)' },
+    { k: 'blocage', l: 'Motif du blocage' },
+    { k: 'luLe', l: 'Prise de connaissance', render: (v) => v ? new Date(v).toLocaleString('fr-FR') : '—' },
+    { k: 'priseEnChargeLe', l: 'Prise en charge', render: (v) => v ? new Date(v).toLocaleString('fr-FR') : '—' }
   ];
+
+  const peutAccuserReception = ajouteeParDirection && !tache.luLe && tache.assigne === userCourant;
+  const [showBlocage, setShowBlocage] = useState(false);
 
   const handleAjouterEtape = (data) => {
     const isEdit = !!etapeEnCours?.code;
