@@ -28,7 +28,6 @@ export default function Performance() {
   const auj = new Date(new Date().toDateString());
 
   const utilisateursActifs = (db.utilisateurs || []).filter(x => x.actif);
-  const objectifActif = calculerObjectifActif(db);
   const contactsTotal = (db.contacts || []).length;
   const contactsConvertis = (db.contacts || []).filter(c => !!c.codeClientAssocie).length;
   const tauxTransformation = contactsTotal ? Math.round((contactsConvertis / contactsTotal) * 100) : 0;
@@ -84,6 +83,7 @@ export default function Performance() {
                 const errRep = (db.erreurs || []).filter(e => e.repetition === "Répétée" && (e.responsable === x.nomComplet || (x.services || []).includes(e.service))).length;
                 const conn = (db.audit || []).find(a => a.action === "Connexion" && a.utilisateur === x.nomComplet);
                 const estData = (x.services || []).includes("Data");
+                const objectifActif = estData ? calculerObjectifActif(db, x) : null;
                 const progressionJour = estData ? calculerProgressionJour(db, x) : null;
                 const objectifPct = estData && objectifActif.demandesParJour
                   ? Math.round((progressionJour.demandesCreees / objectifActif.demandesParJour) * 100)

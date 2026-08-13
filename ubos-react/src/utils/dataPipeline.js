@@ -127,10 +127,19 @@ const OBJECTIF_PAR_DEFAUT = {
   demandesParJour: 5, clientsContactesParJour: 25, relancesParJour: 15, nouveauxClientsParJour: 6
 };
 
-/** The objective whose [dateDebut, dateFin] window contains today, else a clearly-labeled default. */
-export function calculerObjectifActif(db) {
+/**
+ * The objective whose [dateDebut, dateFin] window contains today. A
+ * nominative objective for `user` takes priority over the Data-wide one
+ * (`utilisateur` blank) covering the same date, else a clearly-labeled
+ * default.
+ */
+export function calculerObjectifActif(db, user) {
   const ajd = new Date().toISOString().slice(0, 10);
-  return (db.objectifsData || []).find(o => o.dateDebut <= ajd && ajd <= o.dateFin) || OBJECTIF_PAR_DEFAUT;
+  const actifs = (db.objectifsData || []).filter(o => o.dateDebut <= ajd && ajd <= o.dateFin);
+  const nom = user?.nomComplet || user?.identifiant;
+  const nominatif = nom && actifs.find(o => o.utilisateur === nom);
+  const global = actifs.find(o => !o.utilisateur);
+  return nominatif || global || OBJECTIF_PAR_DEFAUT;
 }
 
 /** Real counters only — nothing here is estimated or simulated. */

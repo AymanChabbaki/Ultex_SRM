@@ -17,7 +17,7 @@ export default function TableauBordData({ user, isAdminView }) {
 
   const file = useMemo(() => genererFileDeTravail(db, user), [db, user]);
   const alertes = useMemo(() => genererAlertesData(db, user), [db, user]);
-  const objectif = useMemo(() => calculerObjectifActif(db), [db]);
+  const objectif = useMemo(() => calculerObjectifActif(db, user), [db, user]);
   const progression = useMemo(() => calculerProgressionJour(db, user), [db, user]);
   const sourcings = useMemo(() => calculerSourcingsObtenus(db, user), [db, user]);
   const clientsAgent = useMemo(() => clientsDeAgent(db, user), [db, user]);
