@@ -94,7 +94,6 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
   ];
 
   const peutAccuserReception = ajouteeParDirection && !tache.luLe && tache.assigne === userCourant;
-  const [showBlocage, setShowBlocage] = useState(false);
 
   const handleAjouterEtape = (data) => {
     const isEdit = !!etapeEnCours?.code;
@@ -132,8 +131,12 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
     const next = { ...tache, ...data, statut: nouveauStatut };
     updateDB({ ...db, taches: (db.taches || []).map(t => t.code === code ? next : t) });
     audit('Tâches', 'Terminée', code, 'statut', tache.statut, nouveauStatut, tache.dossier);
+    const extra = `Terminée à : ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\nRésultat : ${data.resultatObtenu}`;
     if (tache.validateur) {
-      notifier(tache.validateur, `Tâche ${code} terminée par ${userCourant}, en attente de votre validation : ${tache.titre}`, 'Tâches');
+      notifier(tache.validateur, construireMessageTache(next, { titre: `Tâche terminée par ${userCourant}, en attente de votre validation`, extra }), 'Tâches');
+    }
+    if (tache.par && tache.par !== userCourant && tache.par !== tache.validateur) {
+      notifier(tache.par, construireMessageTache(next, { titre: `Tâche terminée par ${userCourant}`, extra }), 'Tâches');
     }
     toast(tache.validateur ? 'Tâche terminée — en attente de validation.' : 'Tâche terminée.');
     setShowTerminer(false);
@@ -148,12 +151,37 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
     updateDB({ ...db, taches: (db.taches || []).map(t => t.code === code ? next : t) });
     audit('Tâches', 'Report', code, 'echeance', tache.echeance, data.nouveauDelai, tache.dossier);
     if (data.commentaire) audit('Tâches', 'Commentaire de report', code, 'commentaire', '—', data.commentaire, tache.dossier);
+    const extra = `Motif : ${data.motif}\nNouveau délai : ${data.nouveauDelai}`;
+    if (tache.par && tache.par !== userCourant) {
+      notifier(tache.par, construireMessageTache(next, { titre: `Tâche reportée par ${userCourant}`, extra }), 'Tâches');
+    }
+    if (data.responsableBlocage && data.responsableBlocage !== userCourant) {
+      notifier(data.responsableBlocage, construireMessageTache(next, { titre: `Tâche reportée — vous êtes identifié comme responsable du blocage`, extra }), 'Tâches');
+    }
     if (nbReports >= 3) {
-      notifier(tache.assigne, `Tâche ${code} reportée ${nbReports} fois : ${tache.titre}`, 'Tâches');
-      notifier('Direction', `Tâche ${code} reportée ${nbReports} fois — vérification recommandée : ${tache.titre}`, 'Tâches');
+      notifier('Direction', construireMessageTache(next, { titre: `Tâche reportée ${nbReports} fois — vérification recommandée`, extra }), 'Tâches');
     }
     toast('Tâche reportée.');
     setShowReporter(false);
+  };
+
+  const handleSignalerBlocage = (data) => {
+    const next = { ...tache, statut: 'Bloquée', blocage: data.blocage };
+    updateDB({ ...db, taches: (db.taches || []).map(t => t.code === code ? next : t) });
+    audit('Tâches', 'Blocage signalé', code, 'statut', tache.statut, 'Bloquée', tache.dossier);
+    const extra = `Motif du blocage : ${data.blocage}`;
+    if (tache.par && tache.par !== userCourant) notifier(tache.par, construireMessageTache(next, { titre: `Tâche déclarée bloquée par ${userCourant}`, extra }), 'Tâches');
+    notifier('Direction', construireMessageTache(next, { titre: `Tâche déclarée bloquée par ${userCourant}`, extra }), 'Tâches');
+    toast('Blocage signalé.');
+    setShowBlocage(false);
+  };
+
+  const handleAccuserReception = () => {
+    const luLe = new Date().toISOString();
+    updateDB({ ...db, taches: (db.taches || []).map(t => t.code === code ? { ...t, luLe } : t) });
+    audit('Tâches', 'Prise de connaissance', code, 'luLe', '—', new Date(luLe).toLocaleString('fr-FR'), tache.dossier);
+    if (tache.par) notifier(tache.par, `${userCourant} a pris connaissance de la tâche ${code} à ${new Date(luLe).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} : ${tache.titre}`, 'Tâches');
+    toast('Prise de connaissance enregistrée.');
   };
 
   const handleValider = () => {
@@ -182,7 +210,7 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
     const next = { ...tache, assigneOriginal: tache.assigneOriginal || tache.assigne, assigne: data.assigne };
     updateDB({ ...db, taches: (db.taches || []).map(t => t.code === code ? next : t) });
     audit('Tâches', 'Réaffectation', code, 'assigne', tache.assigne, data.assigne, tache.dossier);
-    notifier(data.assigne, `Tâche ${code} vous a été réaffectée : ${tache.titre}`, 'Tâches');
+    notifier(data.assigne, construireMessageTache(next, { titre: `Tâche réaffectée à vous par ${userCourant}`, extra: `Ancien responsable : ${tache.assigne}` }), 'Tâches');
     toast('Tâche réaffectée.');
     setShowReaffecter(false);
   };
