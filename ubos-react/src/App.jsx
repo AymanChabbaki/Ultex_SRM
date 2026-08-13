@@ -18,6 +18,7 @@ import FicheArrivage from './components/fiches/FicheArrivage';
 import FicheDocument from './components/fiches/FicheDocument';
 import FicheFF from './components/fiches/FicheFF';
 import FicheChecklistLimex from './components/fiches/FicheChecklistLimex';
+import FicheTache from './components/fiches/FicheTache';
 
 // Custom Modules
 import Notifications from './components/custom/Notifications';
@@ -33,6 +34,13 @@ import RisquesClients from './components/custom/RisquesClients';
 import DashboardLimex from './components/custom/DashboardLimex';
 import RapportLimexDirection from './components/custom/RapportLimexDirection';
 import TableauBordData from './components/custom/TableauBordData';
+import MonProgrammeDuJour from './components/custom/MonProgrammeDuJour';
+import MesTaches from './components/custom/MesTaches';
+import MesObjectifs from './components/custom/MesObjectifs';
+import MonRapportJournalier from './components/custom/MonRapportJournalier';
+import PilotageEquipe from './components/custom/PilotageEquipe';
+import QuiFaitQuoi from './components/custom/QuiFaitQuoi';
+import AjouterTache from './components/custom/AjouterTache';
 
 // Generic
 import GenericModule from './components/modules/GenericModule';
@@ -92,6 +100,34 @@ const TableauBordDataRoute = ({ identifiant }) => {
   return <TableauBordData user={targetUser} isAdminView />;
 };
 
+const PersonalPageRoute = ({ Component, identifiant }) => {
+  const { db } = useDB();
+  const { session, estDirection } = useAuth();
+
+  if (!identifiant) {
+    return <Component user={session} />;
+  }
+
+  if (!estDirection()) {
+    return (
+      <div className="panneau">
+        <div className="note-verrou"><b>Réservé à la Direction</b></div>
+      </div>
+    );
+  }
+
+  const targetUser = (db.utilisateurs || []).find(u => u.identifiant === identifiant || u.code === identifiant);
+  if (!targetUser) {
+    return (
+      <div className="panneau">
+        <div className="vide"><b>Utilisateur introuvable</b> ({identifiant})</div>
+      </div>
+    );
+  }
+
+  return <Component user={targetUser} isAdminView />;
+};
+
 const Router = () => {
   const [currentHash, setCurrentHash] = useState(window.location.hash.replace('#', '') || 'dashboard');
 
@@ -113,6 +149,14 @@ const Router = () => {
       case 'dashboard': return <Dashboard />;
       case 'dashUser': return <DashUserRoute identifiant={params} />;
       case 'tableauBordData': return <TableauBordDataRoute identifiant={params} />;
+      case 'monProgramme': return <PersonalPageRoute Component={MonProgrammeDuJour} identifiant={params} />;
+      case 'mesTaches': return <PersonalPageRoute Component={MesTaches} identifiant={params} />;
+      case 'mesObjectifs': return <PersonalPageRoute Component={MesObjectifs} identifiant={params} />;
+      case 'monRapportJournalier': return <PersonalPageRoute Component={MonRapportJournalier} identifiant={params} />;
+      case 'pilotageEquipe': return <PilotageEquipe />;
+      case 'quiFaitQuoi': return <QuiFaitQuoi />;
+      case 'ajouterTache': return <AjouterTache />;
+      case 'ficheTache': return <FicheTache codeProp={params} code={params} />;
       case 'ficheClient': return <FicheClient codeProp={params} code={params} />;
       case 'ficheDossier': return <FicheDossier codeProp={params} code={params} />;
       case 'ficheDemande': return <FicheDemande codeProp={params} code={params} />;
