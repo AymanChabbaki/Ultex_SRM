@@ -20,7 +20,8 @@ export function baseVide() {
     importExtractedData: [], importAttachments: [], importRollbacks: [],
     controlesLimex: [], dossierControlesLimex: [], limexDiagnosticOumaima: [],
     limexPortesValidation: [], limexImportHistory: [],
-    demandeLignes: [], demandeRoutages: [], objectifsData: []
+    demandeLignes: [], demandeRoutages: [], objectifsData: [],
+    tacheEtapes: [], rapportsJournaliers: []
   };
 }
 

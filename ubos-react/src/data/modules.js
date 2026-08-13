@@ -6,7 +6,8 @@ import {
     TYPES_MESSAGE, PRIORITES_MESSAGE,
     CANAUX_RECEPTION_DEMANDE, TYPES_PROJET_DEMANDE, TYPES_USAGE_DEMANDE,
     STATUTS_LIGNE_DEMANDE, STATUTS_HS_CODE, CRITERES_CLIENT_DEMANDE, TYPES_TRAITEMENT_LIGNE,
-    PIPELINE_ETAPES_CLIENT
+    PIPELINE_ETAPES_CLIENT, PRIORITES_TACHE, STATUTS_TACHE, TYPES_TACHE, OBJETS_LIABLES_TACHE,
+    RECURRENCES_TACHE
 } from './constants';
 import { pill, pillStatut, esc, refLabel, fmtMAD } from '../utils/format';
 import { PERS_ET_SERVICES } from './permissions';
@@ -220,9 +221,44 @@ objectifsData:{label:"Objectifs Service Data", ic:Gauge, grp:"Pilotage", coll:"o
   {k:"demandesParJour",l:"Demandes créées / jour",t:"number"},
   {k:"clientsContactesParJour",l:"Clients contactés / jour",t:"number"},
   {k:"relancesParJour",l:"Relances effectuées / jour",t:"number"},
-  {k:"nouveauxClientsParJour",l:"Nouveaux clients créés / jour",t:"number"}
+  {k:"nouveauxClientsParJour",l:"Nouveaux clients créés / jour",t:"number"},
+  {k:"utilisateur",l:"Utilisateur (optionnel — vide = objectif Data global)",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB)}
  ],
- cols:[["label","Période"],["dateDebut","Début"],["dateFin","Fin"],["demandesParJour","Demandes/j"],["clientsContactesParJour","Contacts/j"],["relancesParJour","Relances/j"],["nouveauxClientsParJour","Nouv. clients/j"]]},
+ cols:[["label","Période"],["utilisateur","Utilisateur",v=>v?esc(v):pill("Global Data","p-gris")],["dateDebut","Début"],["dateFin","Fin"],["demandesParJour","Demandes/j"],["clientsContactesParJour","Contacts/j"],["relancesParJour","Relances/j"],["nouveauxClientsParJour","Nouv. clients/j"]]},
+
+tacheEtapes:{label:"Étapes de tâche", ic:ClipboardCheck, grp:"Transverse", coll:"tacheEtapes", pfx:"TE", statut:"statut",
+ champs:[
+  {k:"tache",l:"Tâche",t:"ref",coll:"taches",cle:"titre",req:1},
+  {k:"libelle",l:"Étape",t:"text",req:1},
+  {k:"obligatoire",l:"Obligatoire",t:"select",opts:["Oui","Non"]},
+  {k:"statut",l:"Statut",t:"select",opts:["À faire","En cours","Terminée"]},
+  {k:"responsable",l:"Responsable",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB)},
+  {k:"date",l:"Date",t:"date"},
+  {k:"heureRealisation",l:"Heure de réalisation",t:"text"},
+  {k:"commentaire",l:"Commentaire",t:"textarea"},
+  {k:"preuve",l:"Preuve",t:"file"}
+ ],
+ cols:[["libelle","Étape"],["obligatoire","Obligatoire"],["responsable","Responsable"],["statut","Statut",v=>pillStatut(v)]]},
+
+rapportsJournaliers:{label:"Rapports journaliers", ic:FileBarChart2, grp:"Transverse", coll:"rapportsJournaliers", pfx:"RJ", statut:"depose",
+ champs:[
+  {k:"utilisateur",l:"Utilisateur",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB),req:1},
+  {k:"date",l:"Date",t:"date",req:1},
+  {k:"tachesPrevues",l:"Tâches prévues",t:"number"},
+  {k:"tachesTerminees",l:"Tâches terminées",t:"number"},
+  {k:"tachesNonTerminees",l:"Tâches non terminées",t:"number"},
+  {k:"tachesReportees",l:"Tâches reportées",t:"number"},
+  {k:"clientsContactes",l:"Clients contactés",t:"number"},
+  {k:"demandesTraitees",l:"Demandes traitées",t:"number"},
+  {k:"dossiersTravailles",l:"Dossiers travaillés",t:"text"},
+  {k:"documentsCrees",l:"Documents créés",t:"number"},
+  {k:"erreursSignalees",l:"Erreurs signalées",t:"number"},
+  {k:"faitsImportants",l:"Faits importants",t:"textarea",large:1},
+  {k:"problemes",l:"Problèmes rencontrés",t:"textarea",large:1},
+  {k:"besoins",l:"Besoins",t:"textarea"},
+  {k:"prioriteDemain",l:"Priorité de demain",t:"textarea"}
+ ],
+ cols:[["utilisateur","Utilisateur"],["date","Date"],["tachesTerminees","Terminées"],["tachesNonTerminees","Non terminées"],["depose","Déposé",v=>v?pill("Oui","p-vert"):pill("Non","p-gris")]]},
 
 commandes:{label:"Commandes", ic:ShoppingCart, grp:"Commercial", coll:"commandes", pfx:"CMD", statut:"statut",
  champs:[
@@ -667,19 +703,36 @@ rapports:{label:"Rapport journalier", ic:ClipboardList, grp:"Pilotage", coll:"ra
 taches:{label:"Tâches & Décisions", ic:CheckSquare, grp:"Transverse", coll:"taches", pfx:"T", statut:"statut",
  champs:[
   {k:"titre",l:"Titre",t:"text",req:1},
+  {k:"remarque",l:"Description",t:"textarea",large:1},
+  {k:"type",l:"Type de tâche",t:"select",opts:TYPES_TACHE},
   {k:"dossier",l:"Dossier lié",t:"ref",coll:"dossiers",cle:"produit"},
+  {k:"objetType",l:"Lié à (type d'objet)",t:"select",opts:OBJETS_LIABLES_TACHE.map(o=>o.v)},
+  {k:"objetCode",l:"Lié à (code)",t:"text",aide:"Code de l'enregistrement du type choisi ci-dessus (ex. C000012, DMD2026-000001)."},
   {k:"assigne",l:"Responsable",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB),req:1},
+  {k:"datePrevue",l:"Date prévue",t:"date"},
+  {k:"heure",l:"Heure",t:"text",aide:"Ex. 08:45 — utilisé pour trier le programme du jour."},
   {k:"echeance",l:"Échéance",t:"date"},
-  {k:"priorite",l:"Priorité",t:"select",opts:["Basse","Normale","Haute","Critique"]},
-  {k:"origine",l:"Origine",t:"select",opts:["Tâche courante","Décision de réunion"]},
-  {k:"statut",l:"Statut",t:"select",opts:["À faire","En cours","Terminée"]},
-  {k:"remarque",l:"Description",t:"textarea",large:1}
+  {k:"priorite",l:"Priorité",t:"select",opts:PRIORITES_TACHE},
+  {k:"origine",l:"Origine",t:"select",opts:["Tâche courante","Décision de réunion","Tâche automatique"]},
+  {k:"statut",l:"Statut",t:"select",opts:STATUTS_TACHE},
+  {k:"resultatAttendu",l:"Résultat attendu",t:"text"},
+  {k:"preuveObligatoire",l:"Preuve obligatoire pour terminer",t:"select",opts:["Non","Oui"]},
+  {k:"resultatObtenu",l:"Résultat obtenu",t:"text"},
+  {k:"preuveFichier",l:"Preuve",t:"file"},
+  {k:"prochaineAction",l:"Prochaine action",t:"text"},
+  {k:"tempsPrevu",l:"Temps prévu (minutes)",t:"number"},
+  {k:"tempsReel",l:"Temps réel (minutes)",t:"number"},
+  {k:"validateur",l:"Validateur",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB)},
+  {k:"recurrence",l:"Récurrence",t:"select",opts:RECURRENCES_TACHE},
+  {k:"recurrenceJusquau",l:"Récurrence jusqu'au",t:"date"}
  ],
+ avantSauve: (DB, o) => { if(o.nbReports===undefined) o.nbReports = 0; },
  apresSauve: (DB, o, ancien, ctx) => {
    if(!ancien && o.assigne && o.assigne!==ctx.userCourant) ctx.notifier(o.assigne, `Nouvelle tâche ${o.code} : ${o.titre} (échéance ${o.echeance||"—"})`, "Tâches");
    if(ancien && o.statut==="Terminée" && ancien.statut!=="Terminée") ctx.notifier("Direction", `Tâche ${o.code} terminée : ${o.titre}`, "Tâches");
  },
- cols:[["titre","Titre"],["assigne","Responsable"],["echeance","Échéance",(v,o)=>{if(!v)return "—";const r=o.statut!=="Terminée" && new Date(v) < new Date(new Date().toDateString());return r? `${esc(v)} ${pill("Retard","p-rouge")}` : esc(v)}],["priorite","Priorité",v=>v==="Critique"?pill(v,"p-rouge"):v==="Haute"?pill(v,"p-ambre"):pill(v||"Normale","p-gris")],["origine","Origine"],["statut","Statut",v=>pillStatut(v)]]},
+ fiche:"ficheTache",
+ cols:[["titre","Titre"],["assigne","Responsable"],["echeance","Échéance",(v,o)=>{if(!v)return "—";const r=!String(o.statut||"").startsWith("Terminée") && o.statut!=="Annulée" && new Date(v) < new Date(new Date().toDateString());return r? `${esc(v)} ${pill("Retard","p-rouge")}` : esc(v)}],["priorite","Priorité",v=>["Critique","Très urgente","Urgente"].includes(v)?pill(v,"p-rouge"):v==="Haute"?pill(v,"p-ambre"):pill(v||"Normale","p-gris")],["type","Type"],["statut","Statut",v=>pillStatut(v)]]},
 
 notifications:{label:"Notifications", ic:Bell, grp:"Transverse"},
 messagerie:{label:"Messagerie interne", ic:Mail, grp:"Transverse", coll:"communicationsDossier", pfx:"MSG", statut:"type",

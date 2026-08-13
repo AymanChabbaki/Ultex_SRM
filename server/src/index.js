@@ -37,7 +37,8 @@ const COLLS = [
   "importExtractedData", "importAttachments", "importRollbacks",
   "controlesLimex", "dossierControlesLimex", "limexDiagnosticOumaima",
   "limexPortesValidation", "limexImportHistory",
-  "demandeLignes", "demandeRoutages", "objectifsData"
+  "demandeLignes", "demandeRoutages", "objectifsData",
+  "tacheEtapes", "rapportsJournaliers"
 ];
 
 const PFX_ANNEE = ["DOS", "FF", "AV", "REL", "ABD", "IMP", "RMB", "CMD", "DMD", "ARR"];

@@ -135,6 +135,22 @@ export const STATUTS_HS_CODE = ["Fourni par le fournisseur","À analyser","Propo
 export const CRITERES_CLIENT_DEMANDE = ["Prix","Qualité","Rapidité","Certification","Marque","Exclusivité","Faible MOQ","Personnalisation","Autre"];
 export const TYPES_TRAITEMENT_LIGNE = ["Sourcing nécessaire","Fournisseur connu, Proforma disponible","Fournisseur connu, offre incomplète","Calcul direct possible","Étude technique nécessaire","Analyse réglementaire nécessaire","Cotation transport nécessaire","Informations client manquantes","Traitement combiné"];
 export const PIPELINE_ETAPES_CLIENT = ["Prospect","Informations incomplètes","Attente photos","Attente fournisseur","Attente HS Code","Attente quantité","Prêt pour Demande","Envoyé vers Calcul","Envoyé vers Sourcing","Transformé en Commande","Transformé en Dossier"];
+
+export const PRIORITES_TACHE = ["Critique","Très urgente","Urgente","Haute","Normale","Basse"];
+export const STATUTS_TACHE = ["À faire","Planifiée","En cours","En attente d'un collègue","En attente client","En attente fournisseur","En attente Direction","Bloquée","Terminée","Terminée avec réserve","Terminée — En attente de validation","Reportée","Annulée"];
+export const TYPES_TACHE = ["Action commerciale","Calcul & Chiffrage","Sourcing","Transport & Logistique","Réglementation & LIMEX","Finance & Comptabilité","Administratif","Contrôle qualité","Validation","Autre"];
+export const OBJETS_LIABLES_TACHE = [
+  {v:"clients", l:"Client", fiche:"ficheClient"},
+  {v:"demandes", l:"Demande", fiche:"ficheDemande"},
+  {v:"demandeLignes", l:"Ligne de demande", fiche:"ficheDemandeLigne"},
+  {v:"commandes", l:"Commande", fiche:"ficheCommande"},
+  {v:"arrivages", l:"Arrivage", fiche:"ficheArrivage"},
+  {v:"fournisseurs", l:"Fournisseur", fiche:""},
+  {v:"partenaires", l:"Partenaire", fiche:""},
+  {v:"paiements", l:"Paiement", fiche:""},
+  {v:"documents", l:"Document", fiche:"ficheDocument"}
+];
+export const RECURRENCES_TACHE = ["Aucune","Quotidienne","Hebdomadaire","Mensuelle"];
 export const STATUTS_CONSULTATION_FOURN = ["À contacter","Contacté","Attente réponse","Offre reçue","Offre incomplète","En négociation","Recommandé","Non retenu","Refusé","Sans réponse"];
 export const CONDITIONS_COMMANDE = ["Devis accepté","Bon de commande signé","Contrat signé","Acompte reçu","Preuve de paiement reçue","Validation exceptionnelle de la Direction"];
 export const METHODES_REPARTITION = ["Par poids","Par CBM","Par valeur marchandise","Par nombre de colis","Montant égal par dossier","Montant manuel","Non réparti","Entièrement affecté à ULTEx","Entièrement affecté à un dossier précis"];
@@ -230,7 +246,7 @@ export const TYPES_MESSAGE = ["Information","Action demandée","Validation deman
 export const PRIORITES_MESSAGE = ["Normale","Élevée","Urgente"];
 
 export const PFX_ANNEE = ["DOS","FF","AV","REL","ABD","IMP","RMB","CMD","DMD","ARR"];
-export const COLLS = ["clients","leads","fournisseurs","produits","dossiers","sourcings","etudes","offres","paiements","analyses","transports","transits","documents","taches","rapports","reclamations","stockage","certifs","transportsNat","pmtIntl","erreurs","utilisateurs","facturesFinales","avoirsFF","abandons","impayes","remboursements","contacts","demandes","commandes","arrivages","analysesLimex","bonsLancement","stocks","mouvementsStock","livraisons","transfertsServices","communicationsDossier","partenaires","importJobs","importFiles","importModels","importMappings","importRows","importErrors","importHistory","importDetectedTypes","importExtractedData","importAttachments","importRollbacks","controlesLimex","dossierControlesLimex","limexDiagnosticOumaima","limexPortesValidation","limexImportHistory","demandeLignes","demandeRoutages","objectifsData"];
+export const COLLS = ["clients","leads","fournisseurs","produits","dossiers","sourcings","etudes","offres","paiements","analyses","transports","transits","documents","taches","rapports","reclamations","stockage","certifs","transportsNat","pmtIntl","erreurs","utilisateurs","facturesFinales","avoirsFF","abandons","impayes","remboursements","contacts","demandes","commandes","arrivages","analysesLimex","bonsLancement","stocks","mouvementsStock","livraisons","transfertsServices","communicationsDossier","partenaires","importJobs","importFiles","importModels","importMappings","importRows","importErrors","importHistory","importDetectedTypes","importExtractedData","importAttachments","importRollbacks","controlesLimex","dossierControlesLimex","limexDiagnosticOumaima","limexPortesValidation","limexImportHistory","demandeLignes","demandeRoutages","objectifsData","tacheEtapes","rapportsJournaliers"];
 
 // ---------- Checklist Maître LIMEX (import CHECKLIST_MAITRE_ULTEX_LIMEX.xlsx, onglet 3_Checklist_Maitre) ----------
 export const STATUTS_CONTROLE_LIMEX = [
