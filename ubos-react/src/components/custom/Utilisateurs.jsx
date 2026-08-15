@@ -193,7 +193,7 @@ export default function Utilisateurs() {
                     </td>
                     <td>{esc(u.poste || "—")}</td>
                     <td>{esc(u.departement || "—")}</td>
-                    <td>{(u.services || []).map(s => pill(s, "p-gris")).length ? (u.services || []).map(s => pill(s, "p-gris")) : "—"}</td>
+                    <td>{(u.services || []).length ? (u.services || []).map(s => <span key={s} style={{ marginRight: '4px' }}>{pill(s, "p-gris")}</span>) : "—"}</td>
                     <td>{estDirectionUser(u) ? pill("Tous", "p-or") : `${(u.modules || []).length} module(s)`}</td>
                     <td>{estDirectionUser(u) ? pill("Toutes", "p-or") : ACTIONS_PERM.filter(a => u.permissions && u.permissions[a]).join(", ") || "—"}</td>
                     <td>{u.actif ? pill("Actif", "p-vert") : pill("Inactif", "p-rouge")}</td>
