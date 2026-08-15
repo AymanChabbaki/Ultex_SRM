@@ -93,7 +93,7 @@ export default function MonProfil() {
         <div className="kv">
           <div><label>Identifiant</label><span>{moi.identifiant}</span></div>
           <div><label>Département</label><span>{moi.departement || '—'}</span></div>
-          <div><label>Services</label><span>{(moi.services || []).length ? moi.services.map(s => pill(s, 'p-gris')) : '—'}</span></div>
+          <div><label>Services</label><span>{(moi.services || []).length ? moi.services.map(s => <span key={s} style={{ marginRight: '4px' }}>{pill(s, 'p-gris')}</span>) : '—'}</span></div>
           <div><label>Statut</label><span>{moi.actif ? pill('Actif', 'p-vert') : pill('Inactif', 'p-rouge')}</span></div>
         </div>
         <p style={{ color: 'var(--gris)', fontSize: '12px', marginTop: '10px' }}>
