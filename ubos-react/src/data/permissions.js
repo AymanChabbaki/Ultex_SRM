@@ -28,7 +28,7 @@ export function peut(session, action) {
     return !!session && (estDirection(session) || (session.permissions && session.permissions[action]));
 }
 
-const MODULES_LIBRES = ["dashboard", "monAgenda", "notifications", "rapports", "monProgramme", "mesTaches", "mesObjectifs", "monRapportJournalier"];
+const MODULES_LIBRES = ["dashboard", "monAgenda", "notifications", "rapports", "monProgramme", "mesTaches", "mesObjectifs", "monRapportJournalier", "monProfil"];
 const MODULES_DIRECTION = ["auditGlobal", "utilisateurs", "rapportDirection", "performance", "importCentre", "risquesClients", "objectifsData", "pilotageEquipe", "quiFaitQuoi", "ajouterTache"];
 
 export function moduleVisible(session, id) {

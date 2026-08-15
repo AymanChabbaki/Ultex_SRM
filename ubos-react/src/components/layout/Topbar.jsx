@@ -63,11 +63,13 @@ const Topbar = ({ titre, toggleSidebar: propToggle }) => {
       </button>
 
       <div className="badge-user">
-        <div className="rond">{init}</div>
-        <div>
-          <b>{session ? session.nomComplet : "—"}</b>
-          <small>{role}{estDirection() ? " · Direction" : ""}</small>
-        </div>
+        <a href="#monProfil" title="Mon profil" style={{ display: 'contents', color: 'inherit', textDecoration: 'none' }}>
+          <div className="rond">{init}</div>
+          <div>
+            <b>{session ? session.nomComplet : "—"}</b>
+            <small>{role}{estDirection() ? " · Direction" : ""}</small>
+          </div>
+        </a>
         <button className="btn mini rouge" onClick={deconnecter} title="Se déconnecter">Quitter</button>
       </div>
     </div>

@@ -764,6 +764,7 @@ risquesClients:{label:"Factures & Risques clients", ic:ShieldAlert, grp:"Pilotag
 rapportDirection:{label:"Rapport Direction", ic:FileBarChart, grp:"Pilotage"},
 auditGlobal:{label:"Journal d'audit", ic:History, grp:"Pilotage"},
 tableauBordData:{label:"Tableau de bord Data", ic:Gauge, grp:"Mon espace"},
+monProfil:{label:"Mon profil", ic:Users, grp:"Mon espace"},
 monProgramme:{label:"Mon programme aujourd'hui", ic:CalendarDays, grp:"Mon espace"},
 mesTaches:{label:"Mes tâches", ic:ClipboardList, grp:"Mon espace"},
 mesObjectifs:{label:"Mes objectifs", ic:Gauge, grp:"Mon espace"},
@@ -774,7 +775,7 @@ ajouterTache:{label:"Ajouter une tâche", ic:ClipboardEdit, grp:"Pilotage"}
 };
 
 export const ORDRE_NAV = [
- ["Mon espace",["dashboard","tableauBordData","monProgramme","mesTaches","mesObjectifs","monRapportJournalier","monAgenda","notifications"]],
+ ["Mon espace",["dashboard","tableauBordData","monProgramme","mesTaches","mesObjectifs","monRapportJournalier","monAgenda","notifications","monProfil"]],
  ["Pilotage",["pilotageEquipe","quiFaitQuoi","ajouterTache","rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal"]],
  ["Commercial",["clients","contacts","demandes","commandes","dossiers","offres","reclamations"]],
  ["Études",["sourcings","etudes"]],

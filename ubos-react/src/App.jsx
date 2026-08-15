@@ -41,6 +41,7 @@ import MonRapportJournalier from './components/custom/MonRapportJournalier';
 import PilotageEquipe from './components/custom/PilotageEquipe';
 import QuiFaitQuoi from './components/custom/QuiFaitQuoi';
 import AjouterTache from './components/custom/AjouterTache';
+import MonProfil from './components/custom/MonProfil';
 
 // Generic
 import GenericModule from './components/modules/GenericModule';
@@ -153,6 +154,7 @@ const Router = () => {
       case 'mesTaches': return <PersonalPageRoute Component={MesTaches} identifiant={params} />;
       case 'mesObjectifs': return <PersonalPageRoute Component={MesObjectifs} identifiant={params} />;
       case 'monRapportJournalier': return <PersonalPageRoute Component={MonRapportJournalier} identifiant={params} />;
+      case 'monProfil': return <MonProfil />;
       case 'pilotageEquipe': return <PilotageEquipe />;
       case 'quiFaitQuoi': return <QuiFaitQuoi />;
       case 'ajouterTache': return <AjouterTache />;

@@ -84,6 +84,40 @@ export function changerCode(ancien, nouveau, DB, auditFn) {
   }
 }
 
+/**
+ * Cascade-renames a person across every live business collection (any
+ * field whose value equals the old name — assigne, responsable,
+ * validateur, responsableCommercial, etc.) so nothing silently stops
+ * matching them after a self-service rename. Deliberately excludes
+ * `notifs` and `audit` (not in COLLS) — those are a historical record of
+ * what happened under the name at the time, not a live assignment, so
+ * they're left as-is. Immutable: returns a new DB object, doesn't mutate.
+ */
+export function renommerUtilisateur(DB, ancienNom, nouveauNom) {
+  if (!ancienNom || !nouveauNom || ancienNom === nouveauNom) return { db: DB, count: 0 };
+  let count = 0;
+  const next = { ...DB };
+  for (const c of COLLS) {
+    if (!DB[c] || !DB[c].length) continue;
+    let collChanged = false;
+    const nextColl = DB[c].map(o => {
+      let recordChanged = false;
+      const nextRecord = { ...o };
+      for (const k of Object.keys(o)) {
+        if (o[k] === ancienNom) {
+          nextRecord[k] = nouveauNom;
+          recordChanged = true;
+          count++;
+        }
+      }
+      if (recordChanged) collChanged = true;
+      return recordChanged ? nextRecord : o;
+    });
+    if (collChanged) next[c] = nextColl;
+  }
+  return { db: next, count };
+}
+
 export function audit(DB, module, action, objet, champ, avant, apres, dossier, userCourant) {
   const t = new Date();
   if (!dossier && /^DOS\d{4}-/.test(String(objet || ""))) dossier = objet;
