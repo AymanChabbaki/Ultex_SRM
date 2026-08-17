@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { charger, sauver, baseVide, genCode as genCodeDb, audit as auditDb, notifier as notifierDb } from '../data/db';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { charger, sauver, baseVide, genCode as genCodeDb, audit as auditDb, notifier as notifierDb, CLE } from '../data/db';
 import { seedUsers } from '../data/permissions';
 import { fetchDB, checkBackendHealth, saveDBSync } from '../services/api';
 
@@ -8,6 +8,10 @@ const DBContext = createContext();
 export const useDB = () => useContext(DBContext);
 
 export const DBProvider = ({ children }) => {
+  // Captured once, before charger()/sauver() below ever touch localStorage:
+  // true only for a browser that has genuinely never loaded UBOS before.
+  const navigateurVierge = useRef(typeof window !== 'undefined' && window.localStorage.getItem(CLE) === null);
+
   const [db, setDb] = useState(() => {
     const data = charger();
     seedUsers(data);
@@ -17,25 +21,31 @@ export const DBProvider = ({ children }) => {
   const [userCourant, setUserCourant] = useState("Invité");
   const [isPostgresConnected, setIsPostgresConnected] = useState(false);
 
-  // Fetch initial PostgreSQL data on mount
+  // Fetch initial PostgreSQL data on mount — but only to bootstrap a
+  // genuinely fresh browser. If this device already has local data, it's
+  // the source of truth: every change already pushes to Postgres via
+  // sauver()/saveDBSync, so pulling here too would risk clobbering a
+  // just-made change (e.g. a password/profile update) with a backend copy
+  // that hasn't caught up to that push yet.
   useEffect(() => {
     let isMounted = true;
     async function initPostgres() {
       const health = await checkBackendHealth();
-      if (health && health.status === 'ok') {
-        if (isMounted) setIsPostgresConnected(true);
-        const remoteDb = await fetchDB();
-        if (remoteDb && isMounted) {
-          const merged = Object.assign(baseVide(), remoteDb);
-          seedUsers(merged);
-          setDb(merged);
-          // Update cache
-          try {
-            localStorage.setItem('ubos_mvp_v1', JSON.stringify(merged));
-          } catch (e) {}
-        }
-      } else {
+      if (!health || health.status !== 'ok') {
         if (isMounted) setIsPostgresConnected(false);
+        return;
+      }
+      if (isMounted) setIsPostgresConnected(true);
+      if (!navigateurVierge.current) return;
+
+      const remoteDb = await fetchDB();
+      if (remoteDb && isMounted) {
+        const merged = Object.assign(baseVide(), remoteDb);
+        seedUsers(merged);
+        setDb(merged);
+        try {
+          localStorage.setItem(CLE, JSON.stringify(merged));
+        } catch (e) {}
       }
     }
     initPostgres();
