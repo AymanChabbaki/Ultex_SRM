@@ -11,7 +11,6 @@ export const DBProvider = ({ children }) => {
   const [db, setDb] = useState(() => {
     const data = charger();
     seedUsers(data);
-    sauver(data);
     return data;
   });
   const [userCourant, setUserCourant] = useState("Invité");
@@ -21,10 +20,8 @@ export const DBProvider = ({ children }) => {
   // overwritten by whatever happens to be in Postgres. Every change still
   // pushes to Postgres (sauver()/saveDBSync, and the manual sync button)
   // for backup/multi-device purposes, but nothing ever pulls from it and
-  // replaces local state: that pull-on-load behavior used to silently
-  // revert changes (e.g. a password update) whenever the backend's copy
-  // hadn't caught up yet by the time the page reloaded. This effect only
-  // checks connectivity for the status badge.
+  // replaces local state. This effect only checks connectivity for the
+  // status badge.
   useEffect(() => {
     let isMounted = true;
     checkBackendHealth().then(health => {
@@ -33,10 +30,24 @@ export const DBProvider = ({ children }) => {
     return () => { isMounted = false; };
   }, []);
 
+  // The ONLY place sauver() is called. Previously updateDB()/audit()/
+  // notifier() each called sauver() themselves, including from inside
+  // setState updater functions — but React defers those updaters to its
+  // own batching schedule, decoupled from call order in the code. Whenever
+  // a component called audit(...) before updateDB(...) (e.g. the "Modifier
+  // utilisateur" screen), the audit updater's sauver() — carrying a stale
+  // pre-update snapshot — ended up executing AFTER updateDB's, silently
+  // overwriting a fresh change (a password, an identifiant...) in
+  // localStorage with the old value, even before any reload. Persisting
+  // from a single effect keyed on the committed `db` state removes the
+  // race entirely: it always runs exactly once per real change, with
+  // whatever the final state actually is.
+  useEffect(() => {
+    sauver(db);
+  }, [db]);
+
   const updateDB = useCallback((newDb) => {
-    const updated = { ...newDb };
-    setDb(updated);
-    sauver(updated);
+    setDb({ ...newDb });
   }, []);
 
   const genCode = useCallback((pfx) => {
@@ -47,7 +58,6 @@ export const DBProvider = ({ children }) => {
     setDb(prev => {
       const nDb = { ...prev };
       auditDb(nDb, module, action, ref, champ, av, ap, doss, userCourant);
-      sauver(nDb);
       return nDb;
     });
   }, [userCourant]);
@@ -56,7 +66,6 @@ export const DBProvider = ({ children }) => {
     setDb(prev => {
       const nDb = { ...prev };
       notifierDb(nDb, dest, texte, lien, userCourant, (pfx, d) => genCodeDb(pfx, d));
-      sauver(nDb);
       return nDb;
     });
   }, [userCourant]);
