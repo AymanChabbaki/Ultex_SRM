@@ -1,17 +1,13 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { charger, sauver, baseVide, genCode as genCodeDb, audit as auditDb, notifier as notifierDb, CLE } from '../data/db';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { charger, sauver, genCode as genCodeDb, audit as auditDb, notifier as notifierDb } from '../data/db';
 import { seedUsers } from '../data/permissions';
-import { fetchDB, checkBackendHealth, saveDBSync } from '../services/api';
+import { checkBackendHealth, saveDBSync } from '../services/api';
 
 const DBContext = createContext();
 
 export const useDB = () => useContext(DBContext);
 
 export const DBProvider = ({ children }) => {
-  // Captured once, before charger()/sauver() below ever touch localStorage:
-  // true only for a browser that has genuinely never loaded UBOS before.
-  const navigateurVierge = useRef(typeof window !== 'undefined' && window.localStorage.getItem(CLE) === null);
-
   const [db, setDb] = useState(() => {
     const data = charger();
     seedUsers(data);
@@ -21,34 +17,19 @@ export const DBProvider = ({ children }) => {
   const [userCourant, setUserCourant] = useState("Invité");
   const [isPostgresConnected, setIsPostgresConnected] = useState(false);
 
-  // Fetch initial PostgreSQL data on mount — but only to bootstrap a
-  // genuinely fresh browser. If this device already has local data, it's
-  // the source of truth: every change already pushes to Postgres via
-  // sauver()/saveDBSync, so pulling here too would risk clobbering a
-  // just-made change (e.g. a password/profile update) with a backend copy
-  // that hasn't caught up to that push yet.
+  // The browser's local storage is the single source of truth — never
+  // overwritten by whatever happens to be in Postgres. Every change still
+  // pushes to Postgres (sauver()/saveDBSync, and the manual sync button)
+  // for backup/multi-device purposes, but nothing ever pulls from it and
+  // replaces local state: that pull-on-load behavior used to silently
+  // revert changes (e.g. a password update) whenever the backend's copy
+  // hadn't caught up yet by the time the page reloaded. This effect only
+  // checks connectivity for the status badge.
   useEffect(() => {
     let isMounted = true;
-    async function initPostgres() {
-      const health = await checkBackendHealth();
-      if (!health || health.status !== 'ok') {
-        if (isMounted) setIsPostgresConnected(false);
-        return;
-      }
-      if (isMounted) setIsPostgresConnected(true);
-      if (!navigateurVierge.current) return;
-
-      const remoteDb = await fetchDB();
-      if (remoteDb && isMounted) {
-        const merged = Object.assign(baseVide(), remoteDb);
-        seedUsers(merged);
-        setDb(merged);
-        try {
-          localStorage.setItem(CLE, JSON.stringify(merged));
-        } catch (e) {}
-      }
-    }
-    initPostgres();
+    checkBackendHealth().then(health => {
+      if (isMounted) setIsPostgresConnected(!!(health && health.status === 'ok'));
+    });
     return () => { isMounted = false; };
   }, []);
 
