@@ -5,7 +5,7 @@ import Logo from '../common/Logo';
 import { UserIcon, KeyIcon, EyeIcon, EyeOffIcon, AlertIcon, ShieldCheckIcon } from '../common/Icons';
 
 export default function LoginScreen() {
-  const { db, isPostgresConnected } = useDB();
+  const { isPostgresConnected } = useDB();
   const { connecter } = useAuth();
 
   const [identifiant, setIdentifiant] = useState('');
@@ -26,15 +26,7 @@ export default function LoginScreen() {
     setError('');
 
     try {
-      const success = await connecter(id, motDePasse);
-      if (!success) {
-        const u = db?.utilisateurs?.find(x => x.identifiant === id || x.code === id);
-        if (u && !u.actif) {
-          setError("Compte désactivé — Veuillez contacter l'Administration ULTEx.");
-        } else {
-          setError("Identifiant ou mot de passe incorrect.");
-        }
-      }
+      await connecter(id, motDePasse);
     } catch (err) {
       setError(err.message || "Erreur de connexion au serveur.");
     } finally {

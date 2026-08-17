@@ -10,14 +10,14 @@ const SidebarContext = createContext();
 export const useSidebar = () => useContext(SidebarContext);
 
 const Layout = ({ children }) => {
-  const { session } = useAuth();
-  const { db, updateDB, genCode, audit } = useDB();
+  const { session, authLoading } = useAuth();
+  const { db, dbLoading, updateDB, genCode, audit } = useDB();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const dejaVerifieRef = useRef(false);
 
   useEffect(() => {
-    if (!session || !db || dejaVerifieRef.current) return;
+    if (!session || dbLoading || dejaVerifieRef.current) return;
     const ajd = new Date().toISOString().slice(0, 10);
     if (db._tachesAutoDate === ajd) { dejaVerifieRef.current = true; return; }
     dejaVerifieRef.current = true;
@@ -29,7 +29,7 @@ const Layout = ({ children }) => {
     updateDB({ ...db, taches: [...toutesNouvelles, ...(db.taches || [])], _tachesAutoDate: ajd });
     toutesNouvelles.forEach(t => audit('Tâches', 'Création automatique', t.code, '—', '—', t.titre, t.dossier));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  }, [session, dbLoading]);
 
   const toggleSidebar = () => {
     if (window.innerWidth <= 900) {
@@ -39,8 +39,25 @@ const Layout = ({ children }) => {
     }
   };
 
+  if (authLoading) {
+    return (
+      <div className="ecran-chargement">
+        <div className="spinner"></div>
+      </div>
+    );
+  }
+
   if (!session) {
     return <LoginScreen />;
+  }
+
+  if (dbLoading) {
+    return (
+      <div className="ecran-chargement">
+        <div className="spinner"></div>
+        <p>Chargement des données…</p>
+      </div>
+    );
   }
 
   return (

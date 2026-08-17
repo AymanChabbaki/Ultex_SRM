@@ -1,7 +1,4 @@
 import { PFX_ANNEE, COLLS } from './constants';
-import { saveDBSync } from '../services/api';
-
-export const CLE = 'ubos_mvp_v1';
 
 export function baseVide() {
   return {
@@ -23,31 +20,6 @@ export function baseVide() {
     demandeLignes: [], demandeRoutages: [], objectifsData: [],
     tacheEtapes: [], rapportsJournaliers: []
   };
-}
-
-export function charger() {
-  try {
-    const d = JSON.parse(localStorage.getItem(CLE));
-    if (d && d.seq) return Object.assign(baseVide(), d);
-  } catch (e) { }
-  return baseVide();
-}
-
-let _dernierAvertStockage = 0;
-export function sauver(DB) {
-  try {
-    const donnees = JSON.stringify(DB);
-    localStorage.setItem(CLE, donnees);
-    const tailleMo = donnees.length / 1024 / 1024;
-    if (tailleMo > 4 && Date.now() - _dernierAvertStockage > 300000) {
-      _dernierAvertStockage = Date.now();
-      console.warn("⚠ Stockage local à " + tailleMo.toFixed(1) + " Mo — synchronisé avec PostgreSQL.");
-    }
-  } catch (e) {
-    console.error("⚠ Stockage local plein.");
-  }
-  // Async background sync to PostgreSQL backend
-  saveDBSync(DB).catch(err => console.error("Synchro PostgreSQL background warning:", err));
 }
 
 export function codeExiste(code, DB) {

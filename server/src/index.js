@@ -57,6 +57,23 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', database: 'PostgreSQL', timestamp: new Date() });
 });
 
+// Requires a valid, non-expired JWT (issued by /api/auth/login) on every
+// data route — the token was already being issued but never verified,
+// so any client could read/write the whole database unauthenticated.
+function authMiddleware(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) {
+    return res.status(401).json({ error: 'Authentification requise' });
+  }
+  try {
+    req.auth = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Session invalide ou expirée' });
+  }
+}
+
 // Authentication Routes
 app.post('/api/auth/login', async (req, res) => {
   const { identifiant, motDePasse } = req.body;
@@ -118,8 +135,38 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Rehydrate the current session from a stored token, without resending the
+// password — used on app load to restore who's logged in.
+app.get('/api/auth/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.auth.id } });
+    if (!user || !user.actif) {
+      return res.status(401).json({ error: 'Compte introuvable ou désactivé' });
+    }
+    res.json({
+      user: {
+        id: user.id,
+        code: user.code,
+        identifiant: user.identifiant,
+        nomComplet: user.nomComplet,
+        role: user.role,
+        service: user.service,
+        modules: user.modulesAutorises?.modules || [],
+        services: user.modulesAutorises?.services || [],
+        poste: user.modulesAutorises?.poste || '',
+        departement: user.modulesAutorises?.departement || '',
+        permissions: user.permissions || {},
+        actif: user.actif
+      }
+    });
+  } catch (error) {
+    console.error('Me error:', error);
+    res.status(500).json({ error: 'Erreur lors de la lecture du profil' });
+  }
+});
+
 // Get Full DB Snapshot
-app.get('/api/db', async (req, res) => {
+app.get('/api/db', authMiddleware, async (req, res) => {
   try {
     const dbState = { seq: {} };
 
@@ -200,7 +247,7 @@ app.get('/api/db', async (req, res) => {
 });
 
 // Full Batch Sync (saves/replaces full state or incremental updates)
-app.post('/api/db/sync', async (req, res) => {
+app.post('/api/db/sync', authMiddleware, async (req, res) => {
   const fullState = req.body;
   if (!fullState) return res.status(400).json({ error: 'Données invalides' });
 
@@ -352,7 +399,7 @@ app.post('/api/db/sync', async (req, res) => {
 });
 
 // Generate Code (Atomic PostgreSQL Sequence Counter)
-app.post('/api/genCode', async (req, res) => {
+app.post('/api/genCode', authMiddleware, async (req, res) => {
   const { pfx } = req.body;
   if (!pfx) return res.status(400).json({ error: 'Prefix requis' });
 
@@ -386,7 +433,7 @@ app.post('/api/genCode', async (req, res) => {
 });
 
 // Real PDF Text Extraction & OCR Parsing Endpoint
-app.post('/api/ocr/pdf', async (req, res) => {
+app.post('/api/ocr/pdf', authMiddleware, async (req, res) => {
   try {
     const { base64 } = req.body;
     if (!base64) return res.status(400).json({ error: 'Payload base64 manquant' });

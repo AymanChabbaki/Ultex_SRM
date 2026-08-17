@@ -1,95 +1,74 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useDB } from './DBContext';
 import { estDirection as estDirectionPerm, peut as peutPerm, moduleVisible as moduleVisiblePerm } from '../data/permissions';
-import { loginBackend } from '../services/api';
-import { verifyPassword } from '../utils/passwordHash';
+import { loginBackend, fetchMe, getToken, setToken, clearToken } from '../services/api';
 
 const AuthContext = createContext();
 
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
-  const { db, updateDB, setUserCourant, audit } = useDB();
+  const { setUserCourant, audit, chargerDonnees, viderDonnees } = useDB();
 
-  const [session, setSession] = useState(() => {
-    try {
-      const s = localStorage.getItem('ubos_session');
-      if (s && db && db.utilisateurs) {
-        if (s.startsWith('{')) {
-          return JSON.parse(s);
-        }
-        return db.utilisateurs.find(x => (x.identifiant === s || x.code === s) && x.actif) || null;
-      }
-    } catch (e) {}
-    return null;
-  });
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
+  // Rehydrate from a stored token on first load — no local user cache to
+  // fall back to, PostgreSQL is asked directly who this token belongs to.
   useEffect(() => {
-    if (!session) {
-      const s = localStorage.getItem('ubos_session');
-      if (s && db && db.utilisateurs) {
-        let u = null;
-        if (s.startsWith('{')) {
-          try { u = JSON.parse(s); } catch (e) {}
-        } else {
-          u = db.utilisateurs.find(x => (x.identifiant === s || x.code === s) && x.actif);
-        }
-        if (u) {
-          setSession(u);
-          setUserCourant(u.nomComplet || u.identifiant);
-        }
+    let isMounted = true;
+    async function rehydrater() {
+      const token = getToken();
+      if (!token) {
+        if (isMounted) setAuthLoading(false);
+        return;
       }
-    } else if (db && db.utilisateurs) {
-      const updatedUser = db.utilisateurs.find(x => x.code === session.code || x.identifiant === session.identifiant);
-      if (updatedUser) {
-        if (updatedUser.identifiant !== session.identifiant || updatedUser.nomComplet !== session.nomComplet) {
-          setSession(updatedUser);
-          localStorage.setItem('ubos_session', JSON.stringify(updatedUser));
-          setUserCourant(updatedUser.nomComplet || updatedUser.identifiant);
-        } else {
-          setUserCourant(session.nomComplet || session.identifiant);
-        }
+      try {
+        const user = await fetchMe();
+        await chargerDonnees();
+        if (!isMounted) return;
+        setSession(user);
+        setUserCourant(user.nomComplet || user.identifiant);
+      } catch (e) {
+        clearToken();
+        if (isMounted) setSession(null);
+      } finally {
+        if (isMounted) setAuthLoading(false);
       }
     }
-  }, [db, session, setUserCourant]);
+    rehydrater();
+    return () => { isMounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const login = useCallback((user) => {
+  const login = useCallback(async (user, token) => {
+    setToken(token);
     setSession(user);
-    localStorage.setItem('ubos_session', JSON.stringify(user));
     setUserCourant(user.nomComplet || user.identifiant);
+    await chargerDonnees();
     audit("Sécurité", "Connexion", user.code || user.identifiant, "—", "—", user.identifiant);
-  }, [setUserCourant, audit]);
+  }, [setUserCourant, audit, chargerDonnees]);
 
   const connecter = useCallback(async (id, mdp) => {
-    // 1. Try PostgreSQL Backend Login
-    try {
-      const res = await loginBackend(id, mdp);
-      if (res && res.user) {
-        login(res.user);
-        return true;
-      }
-    } catch (e) {
-      console.warn("Backend login fail, fallback local check:", e.message);
-    }
-
-    // 2. Local fallback check
-    if (!db || !db.utilisateurs) return false;
-    const user = db.utilisateurs.find(u => (u.identifiant === id || u.code === id) && u.actif && verifyPassword(mdp, u.motDePasse));
-    if (user) {
-      login(user);
+    // No offline/local fallback: PostgreSQL is the only source of truth,
+    // so a real, reachable backend is required to log in at all.
+    const res = await loginBackend(id, mdp);
+    if (res && res.user && res.token) {
+      await login(res.user, res.token);
       return true;
     }
     return false;
-  }, [db, login]);
+  }, [login]);
 
   const deconnecter = useCallback(() => {
     if (session) {
       audit("Sécurité", "Déconnexion", session.code || session.identifiant, "—", "—", session.identifiant);
     }
+    clearToken();
     setSession(null);
-    localStorage.removeItem('ubos_session');
     setUserCourant("Invité");
-  }, [session, audit, setUserCourant]);
+    viderDonnees();
+  }, [session, audit, setUserCourant, viderDonnees]);
 
   const estDirection = useCallback(() => {
     return estDirectionPerm(session);
@@ -106,6 +85,7 @@ export const AuthProvider = ({ children }) => {
   return (
     <AuthContext.Provider value={{
       session,
+      authLoading,
       login,
       connecter,
       deconnecter,

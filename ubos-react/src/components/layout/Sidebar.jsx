@@ -44,11 +44,14 @@ const Sidebar = ({ ouvert }) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
         const data = JSON.parse(ev.target.result);
         if (window.confirm('Restaurer va écraser les données actuelles. Continuer ?')) {
-          updateDB(data);
+          // Wait for PostgreSQL to actually confirm the restore before
+          // reloading — there's no local cache to fall back to anymore,
+          // so reloading too early would just re-fetch the pre-restore data.
+          await updateDB(data);
           window.location.reload();
         }
       } catch (err) {

@@ -439,6 +439,9 @@ td .acts{display:flex;gap:6px;flex-wrap:wrap}
 .barre-progression.attention>div{background:var(--ambre)}
 .barre-progression.alerte>div{background:var(--rouge)}
 
+.ecran-chargement{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--ivoire);color:var(--gris);font-size:14px;z-index:200}
+.spinner{width:28px;height:28px;border:3px solid var(--bord);border-top-color:var(--vert);border-radius:50%;animation:spin .8s linear infinite}
+
 .kanban{display:grid;grid-template-columns:repeat(6,minmax(220px,1fr));gap:12px;overflow-x:auto;padding-bottom:8px}
 .kanban-colonne{background:var(--ivoire);border:1px solid var(--bord);border-radius:var(--rayon);padding:10px;min-height:200px}
 .kanban-colonne h4{display:flex;align-items:center;justify-content:space-between;font-size:13px;margin:0 0 10px;color:var(--vert)}

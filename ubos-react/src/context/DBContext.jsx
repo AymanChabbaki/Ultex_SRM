@@ -1,27 +1,27 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { charger, sauver, genCode as genCodeDb, audit as auditDb, notifier as notifierDb } from '../data/db';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { baseVide, genCode as genCodeDb, audit as auditDb, notifier as notifierDb } from '../data/db';
 import { seedUsers } from '../data/permissions';
-import { checkBackendHealth, saveDBSync } from '../services/api';
+import { checkBackendHealth, fetchDB, saveDBSync } from '../services/api';
+import { useToast } from './ToastContext';
 
 const DBContext = createContext();
 
 export const useDB = () => useContext(DBContext);
 
 export const DBProvider = ({ children }) => {
-  const [db, setDb] = useState(() => {
-    const data = charger();
-    seedUsers(data);
-    return data;
-  });
+  const [db, setDb] = useState(() => baseVide());
   const [userCourant, setUserCourant] = useState("Invité");
   const [isPostgresConnected, setIsPostgresConnected] = useState(false);
+  const [dbLoading, setDbLoading] = useState(false);
+  const { toast } = useToast();
 
-  // The browser's local storage is the single source of truth — never
-  // overwritten by whatever happens to be in Postgres. Every change still
-  // pushes to Postgres (sauver()/saveDBSync, and the manual sync button)
-  // for backup/multi-device purposes, but nothing ever pulls from it and
-  // replaces local state. This effect only checks connectivity for the
-  // status badge.
+  // Always the latest committed db, updated synchronously (not through a
+  // useEffect, which only runs after React finishes the current handler).
+  // audit()/notifier()/genCode() read from this so that several of them
+  // called back-to-back in the same event handler each see the others'
+  // results immediately, instead of racing on a stale value.
+  const dbRef = useRef(db);
+
   useEffect(() => {
     let isMounted = true;
     checkBackendHealth().then(health => {
@@ -30,63 +30,90 @@ export const DBProvider = ({ children }) => {
     return () => { isMounted = false; };
   }, []);
 
-  // Backstop persistence: fires whenever the committed `db` state actually
-  // changes, so a bare audit()/notifier() call (no accompanying updateDB())
-  // still gets saved. updateDB() below ALSO persists synchronously and
-  // immediately (some flows call `updateDB(); window.location.reload();`
-  // back to back, which wouldn't reliably survive if saving only happened
-  // through this effect — effects run after paint, not before a reload).
-  useEffect(() => {
-    sauver(db);
-  }, [db]);
-
-  const updateDB = useCallback((newDb) => {
-    const updated = { ...newDb };
-    setDb(updated);
-    sauver(updated);
+  // Called by AuthContext once a valid session/token exists — not on its
+  // own mount. There is no local cache to fall back to: PostgreSQL is the
+  // only source of truth, so this must succeed (or throw) before the app
+  // shows anything but the login screen.
+  const chargerDonnees = useCallback(async () => {
+    setDbLoading(true);
+    try {
+      const remoteDb = await fetchDB();
+      const merged = Object.assign(baseVide(), remoteDb);
+      seedUsers(merged);
+      dbRef.current = merged;
+      setDb(merged);
+      setIsPostgresConnected(true);
+    } catch (e) {
+      if (!(e && e.name === 'AuthError')) setIsPostgresConnected(false);
+      throw e;
+    } finally {
+      setDbLoading(false);
+    }
   }, []);
 
-  const genCode = useCallback((pfx) => {
-    return genCodeDb(pfx, db);
-  }, [db]);
+  // Called on logout so the previous user's data doesn't linger in memory
+  // while the login screen is showing.
+  const viderDonnees = useCallback(() => {
+    dbRef.current = baseVide();
+    setDb(dbRef.current);
+  }, []);
 
-  // audit()/notifier() intentionally do NOT call sauver() themselves. They
-  // used to, from inside this setState updater — but React defers updater
-  // functions to its own batching schedule, decoupled from call order in
-  // the code. Whenever a component called audit(...) before updateDB(...)
-  // (e.g. the "Modifier utilisateur" screen), the audit updater ran with a
-  // stale pre-update snapshot and its sauver() call executed AFTER
-  // updateDB's synchronous one, silently overwriting a fresh change (a
-  // password, an identifiant...) in localStorage with the old value —
-  // even before any reload. They now only update state; the effect above
-  // persists whatever the final committed state turns out to be.
+  // The one place every mutation funnels through: applies `next` to state
+  // immediately (the UI stays responsive), then confirms it against
+  // PostgreSQL. If that fails, the optimistic change is rolled back and
+  // the user is told — instead of the previous silent fire-and-forget
+  // that could leave the browser and the database disagreeing.
+  const commit = useCallback(async (next) => {
+    const previous = dbRef.current;
+    dbRef.current = next;
+    setDb(next);
+    try {
+      await saveDBSync(next);
+    } catch (e) {
+      dbRef.current = previous;
+      setDb(previous);
+      toast(e && e.name === 'AuthError' ? 'Session expirée — reconnectez-vous.' : "Échec de l'enregistrement — vérifiez votre connexion.");
+    }
+  }, [toast]);
+
+  // Returns the underlying promise so call sites that need to know when a
+  // save has actually landed (e.g. before reloading the page) can await
+  // it — most callers just fire it and move on, exactly as before.
+  const updateDB = useCallback((newDb) => {
+    return commit({ ...newDb });
+  }, [commit]);
+
+  const genCode = useCallback((pfx) => {
+    return genCodeDb(pfx, dbRef.current);
+  }, []);
+
   const audit = useCallback((module, action, ref, champ, av, ap, doss) => {
-    setDb(prev => {
-      const nDb = { ...prev };
-      auditDb(nDb, module, action, ref, champ, av, ap, doss, userCourant);
-      return nDb;
-    });
-  }, [userCourant]);
+    const nDb = { ...dbRef.current };
+    auditDb(nDb, module, action, ref, champ, av, ap, doss, userCourant);
+    commit(nDb);
+  }, [userCourant, commit]);
 
   const notifier = useCallback((dest, texte, lien) => {
-    setDb(prev => {
-      const nDb = { ...prev };
-      notifierDb(nDb, dest, texte, lien, userCourant, (pfx, d) => genCodeDb(pfx, d));
-      return nDb;
-    });
-  }, [userCourant]);
+    const nDb = { ...dbRef.current };
+    notifierDb(nDb, dest, texte, lien, userCourant, (pfx, d) => genCodeDb(pfx, d));
+    commit(nDb);
+  }, [userCourant, commit]);
 
   const syncToPostgres = useCallback(async () => {
-    if (db) {
-      await saveDBSync(db);
+    try {
+      await saveDBSync(dbRef.current);
       setIsPostgresConnected(true);
+    } catch (e) {
+      setIsPostgresConnected(false);
+      toast('Échec de la synchronisation manuelle.');
     }
-  }, [db]);
+  }, [toast]);
 
   return (
     <DBContext.Provider value={{
-      db, setDb, updateDB, sauver, genCode, audit, notifier,
-      userCourant, setUserCourant, isPostgresConnected, syncToPostgres
+      db, setDb, updateDB, genCode, audit, notifier,
+      userCourant, setUserCourant, isPostgresConnected, syncToPostgres,
+      dbLoading, chargerDonnees, viderDonnees
     }}>
       {children}
     </DBContext.Provider>
