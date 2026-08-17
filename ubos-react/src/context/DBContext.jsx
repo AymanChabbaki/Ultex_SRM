@@ -30,30 +30,36 @@ export const DBProvider = ({ children }) => {
     return () => { isMounted = false; };
   }, []);
 
-  // The ONLY place sauver() is called. Previously updateDB()/audit()/
-  // notifier() each called sauver() themselves, including from inside
-  // setState updater functions — but React defers those updaters to its
-  // own batching schedule, decoupled from call order in the code. Whenever
-  // a component called audit(...) before updateDB(...) (e.g. the "Modifier
-  // utilisateur" screen), the audit updater's sauver() — carrying a stale
-  // pre-update snapshot — ended up executing AFTER updateDB's, silently
-  // overwriting a fresh change (a password, an identifiant...) in
-  // localStorage with the old value, even before any reload. Persisting
-  // from a single effect keyed on the committed `db` state removes the
-  // race entirely: it always runs exactly once per real change, with
-  // whatever the final state actually is.
+  // Backstop persistence: fires whenever the committed `db` state actually
+  // changes, so a bare audit()/notifier() call (no accompanying updateDB())
+  // still gets saved. updateDB() below ALSO persists synchronously and
+  // immediately (some flows call `updateDB(); window.location.reload();`
+  // back to back, which wouldn't reliably survive if saving only happened
+  // through this effect — effects run after paint, not before a reload).
   useEffect(() => {
     sauver(db);
   }, [db]);
 
   const updateDB = useCallback((newDb) => {
-    setDb({ ...newDb });
+    const updated = { ...newDb };
+    setDb(updated);
+    sauver(updated);
   }, []);
 
   const genCode = useCallback((pfx) => {
     return genCodeDb(pfx, db);
   }, [db]);
 
+  // audit()/notifier() intentionally do NOT call sauver() themselves. They
+  // used to, from inside this setState updater — but React defers updater
+  // functions to its own batching schedule, decoupled from call order in
+  // the code. Whenever a component called audit(...) before updateDB(...)
+  // (e.g. the "Modifier utilisateur" screen), the audit updater ran with a
+  // stale pre-update snapshot and its sauver() call executed AFTER
+  // updateDB's synchronous one, silently overwriting a fresh change (a
+  // password, an identifiant...) in localStorage with the old value —
+  // even before any reload. They now only update state; the effect above
+  // persists whatever the final committed state turns out to be.
   const audit = useCallback((module, action, ref, champ, av, ap, doss) => {
     setDb(prev => {
       const nDb = { ...prev };

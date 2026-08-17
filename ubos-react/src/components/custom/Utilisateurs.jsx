@@ -89,6 +89,11 @@ export default function Utilisateurs() {
     }
 
     const nextUsers = [...utilisateurs];
+    // Collected here and fired AFTER updateDB() below — audit()/notifier()
+    // schedule a state update that resolves relative to whatever updateDB()
+    // already committed, so updateDB() must run first or their result can
+    // be discarded by React's batching.
+    let apresEnregistrement = null;
 
     if (editingCode) {
       const idx = nextUsers.findIndex(x => x.code === editingCode);
@@ -103,13 +108,9 @@ export default function Utilisateurs() {
         u.modules = formData.modules;
         u.permissions = formData.permissions;
 
-        if (mdp) {
-          u.motDePasse = hashPassword(mdp);
-          notifier(u.nomComplet, "Votre mot de passe UBOS a été mis à jour par la Direction.", "Utilisateurs");
-        }
+        if (mdp) u.motDePasse = hashPassword(mdp);
         nextUsers[idx] = u;
-        audit("Utilisateurs", "Modification", u.code, "compte", "—", nom + " (" + id + ")");
-        toast(`${u.code} mis à jour`);
+        apresEnregistrement = { type: 'edit', code: u.code, nom, id, nomComplet: u.nomComplet, mdpChange: !!mdp };
       }
     } else {
       if (!mdp) {
@@ -130,11 +131,22 @@ export default function Utilisateurs() {
         ts: Date.now()
       };
       nextUsers.push(u);
-      audit("Utilisateurs", "Création", u.code, "—", "—", nom + " (" + id + ")");
-      toast(`${u.code} créé — ${nom} peut se connecter`);
+      apresEnregistrement = { type: 'create', code: u.code, nom, id };
     }
 
     updateDB({ ...db, utilisateurs: nextUsers });
+
+    if (apresEnregistrement?.type === 'edit') {
+      if (apresEnregistrement.mdpChange) {
+        notifier(apresEnregistrement.nomComplet, "Votre mot de passe UBOS a été mis à jour par la Direction.", "Utilisateurs");
+      }
+      audit("Utilisateurs", "Modification", apresEnregistrement.code, "compte", "—", apresEnregistrement.nom + " (" + apresEnregistrement.id + ")");
+      toast(`${apresEnregistrement.code} mis à jour`);
+    } else if (apresEnregistrement?.type === 'create') {
+      audit("Utilisateurs", "Création", apresEnregistrement.code, "—", "—", apresEnregistrement.nom + " (" + apresEnregistrement.id + ")");
+      toast(`${apresEnregistrement.code} créé — ${apresEnregistrement.nom} peut se connecter`);
+    }
+
     setShowModal(false);
   };
 
