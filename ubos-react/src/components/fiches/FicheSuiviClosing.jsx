@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
-import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import Modal from '../common/Modal';
 import DataTable from '../common/DataTable';
 import { pill, pillStatut } from '../../utils/format';
 import { RESULTATS_CONTACT_CLOSING, MOTIFS_REVOIR_DEVIS_CLOSING } from '../../data/constants';
-import { PERS_ET_SERVICES } from '../../data/permissions';
 import {
   calculerPrioriteSuivi, enregistrerResultatContact, calculerEcheanceRelance,
   OPTIONS_DELAI_RELANCE, construireMessageSuiviClosing

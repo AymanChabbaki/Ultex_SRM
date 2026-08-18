@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useDB } from '../../context/DBContext';
 import Topbar from '../layout/Topbar';
-import { pill, pillStatut } from '../../utils/format';
+import { pillStatut } from '../../utils/format';
 import { suivisDeCoordinateur, calculerPrioriteSuivi } from '../../utils/closingCoordination';
 
 const FILTRES = ['Tous', "Aujourd'hui", 'À relancer', 'Attente Mansouri', 'Attente client', 'Devis', 'Urgents', 'Confirmés'];

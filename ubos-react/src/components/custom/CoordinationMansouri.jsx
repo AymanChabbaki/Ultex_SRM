@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDB } from '../../context/DBContext';
 import Topbar from '../layout/Topbar';
-import { pill, pillStatut } from '../../utils/format';
+import { pillStatut } from '../../utils/format';
 import { suivisDeCoordinateur, estSuiviOuvert } from '../../utils/closingCoordination';
 
 function queFaire(suivi) {

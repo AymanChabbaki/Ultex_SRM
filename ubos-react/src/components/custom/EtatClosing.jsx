@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
 import Topbar from '../layout/Topbar';
@@ -36,7 +36,7 @@ export default function EtatClosing() {
 
   const tous = db.suivisClosing || [];
   const carteActive = CARTES.find(c => c.id === actif) || CARTES[0];
-  const lignes = useMemo(() => tous.filter(carteActive.filtre), [tous, actif]);
+  const lignes = tous.filter(carteActive.filtre);
   const pipeline = calculerPipelineClosing(db, null);
 
   return (
