@@ -20,6 +20,7 @@ import FicheDocument from './components/fiches/FicheDocument';
 import FicheFF from './components/fiches/FicheFF';
 import FicheChecklistLimex from './components/fiches/FicheChecklistLimex';
 import FicheTache from './components/fiches/FicheTache';
+import FicheSuiviClosing from './components/fiches/FicheSuiviClosing';
 
 // Custom Modules
 import Notifications from './components/custom/Notifications';
@@ -44,6 +45,11 @@ import QuiFaitQuoi from './components/custom/QuiFaitQuoi';
 import AjouterTache from './components/custom/AjouterTache';
 import MonProfil from './components/custom/MonProfil';
 import JournalSecurite from './components/custom/JournalSecurite';
+import MaJourneeClosing from './components/custom/MaJourneeClosing';
+import DevisAControler from './components/custom/DevisAControler';
+import CoordinationMansouri from './components/custom/CoordinationMansouri';
+import MonPortefeuilleClosing from './components/custom/MonPortefeuilleClosing';
+import EtatClosing from './components/custom/EtatClosing';
 
 // Generic
 import GenericModule from './components/modules/GenericModule';
@@ -160,6 +166,12 @@ const Router = () => {
       case 'pilotageEquipe': return <PilotageEquipe />;
       case 'quiFaitQuoi': return <QuiFaitQuoi />;
       case 'journalSecurite': return <JournalSecurite />;
+      case 'maJourneeClosing': return <PersonalPageRoute Component={MaJourneeClosing} identifiant={params} />;
+      case 'devisAControler': return <PersonalPageRoute Component={DevisAControler} identifiant={params} />;
+      case 'coordinationMansouri': return <PersonalPageRoute Component={CoordinationMansouri} identifiant={params} />;
+      case 'monPortefeuilleClosing': return <PersonalPageRoute Component={MonPortefeuilleClosing} identifiant={params} />;
+      case 'etatClosing': return <EtatClosing />;
+      case 'ficheSuiviClosing': return <FicheSuiviClosing codeProp={params} code={params} />;
       case 'ajouterTache': return <AjouterTache />;
       case 'ficheTache': return <FicheTache codeProp={params} code={params} />;
       case 'ficheClient': return <FicheClient codeProp={params} code={params} />;

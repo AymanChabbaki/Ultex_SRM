@@ -29,12 +29,28 @@ export default function MonRapportJournalier({ user, isAdminView }) {
     const demandesTraitees = auditAujourdhui.filter(a => a.module === 'Demandes' || a.module === 'Lignes de demande').length;
     const documentsCrees = auditAujourdhui.filter(a => a.module === 'Documents' && a.action === 'Création').length;
     const dossiers = [...new Set(mesTaches.filter(t => t.dossier).map(t => t.dossier))];
-    return {
+    const base = {
       tachesPrevues: prevues.length, tachesTerminees: terminees.length,
       tachesNonTerminees: nonTerminees.length, tachesReportees: reportees.length,
       clientsContactes, demandesTraitees, documentsCrees,
       dossiersTravailles: dossiers.join(', ')
     };
+    // Compteurs Coordination Closing (§19) — seulement pour les coordinateurs
+    // Closing, en plus des champs génériques ci-dessus, pas à la place.
+    if (suivisDeCoordinateur(db, cible).length) {
+      const c = calculerObjectifsClosingJour(db, cible);
+      base.closingCodesSuivis = c.codesSuivis;
+      base.closingClientsContactes = c.clientsContactes;
+      base.closingDevisValides = c.devisValides;
+      base.closingRetoursCorrection = c.retoursCorrection;
+      base.closingCodesMansouri = c.codesTraitesMansouri;
+      base.closingConfirmationsSemaine = c.confirmationsSemaine;
+      base.closingAvancesSemaine = c.avancesSemaine;
+      base.aReprendreDemain = suivisDeCoordinateur(db, cible).filter(estSuiviOuvert)
+        .filter(s => s.echeanceActionSuivante && s.echeanceActionSuivante <= ajd)
+        .map(s => `${s.codeSuivi} — ${s.resultatDernierContact || s.statutPipeline || 'à traiter'}`).join('\n');
+    }
+    return base;
   };
 
   const [form, setForm] = useState(() => existant || { ...genererAuto(), ...VIDE });
@@ -77,12 +93,30 @@ export default function MonRapportJournalier({ user, isAdminView }) {
         </div>
       </div>
 
+      {form.closingCodesSuivis !== undefined && (
+        <div className="panneau" style={{ padding: '18px 22px', marginTop: '14px' }}>
+          <h4 style={{ marginTop: 0 }}>Coordination Closing</h4>
+          <div className="kv">
+            <div><label>Codes suivis</label><span>{form.closingCodesSuivis}</span></div>
+            <div><label>Clients contactés</label><span>{form.closingClientsContactes}</span></div>
+            <div><label>Devis validés</label><span>{form.closingDevisValides}</span></div>
+            <div><label>Retours correction</label><span>{form.closingRetoursCorrection}</span></div>
+            <div><label>Codes traités avec Mansouri</label><span>{form.closingCodesMansouri}</span></div>
+            <div><label>Confirmations (semaine)</label><span>{form.closingConfirmationsSemaine}</span></div>
+            <div><label>Avances obtenues (semaine)</label><span>{form.closingAvancesSemaine}</span></div>
+          </div>
+        </div>
+      )}
+
       <div className="panneau mb-lg" style={{ marginTop: '14px' }}>
         <div className="corps">
           <div className="champ large"><label>Faits importants</label><textarea value={form.faitsImportants} onChange={e => handleChange('faitsImportants', e.target.value)} /></div>
           <div className="champ large"><label>Problèmes rencontrés</label><textarea value={form.problemes} onChange={e => handleChange('problemes', e.target.value)} /></div>
           <div className="champ"><label>Besoins</label><textarea value={form.besoins} onChange={e => handleChange('besoins', e.target.value)} /></div>
           <div className="champ"><label>Priorité de demain</label><textarea value={form.prioriteDemain} onChange={e => handleChange('prioriteDemain', e.target.value)} /></div>
+          {form.aReprendreDemain !== undefined && (
+            <div className="champ large"><label>À reprendre demain (codes Closing)</label><textarea readOnly value={form.aReprendreDemain || 'Aucun'} /></div>
+          )}
         </div>
       </div>
 

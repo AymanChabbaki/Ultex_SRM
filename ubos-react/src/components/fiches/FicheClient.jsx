@@ -6,10 +6,12 @@ import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
 import Pill from '../common/Pill';
 import ModuleForm from '../modules/ModuleForm';
+import Modal from '../common/Modal';
 import { MODS } from '../../data/modules';
 import { PrinterIcon } from '../common/Icons';
 import { PIPELINE_ETAPES_CLIENT } from '../../data/constants';
 import { calculerRelanceSuivante, calculerPrioriteClient } from '../../utils/dataPipeline';
+import { estSuiviOuvert } from '../../utils/closingCoordination';
 import { pill } from '../../utils/format';
 
 const ONGLETS_360 = [
@@ -84,6 +86,8 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
   const [code, setCode] = useState(initialCode);
   const [onglet, setOnglet] = useState('identite');
   const [showEdit, setShowEdit] = useState(false);
+  const [showRattacher, setShowRattacher] = useState(false);
+  const [codeSuiviRecherche, setCodeSuiviRecherche] = useState('');
 
   useEffect(() => {
     const c = codeProp || codeFromProp;
@@ -127,6 +131,16 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
     toast(`Contact enregistré. Prochaine relance : ${prochaine}.`);
   };
 
+  const handleRattacherSuivi = () => {
+    const suivi = (db.suivisClosing || []).find(s => s.codeSuivi === codeSuiviRecherche.trim() && estSuiviOuvert(s));
+    if (!suivi) { toast('Aucun suivi Closing ouvert trouvé pour ce code.'); return; }
+    updateDB({ ...db, suivisClosing: (db.suivisClosing || []).map(s => s.code === suivi.code ? { ...s, client: code } : s) });
+    audit('Suivi Closing', 'Rattaché au client', suivi.code, 'client', '—', code);
+    toast(`Suivi ${suivi.codeSuivi} rattaché à ce client.`);
+    setShowRattacher(false);
+    setCodeSuiviRecherche('');
+  };
+
   const handleChangeEtape = (etape) => {
     const nextClients = (db.clients || []).map(c => c.code === code ? { ...c, etapePipeline: etape } : c);
     updateDB({ ...db, clients: nextClients });
@@ -143,6 +157,7 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
           <Pill type={client.segment} texte={client.segment} />
           <span className="spacer"></span>
           <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
+          <button className="btn doux" onClick={() => setShowRattacher(true)}>Rattacher un suivi Closing</button>
           <button className="btn or" onClick={() => window.print()}><PrinterIcon size={14} /> Imprimer / PDF</button>
         </div>
 
@@ -153,6 +168,19 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
             recordCode={code}
             onClose={() => setShowEdit(false)}
           />
+        )}
+
+        {showRattacher && (
+          <Modal title="Rattacher un suivi Closing existant" onClose={() => setShowRattacher(false)} footer={
+            <><button className="btn doux" onClick={() => setShowRattacher(false)}>Annuler</button><button className="btn or" onClick={handleRattacherSuivi}>Rattacher</button></>
+          }>
+            <div className="corps">
+              <div className="champ large">
+                <label>Code du suivi Closing</label>
+                <input autoFocus value={codeSuiviRecherche} onChange={e => setCodeSuiviRecherche(e.target.value)} placeholder="Ex. 8477" />
+              </div>
+            </div>
+          </Modal>
         )}
 
         <div style={{display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'14px'}}>

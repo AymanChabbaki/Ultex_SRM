@@ -8,10 +8,12 @@ import DataTable from '../common/DataTable';
 import CheminDossier from '../common/CheminDossier';
 import StatCard from '../common/StatCard';
 import ModuleForm from '../modules/ModuleForm';
+import Modal from '../common/Modal';
 import { MODS } from '../../data/modules';
 import * as Actions from '../../utils/businessActions';
 import { calculerDashboardLimex } from '../../utils/limex';
 import { PrinterIcon } from '../common/Icons';
+import { estSuiviOuvert } from '../../utils/closingCoordination';
 
 function colsToDataTableColumns(cols, db) {
   return (cols || []).map(([key, label, fmt]) => ({
@@ -37,6 +39,8 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
   const [code, setCode] = useState(initialCode);
   const [showEdit, setShowEdit] = useState(false);
   const [ajoutSection, setAjoutSection] = useState(null);
+  const [showRattacher, setShowRattacher] = useState(false);
+  const [codeSuiviRecherche, setCodeSuiviRecherche] = useState('');
 
   useEffect(() => {
     const c = codeProp || codeFromProp;
@@ -64,7 +68,17 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
   }
 
   const client = db.clients?.find(c => c.code === dossier.client) || {};
-  
+
+  const handleRattacherSuivi = () => {
+    const suivi = (db.suivisClosing || []).find(s => s.codeSuivi === codeSuiviRecherche.trim() && estSuiviOuvert(s));
+    if (!suivi) { toast('Aucun suivi Closing ouvert trouvé pour ce code.'); return; }
+    updateDB({ ...db, suivisClosing: (db.suivisClosing || []).map(s => s.code === suivi.code ? { ...s, dossier: code, client: dossier.client } : s) });
+    audit('Suivi Closing', 'Rattaché au dossier', suivi.code, 'dossier', '—', code, code);
+    toast(`Suivi ${suivi.codeSuivi} rattaché à ce dossier.`);
+    setShowRattacher(false);
+    setCodeSuiviRecherche('');
+  };
+
   const sousSections = [
     {id: 'sourcing', titre: 'Sourcing', moduleId: 'sourcings'},
     {id: 'etude', titre: 'Études & Chiffrage', moduleId: 'etudes'},
@@ -119,8 +133,21 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
           <button className="btn vert" onClick={() => {
               Actions.avancerDossier(code, db, genCode, audit, userCourant, updateDB, toast, peut('valider'), notifier);
           }}>Étape suivante</button>
+          <button className="btn doux" onClick={() => setShowRattacher(true)}>Rattacher un suivi Closing</button>
           <button className="btn or" onClick={() => window.print()}><PrinterIcon size={14} /> Imprimer</button>
         </div>
+        {showRattacher && (
+          <Modal title="Rattacher un suivi Closing existant" onClose={() => setShowRattacher(false)} footer={
+            <><button className="btn doux" onClick={() => setShowRattacher(false)}>Annuler</button><button className="btn or" onClick={handleRattacherSuivi}>Rattacher</button></>
+          }>
+            <div className="corps">
+              <div className="champ large">
+                <label>Code du suivi Closing</label>
+                <input autoFocus value={codeSuiviRecherche} onChange={e => setCodeSuiviRecherche(e.target.value)} placeholder="Ex. 8477" />
+              </div>
+            </div>
+          </Modal>
+        )}
         {showEdit && (
           <ModuleForm 
             moduleId="dossiers" 
