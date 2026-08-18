@@ -29,7 +29,7 @@ export function peut(session, action) {
 }
 
 const MODULES_LIBRES = ["dashboard", "monAgenda", "notifications", "rapports", "monProgramme", "mesTaches", "mesObjectifs", "monRapportJournalier", "monProfil"];
-const MODULES_DIRECTION = ["auditGlobal", "utilisateurs", "rapportDirection", "performance", "importCentre", "risquesClients", "objectifsData", "pilotageEquipe", "quiFaitQuoi", "ajouterTache", "journalSecurite"];
+const MODULES_DIRECTION = ["auditGlobal", "utilisateurs", "rapportDirection", "performance", "importCentre", "risquesClients", "objectifsData", "pilotageEquipe", "quiFaitQuoi", "ajouterTache", "journalSecurite", "etatClosing"];
 
 export function moduleVisible(session, id) {
     if (!session) return false;
@@ -64,6 +64,33 @@ export function seedUsers(DB) {
             }
         });
     }
+}
+
+/**
+ * Ajoute le rôle "Coordination Closing" au compte Zoubida sans rien retirer
+ * de son rôle Analyse Dossiers / Transit & Douane actuel (décision explicite :
+ * additif, pas un remplacement — ses dossiers LIMEX/transit réels restent
+ * intacts). Un seul passage, jamais rejoué (garde `_migrationZoubidaClosingFaite`).
+ */
+export function migrerRoleZoubidaClosing(DB, auditFn = () => {}) {
+    if (DB._migrationZoubidaClosingFaite) return false;
+    const NOUVEAUX_MODULES = ["suivisClosing", "maJourneeClosing", "devisAControler", "coordinationMansouri", "monPortefeuilleClosing"];
+    const zoubida = (DB.utilisateurs || []).find(u => u.identifiant === "zoubida");
+    if (zoubida) {
+        if (!(zoubida.services || []).includes("Closing")) {
+            const avant = (zoubida.services || []).join(", ");
+            zoubida.services = [...(zoubida.services || []), "Closing"];
+            auditFn("Utilisateurs", "Service ajouté (Coordination Closing)", zoubida.code, "services", avant, zoubida.services.join(", "));
+        }
+        const manquants = NOUVEAUX_MODULES.filter(m => !(zoubida.modules || []).includes(m));
+        if (manquants.length) {
+            const avant = (zoubida.modules || []).join(", ");
+            zoubida.modules = [...(zoubida.modules || []), ...manquants];
+            auditFn("Utilisateurs", "Modules ajoutés (Coordination Closing)", zoubida.code, "modules", avant, zoubida.modules.join(", "));
+        }
+    }
+    DB._migrationZoubidaClosingFaite = true;
+    return true;
 }
 
 export function migrerEtapesDossiers(DB, auditFn = () => {}) {

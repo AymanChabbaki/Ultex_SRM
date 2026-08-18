@@ -10,8 +10,9 @@ import LigneModal from '../common/LigneModal';
 import { MODS } from '../../data/modules';
 import { PERS_ET_SERVICES } from '../../data/permissions';
 import { pill, pillStatut } from '../../utils/format';
-import { OBJETS_LIABLES_TACHE } from '../../data/constants';
+import { OBJETS_LIABLES_TACHE, RETOURS_MANSOURI_CLOSING } from '../../data/constants';
 import { estTacheOuverte, estAjouteParDirection, calculerAlertesTache, construireMessageTache } from '../../utils/tachesPilotage';
+import { construireMessageSuiviClosing } from '../../utils/closingCoordination';
 
 const ETAPE_CHAMPS = [
   { k: 'libelle', l: 'Étape', t: 'text', req: 1, large: 1 },
@@ -94,6 +95,8 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
   ];
 
   const peutAccuserReception = ajouteeParDirection && !tache.luLe && tache.assigne === userCourant;
+  const suiviClosingLie = tache.objetType === 'suivisClosing' && tache.objetCode ? (db.suivisClosing || []).find(s => s.code === tache.objetCode) : null;
+  const estRetourClosing = !!suiviClosingLie && ouverte && !enValidation && tache.assigne === userCourant;
 
   const handleAjouterEtape = (data) => {
     const isEdit = !!etapeEnCours?.code;
@@ -184,6 +187,28 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
     toast('Prise de connaissance enregistrée.');
   };
 
+  // Retour simple Mansouri (§11 Coordination Closing) : termine la tâche
+  // avec un libellé fixe au lieu du grand formulaire "Terminer" générique,
+  // et rend automatiquement la main au coordinateur — il ne perd jamais le
+  // code, même une fois l'action confiée (§10).
+  const handleRetourClosing = (label) => {
+    const next = { ...tache, statut: 'Terminée', resultatObtenu: label };
+    updateDB({
+      ...db,
+      taches: (db.taches || []).map(t => t.code === code ? next : t),
+      suivisClosing: (db.suivisClosing || []).map(s => s.code === suiviClosingLie.code ? {
+        ...s,
+        dernierContact: new Date().toISOString().slice(0, 10),
+        responsableActionActuelle: s.coordinateur,
+        memoire: [...(s.memoire || []), { texte: `Retour Mansouri : ${label}`, date: new Date().toISOString().slice(0, 10), auteur: userCourant }]
+      } : s)
+    });
+    audit('Tâches', 'Terminée (retour Closing)', code, 'resultatObtenu', '—', label, tache.dossier);
+    audit('Suivi Closing', 'Retour Mansouri', suiviClosingLie.code, 'resultatObtenu', '—', label);
+    notifier(suiviClosingLie.coordinateur, construireMessageSuiviClosing(suiviClosingLie, { titre: `Mansouri a mis à jour le code ${suiviClosingLie.codeSuivi}`, extra: `Retour : ${label}` }), 'Suivi Closing');
+    toast('Retour enregistré.');
+  };
+
   const handleValider = () => {
     updateDB({ ...db, taches: (db.taches || []).map(t => t.code === code ? { ...t, statut: 'Terminée' } : t) });
     audit('Tâches', 'Validation', code, 'statut', tache.statut, 'Terminée', tache.dossier);
@@ -229,8 +254,20 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
           {estDirection() && <button className="btn doux" onClick={() => setShowReaffecter(true)}>Réaffecter</button>}
           {ouverte && !enValidation && tache.statut !== 'Bloquée' && peut('modifier') && <button className="btn doux" onClick={() => setShowBlocage(true)}>Signaler un blocage</button>}
           {ouverte && !enValidation && peut('modifier') && <button className="btn doux" onClick={() => setShowReporter(true)}>Reporter</button>}
-          {ouverte && !enValidation && peut('modifier') && <button className="btn or" onClick={handleOuvrirTerminer}>Terminer la tâche</button>}
+          {ouverte && !enValidation && !estRetourClosing && peut('modifier') && <button className="btn or" onClick={handleOuvrirTerminer}>Terminer la tâche</button>}
         </div>
+
+        {estRetourClosing && (
+          <div className="bloc-fiche large" style={{ background: 'var(--fond-jaune)' }}>
+            <h4>Coordination Closing — Code {suiviClosingLie.codeSuivi}</h4>
+            <p style={{ margin: '0 0 10px' }}>Votre retour à Zoubida :</p>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {RETOURS_MANSOURI_CLOSING.map(r => (
+                <button key={r} className="btn or" onClick={() => handleRetourClosing(r)}>{r}</button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {peutAccuserReception && (
           <div className="bloc-fiche large" style={{ background: 'var(--fond-jaune)' }}>

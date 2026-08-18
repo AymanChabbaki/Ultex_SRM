@@ -7,13 +7,14 @@ import {
     CANAUX_RECEPTION_DEMANDE, TYPES_PROJET_DEMANDE, TYPES_USAGE_DEMANDE,
     STATUTS_LIGNE_DEMANDE, STATUTS_HS_CODE, CRITERES_CLIENT_DEMANDE, TYPES_TRAITEMENT_LIGNE,
     PIPELINE_ETAPES_CLIENT, PRIORITES_TACHE, STATUTS_TACHE, TYPES_TACHE, OBJETS_LIABLES_TACHE,
-    RECURRENCES_TACHE
+    RECURRENCES_TACHE, STATUTS_PIPELINE_CLOSING
 } from './constants';
 import { pill, pillStatut, esc, refLabel, fmtMAD } from '../utils/format';
 import { PERS_ET_SERVICES } from './permissions';
 import { calculFF } from '../utils/businessActions';
 import { genererControlesDossier } from '../utils/limex';
 import { construireMessageTache } from '../utils/tachesPilotage';
+import { construireMessageSuiviClosing } from '../utils/closingCoordination';
 import {
   LayoutDashboard, Contact2, Building2, Archive, ClipboardEdit, ShoppingCart, FolderKanban,
   PackageSearch, Calculator, FileSignature, Wallet, ClipboardCheck, Ship, Scale, Award,
@@ -737,9 +738,38 @@ taches:{label:"Tâches & Décisions", ic:CheckSquare, grp:"Transverse", coll:"ta
      ctx.notifier("Direction", construireMessageTache(o, { titre: `Tâche terminée par ${ctx.userCourant} : ${o.titre}` }), "Tâches");
      if(o.par && o.par!==ctx.userCourant) ctx.notifier(o.par, construireMessageTache(o, { titre: `Tâche terminée par ${ctx.userCourant} : ${o.titre}` }), "Tâches");
    }
+   // Suivi Closing : le calcul demandé par Zoubida vient d'être terminé par
+   // Études & Chiffrage — la relance vers elle est automatique (§8/§9 du
+   // besoin Coordination Closing), pas laissée à la mémoire de qui que ce soit.
+   if(ancien && o.statut==="Terminée" && ancien.statut!=="Terminée" && o.objetType==="suivisClosing" && o.objetCode) {
+     const suivi = (DB.suivisClosing||[]).find(s=>s.code===o.objetCode);
+     if(suivi && suivi.statutPipeline==="Calcul demandé") {
+       suivi.statutPipeline = "Devis en cours";
+       suivi.statutDevis = "À contrôler";
+       ctx.notifier(suivi.coordinateur, construireMessageSuiviClosing(suivi, { titre: `Calcul terminé par ${ctx.userCourant} — devis à contrôler`, extra: `Code : ${suivi.codeSuivi}` }), "Suivi Closing");
+     }
+   }
  },
  fiche:"ficheTache",
  cols:[["titre","Titre"],["assigne","Responsable"],["echeance","Échéance",(v,o)=>{if(!v)return "—";const r=!String(o.statut||"").startsWith("Terminée") && o.statut!=="Annulée" && new Date(v) < new Date(new Date().toDateString());return r? `${esc(v)} ${pill("Retard","p-rouge")}` : esc(v)}],["priorite","Priorité",v=>["Critique","Très urgente","Urgente"].includes(v)?pill(v,"p-rouge"):v==="Haute"?pill(v,"p-ambre"):pill(v||"Normale","p-gris")],["type","Type"],["statut","Statut",v=>pillStatut(v)]]},
+
+suivisClosing:{label:"Suivis Closing", ic:Handshake, grp:"Pilotage", coll:"suivisClosing", pfx:"SVC", statut:"statutPipeline",
+ champs:[
+  {k:"codeSuivi",l:"Code",t:"text",req:1},
+  {k:"statutPipeline",l:"Statut pipeline",t:"select",opts:STATUTS_PIPELINE_CLOSING},
+  {k:"situationActuelle",l:"Situation actuelle",t:"text"},
+  {k:"actionRecommandee",l:"Action recommandée",t:"text"},
+  {k:"coordinateur",l:"Coordinateur",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB),req:1},
+  {k:"responsableActionActuelle",l:"Responsable de l'action actuelle",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB)},
+  {k:"dernierContact",l:"Dernier contact",t:"date"},
+  {k:"echeanceActionSuivante",l:"Prochaine échéance",t:"date"},
+  {k:"client",l:"Client (si rattaché)",t:"ref",coll:"clients",cle:"nom"},
+  {k:"dossier",l:"Dossier (si rattaché)",t:"ref",coll:"dossiers",cle:"produit"},
+  {k:"remarque",l:"Remarque",t:"textarea",large:1}
+ ],
+ avantSauve: (DB, o) => { if(!o.statutPipeline) o.statutPipeline = "Nouveau"; if(!o.memoire) o.memoire = []; },
+ fiche:"ficheSuiviClosing",
+ cols:[["codeSuivi","Code"],["statutPipeline","Statut",v=>pillStatut(v)],["coordinateur","Coordinateur"],["responsableActionActuelle","Responsable action"],["echeanceActionSuivante","Échéance"]]},
 
 notifications:{label:"Notifications", ic:Bell, grp:"Transverse"},
 messagerie:{label:"Messagerie interne", ic:Mail, grp:"Transverse", coll:"communicationsDossier", pfx:"MSG", statut:"type",
@@ -772,12 +802,17 @@ monRapportJournalier:{label:"Mon rapport du jour", ic:FileBarChart2, grp:"Mon es
 pilotageEquipe:{label:"Pilotage équipe", ic:Users, grp:"Pilotage"},
 quiFaitQuoi:{label:"Qui fait quoi ?", ic:ClipboardCheck, grp:"Pilotage"},
 ajouterTache:{label:"Ajouter une tâche", ic:ClipboardEdit, grp:"Pilotage"},
-journalSecurite:{label:"Journal de sécurité", ic:KeyRound, grp:"Pilotage"}
+journalSecurite:{label:"Journal de sécurité", ic:KeyRound, grp:"Pilotage"},
+maJourneeClosing:{label:"Ma journée", ic:Handshake, grp:"Mon espace"},
+devisAControler:{label:"Devis à contrôler", ic:Calculator, grp:"Mon espace"},
+coordinationMansouri:{label:"Coordination Mansouri", ic:Users, grp:"Mon espace"},
+monPortefeuilleClosing:{label:"Mon portefeuille Closing", ic:FolderKanban, grp:"Mon espace"},
+etatClosing:{label:"État du Closing", ic:Gauge, grp:"Pilotage"}
 };
 
 export const ORDRE_NAV = [
- ["Mon espace",["dashboard","tableauBordData","monProgramme","mesTaches","mesObjectifs","monRapportJournalier","monAgenda","notifications","monProfil"]],
- ["Pilotage",["pilotageEquipe","quiFaitQuoi","ajouterTache","rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal","journalSecurite"]],
+ ["Mon espace",["dashboard","tableauBordData","maJourneeClosing","monProgramme","mesTaches","mesObjectifs","devisAControler","coordinationMansouri","monPortefeuilleClosing","monRapportJournalier","monAgenda","notifications","monProfil"]],
+ ["Pilotage",["pilotageEquipe","quiFaitQuoi","ajouterTache","rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal","journalSecurite","etatClosing","suivisClosing"]],
  ["Commercial",["clients","contacts","demandes","commandes","dossiers","offres","reclamations"]],
  ["Études",["sourcings","etudes"]],
  ["LIMEX",["dashboardLimex","arrivages","rapportLimexDirection"]],

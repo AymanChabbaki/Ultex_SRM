@@ -18,7 +18,8 @@ export function baseVide() {
     controlesLimex: [], dossierControlesLimex: [], limexDiagnosticOumaima: [],
     limexPortesValidation: [], limexImportHistory: [],
     demandeLignes: [], demandeRoutages: [], objectifsData: [],
-    tacheEtapes: [], rapportsJournaliers: [], journalSecurite: []
+    tacheEtapes: [], rapportsJournaliers: [], journalSecurite: [],
+    suivisClosing: []
   };
 }
 

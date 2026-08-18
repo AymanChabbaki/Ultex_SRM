@@ -367,6 +367,7 @@ nav a.on {
 .btn.bleu{background:var(--bleu);color:#fff}.btn.bleu:hover{background:#1d4ed8}
 .btn.rouge{background:#F6E7E4;color:var(--rouge)}.btn.rouge:hover{background:#F2D9D4}
 .btn.mini{padding:5px 10px;font-size:12px;border-radius:8px;gap:4px}
+.btn.gros{padding:16px 22px;font-size:16px;border-radius:14px;flex:1;min-width:150px}
 
 /* ---------- Tables ---------- */
 .panneau{background:var(--carte);border:1px solid var(--bord);border-radius:var(--rayon);box-shadow:var(--ombre);overflow:hidden}
