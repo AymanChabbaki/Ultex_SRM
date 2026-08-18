@@ -90,6 +90,33 @@ function codeExisteInDB(code, collectionData) {
   return false;
 }
 
+// Written server-side (not left to the frontend to remember) for every
+// route that touches something sensitive — login, OTP, and the elevation-
+// gated routes below all have full context here and can't be bypassed by
+// a client simply not calling a logging function. Never pass a password
+// or OTP code as `resultat`.
+async function ecrireJournalSecurite({ action, utilisateur, module, resultat, ip }) {
+  const t = new Date();
+  const entry = {
+    code: `SEC${Date.now()}${Math.floor(Math.random() * 1000)}`,
+    date: t.toLocaleDateString('fr-FR'),
+    heure: t.toLocaleTimeString('fr-FR'),
+    utilisateur: utilisateur || '—',
+    action,
+    module: module || '—',
+    resultat: resultat || '—',
+    ip: ip || '—',
+    ts: t.getTime()
+  };
+  try {
+    await prisma.collectionItem.create({
+      data: { collection: 'journalSecurite', id: entry.code, code: entry.code, data: entry }
+    });
+  } catch (e) {
+    console.error('Journal sécurité error:', e.message);
+  }
+}
+
 // Health Check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', database: 'PostgreSQL', timestamp: new Date() });

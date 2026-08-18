@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DBProvider, useDB } from './context/DBContext';
 import { ToastProvider } from './context/ToastContext';
+import { SecurityProvider } from './context/SecurityContext';
 import Layout from './components/layout/Layout';
 
 // Dashboard
@@ -204,7 +205,9 @@ export default function App() {
     <ToastProvider>
       <DBProvider>
         <AuthProvider>
-          <Router />
+          <SecurityProvider>
+            <Router />
+          </SecurityProvider>
         </AuthProvider>
       </DBProvider>
     </ToastProvider>

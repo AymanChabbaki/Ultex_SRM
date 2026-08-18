@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { baseVide, genCode as genCodeDb, audit as auditDb, notifier as notifierDb } from '../data/db';
+import { baseVide, genCode as genCodeDb, audit as auditDb, notifier as notifierDb, journaliserSecurite as journaliserSecuriteDb } from '../data/db';
 import { seedUsers } from '../data/permissions';
 import { checkBackendHealth, fetchDB, saveDBSync } from '../services/api';
 import { useToast } from './ToastContext';
@@ -99,6 +99,12 @@ export const DBProvider = ({ children }) => {
     commit(nDb);
   }, [userCourant, commit]);
 
+  const journalSecurite = useCallback((action, module, resultat) => {
+    const nDb = { ...dbRef.current };
+    journaliserSecuriteDb(nDb, action, userCourant, module, resultat);
+    commit(nDb);
+  }, [userCourant, commit]);
+
   const syncToPostgres = useCallback(async () => {
     try {
       await saveDBSync(dbRef.current);
@@ -111,7 +117,7 @@ export const DBProvider = ({ children }) => {
 
   return (
     <DBContext.Provider value={{
-      db, setDb, updateDB, genCode, audit, notifier,
+      db, setDb, updateDB, genCode, audit, notifier, journalSecurite,
       userCourant, setUserCourant, isPostgresConnected, syncToPostgres,
       dbLoading, chargerDonnees, viderDonnees
     }}>

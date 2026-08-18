@@ -18,7 +18,7 @@ export function baseVide() {
     controlesLimex: [], dossierControlesLimex: [], limexDiagnosticOumaima: [],
     limexPortesValidation: [], limexImportHistory: [],
     demandeLignes: [], demandeRoutages: [], objectifsData: [],
-    tacheEtapes: [], rapportsJournaliers: []
+    tacheEtapes: [], rapportsJournaliers: [], journalSecurite: []
   };
 }
 
@@ -111,6 +111,21 @@ export function notifier(DB, dest, texte, module, userCourant, genCodeFn) {
     date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
   });
   if (DB.notifs.length > 500) DB.notifs.length = 500;
+}
+
+// Separate from audit() by design: a security-relevant event (login,
+// OTP request/failure, role change...), not a business-data change. Only
+// ever pass metadata here — never the password or the OTP code itself.
+export function journaliserSecurite(DB, action, utilisateur, module, resultat, ip) {
+  const t = new Date();
+  if (!DB.journalSecurite) DB.journalSecurite = [];
+  DB.journalSecurite.unshift({
+    code: `SEC${Date.now()}${Math.floor(Math.random() * 1000)}`,
+    date: t.toLocaleDateString("fr-FR"), heure: t.toLocaleTimeString("fr-FR"),
+    utilisateur: utilisateur || "—", action, module: module || "—",
+    resultat: resultat || "—", ip: ip || "—", ts: t.getTime()
+  });
+  if (DB.journalSecurite.length > 20000) DB.journalSecurite.length = 20000;
 }
 
 export function nbNonLues(DB, destinataireEstMoiFn) {
