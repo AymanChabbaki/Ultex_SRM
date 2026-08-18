@@ -33,7 +33,7 @@ function lastOtpCode(logPath) {
   await page.locator('button:has-text("Envoyer le code")').click();
   await page.waitForTimeout(2000);
 
-  const code = lastOtpCode('C:\Users\ultex gm\Desktop\Ultex_SRM\server\server_dev.log');
+  const code = lastOtpCode('c:/Users/ultex gm/Desktop/Ultex_SRM/server/server_dev.log');
   console.log('Captured code:', code);
 
   await page.locator('input[placeholder="000000"]').fill(code);
