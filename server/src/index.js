@@ -56,7 +56,7 @@ function construireEmailOtp(code, action, demandeur) {
     <tr><td align="center">
       <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,20,60,0.08);">
         <tr>
-          <td style="background:#0159A3;padding:24px 32px;">
+          <td style="background:#ffffff;padding:24px 32px;border-bottom:1px solid #edf1f7;">
             <img src="cid:ubos-logo" alt="ULTEx" width="102" height="25" style="display:block;" />
           </td>
         </tr>
