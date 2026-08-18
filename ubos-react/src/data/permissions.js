@@ -75,7 +75,12 @@ export function seedUsers(DB) {
 export function migrerRoleZoubidaClosing(DB, auditFn = () => {}) {
     if (DB._migrationZoubidaClosingFaite) return false;
     const NOUVEAUX_MODULES = ["suivisClosing", "maJourneeClosing", "devisAControler", "coordinationMansouri", "monPortefeuilleClosing"];
-    const zoubida = (DB.utilisateurs || []).find(u => u.identifiant === "zoubida");
+    // Recherche par nom plutôt que par identifiant exact : le compte réel
+    // peut avoir été renommé/recodé en production (ex. identifiant "SATLI"
+    // pour "Zoubida Satli") depuis que le modèle de seed a été écrit.
+    const zoubida = (DB.utilisateurs || []).find(u =>
+        u.identifiant === "zoubida" || (u.nomComplet || "").toLowerCase().includes("zoubida")
+    );
     if (zoubida) {
         if (!(zoubida.services || []).includes("Closing")) {
             const avant = (zoubida.services || []).join(", ");
