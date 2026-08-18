@@ -86,11 +86,31 @@ export default function MesTaches({ user, isAdminView }) {
       </div>
       <div className="kanban">
         {COLONNES.map(col => (
-          <div key={col.id} className="kanban-colonne" onDragOver={e => e.preventDefault()} onDrop={() => handleDrop(col)}>
+          <div
+            key={col.id}
+            className="kanban-colonne"
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); handleDrop(col); }}
+          >
             <h4>{col.label} <span className="pill p-gris">{parColonne[col.id].length}</span></h4>
             {parColonne[col.id].map(t => (
-              <div key={t.code} className="kanban-carte" draggable={peut('modifier')} onDragStart={() => setDragCode(t.code)}>
-                <a href={`#ficheTache:${t.code}`}><b>{t.titre}</b></a>
+              <div
+                key={t.code}
+                className="kanban-carte"
+                draggable={peut('modifier')}
+                onDragStart={e => {
+                  // Firefox aborts the drag entirely if dataTransfer carries
+                  // no data — Chrome is lenient about this but Firefox isn't.
+                  e.dataTransfer.setData('text/plain', t.code);
+                  e.dataTransfer.effectAllowed = 'move';
+                  setDragCode(t.code);
+                }}
+                onDragEnd={() => setDragCode(null)}
+              >
+                {/* draggable=false: without it the link itself grabs the
+                    native browser drag gesture (dragging a URL) instead of
+                    the card, so dropping on a column never fires. */}
+                <a href={`#ficheTache:${t.code}`} draggable={false}><b>{t.titre}</b></a>
                 <div className="qui">{t.code} · {t.echeance || 'sans échéance'}</div>
                 {pill(t.priorite || 'Normale', PRIORITE_PILL(t.priorite))}
               </div>
