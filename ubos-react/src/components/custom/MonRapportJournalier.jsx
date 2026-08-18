@@ -4,6 +4,7 @@ import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import { tachesDeUtilisateur, STATUTS_TERMINES } from '../../utils/tachesPilotage';
 import { clientsDeAgent } from '../../utils/dataPipeline';
+import { suivisDeCoordinateur, estSuiviOuvert, calculerObjectifsClosingJour } from '../../utils/closingCoordination';
 
 const VIDE = { faitsImportants: '', problemes: '', besoins: '', prioriteDemain: '' };
 
