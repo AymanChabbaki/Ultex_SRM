@@ -2,12 +2,14 @@ import React, { useState, useMemo } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useSecurity } from '../../context/SecurityContext';
 import Topbar from '../layout/Topbar';
 import ModuleForm from './ModuleForm';
 import { MODS as MODS_DATA } from '../../data/modules';
 import { exporterExcel } from '../../utils/export';
 import { DownloadIcon } from '../common/Icons';
 import * as Actions from '../../utils/businessActions';
+import { supprimerEnregistrementSecurise } from '../../services/security';
 
 const PERMISSION_REQUISE = {
   qualifierLead: 'valider',
@@ -21,6 +23,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
   const { db, updateDB, audit, genCode, sauver, notifier, userCourant } = useDB();
   const { peut, moduleVisible } = useAuth();
   const { toast } = useToast();
+  const { demanderElevation } = useSecurity();
   
   const [recherche, setRecherche] = useState('');
   const [filtreStatut, setFiltreStatut] = useState('');
@@ -66,12 +69,15 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
     );
   }
 
-  const supprimer = (code) => {
+  const supprimer = async (code) => {
     if (!peut("supprimer")) {
       toast("Permission de suppression refusée.");
       return;
     }
-    if (window.confirm(`Supprimer ${code} ?\nL'action restera visible dans le journal d'audit.`)) {
+    if (!window.confirm(`Supprimer ${code} ?\nL'action restera visible dans le journal d'audit.\nUn code de sécurité vous sera demandé.`)) return;
+    try {
+      const elevationToken = await demanderElevation(`Suppression : ${M.label} ${code}`);
+      await supprimerEnregistrementSecurise(M.coll, code, elevationToken);
       const collection = db[M.coll] || [];
       const obj = collection.find(x => x.code === code);
       const nextCollection = collection.filter(x => x.code !== code);
@@ -79,6 +85,8 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
       updateDB(nextDb);
       audit(M.label, "Suppression", code, "—", "—", JSON.stringify(obj || {}));
       toast(`${code} supprimé`);
+    } catch (e) {
+      if (e && e.message !== 'Vérification annulée.') toast(e.message || "Échec de la suppression.");
     }
   };
 

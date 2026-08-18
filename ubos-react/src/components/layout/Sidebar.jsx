@@ -2,16 +2,19 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useDB } from '../../context/DBContext';
 import { useToast } from '../../context/ToastContext';
+import { useSecurity } from '../../context/SecurityContext';
 import { destinataireEstMoi } from '../../data/permissions';
 import { MODS, ORDRE_NAV } from '../../data/modules';
 import Logo from '../common/Logo';
 import { DownloadIcon, UploadIcon } from '../common/Icons';
 import { useSidebar } from './Layout';
+import { restaurerSecurise } from '../../services/security';
 
 const Sidebar = ({ ouvert }) => {
   const { moduleVisible, session } = useAuth();
-  const { db, updateDB } = useDB();
+  const { db } = useDB();
   const { toast } = useToast();
+  const { demanderElevation } = useSecurity();
   const sidebarCtx = useSidebar();
   const isCollapsed = sidebarCtx?.collapsed;
 
@@ -31,13 +34,20 @@ const Sidebar = ({ ouvert }) => {
     return (db?.notifs || []).filter(n => !n.lu && destinataireEstMoi(session, n)).length;
   };
 
-  const exporterJSON = () => {
+  // A full data export is exactly the "sauvegarde complète" the security
+  // spec asks to gate — OTP-confirmed before the download starts.
+  const exporterJSON = async () => {
     if (!db) return;
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
-    const a = document.createElement('a');
-    a.href = dataStr;
-    a.download = `UBOS_Backup_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
+    try {
+      await demanderElevation('Sauvegarde complète (export JSON)');
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+      const a = document.createElement('a');
+      a.href = dataStr;
+      a.download = `UBOS_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+    } catch (e) {
+      if (e && e.message !== 'Vérification annulée.') toast(e.message || "Échec de la vérification de sécurité.");
+    }
   };
 
   const importerJSON = (e) => {
@@ -47,15 +57,17 @@ const Sidebar = ({ ouvert }) => {
     reader.onload = async (ev) => {
       try {
         const data = JSON.parse(ev.target.result);
-        if (window.confirm('Restaurer va écraser les données actuelles. Continuer ?')) {
-          // Wait for PostgreSQL to actually confirm the restore before
-          // reloading — there's no local cache to fall back to anymore,
-          // so reloading too early would just re-fetch the pre-restore data.
-          await updateDB(data);
-          window.location.reload();
-        }
+        if (!window.confirm('Restaurer va écraser les données actuelles. Un code de sécurité vous sera demandé. Continuer ?')) return;
+        const elevationToken = await demanderElevation('Restauration complète (import JSON)');
+        // Restore goes through the OTP-gated route (writes straight to
+        // PostgreSQL) — then reload so the app re-fetches the now-restored
+        // state via the normal auth rehydration path, instead of trusting
+        // a local copy of the just-uploaded file.
+        await restaurerSecurise(data, elevationToken);
+        window.location.reload();
       } catch (err) {
-        toast("Fichier JSON invalide.");
+        if (err && err.message === 'Vérification annulée.') return;
+        toast(err.message || "Fichier JSON invalide ou restauration refusée.");
       }
     };
     reader.readAsText(file);

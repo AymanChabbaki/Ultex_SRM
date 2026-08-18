@@ -19,7 +19,7 @@ import {
   PackageSearch, Calculator, FileSignature, Wallet, ClipboardCheck, Ship, Scale, Award,
   Anchor, Truck, Landmark, AlertTriangle, Receipt, Handshake, Factory, Flag, Warehouse,
   Package, FolderOpen, ClipboardList, CheckSquare, Bell, Mail, CalendarDays, Gauge,
-  FileBarChart, FileBarChart2, Users, TrendingUp, UploadCloud, ShieldAlert, History
+  FileBarChart, FileBarChart2, Users, TrendingUp, UploadCloud, ShieldAlert, History, KeyRound
 } from 'lucide-react';
 
 export const MODS = {
@@ -771,12 +771,13 @@ mesObjectifs:{label:"Mes objectifs", ic:Gauge, grp:"Mon espace"},
 monRapportJournalier:{label:"Mon rapport du jour", ic:FileBarChart2, grp:"Mon espace"},
 pilotageEquipe:{label:"Pilotage équipe", ic:Users, grp:"Pilotage"},
 quiFaitQuoi:{label:"Qui fait quoi ?", ic:ClipboardCheck, grp:"Pilotage"},
-ajouterTache:{label:"Ajouter une tâche", ic:ClipboardEdit, grp:"Pilotage"}
+ajouterTache:{label:"Ajouter une tâche", ic:ClipboardEdit, grp:"Pilotage"},
+journalSecurite:{label:"Journal de sécurité", ic:KeyRound, grp:"Pilotage"}
 };
 
 export const ORDRE_NAV = [
  ["Mon espace",["dashboard","tableauBordData","monProgramme","mesTaches","mesObjectifs","monRapportJournalier","monAgenda","notifications","monProfil"]],
- ["Pilotage",["pilotageEquipe","quiFaitQuoi","ajouterTache","rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal"]],
+ ["Pilotage",["pilotageEquipe","quiFaitQuoi","ajouterTache","rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal","journalSecurite"]],
  ["Commercial",["clients","contacts","demandes","commandes","dossiers","offres","reclamations"]],
  ["Études",["sourcings","etudes"]],
  ["LIMEX",["dashboardLimex","arrivages","rapportLimexDirection"]],

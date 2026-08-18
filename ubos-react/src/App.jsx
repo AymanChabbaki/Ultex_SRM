@@ -43,6 +43,7 @@ import PilotageEquipe from './components/custom/PilotageEquipe';
 import QuiFaitQuoi from './components/custom/QuiFaitQuoi';
 import AjouterTache from './components/custom/AjouterTache';
 import MonProfil from './components/custom/MonProfil';
+import JournalSecurite from './components/custom/JournalSecurite';
 
 // Generic
 import GenericModule from './components/modules/GenericModule';
@@ -158,6 +159,7 @@ const Router = () => {
       case 'monProfil': return <MonProfil />;
       case 'pilotageEquipe': return <PilotageEquipe />;
       case 'quiFaitQuoi': return <QuiFaitQuoi />;
+      case 'journalSecurite': return <JournalSecurite />;
       case 'ajouterTache': return <AjouterTache />;
       case 'ficheTache': return <FicheTache codeProp={params} code={params} />;
       case 'ficheClient': return <FicheClient codeProp={params} code={params} />;

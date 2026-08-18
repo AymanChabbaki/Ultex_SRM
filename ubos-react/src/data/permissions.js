@@ -29,7 +29,7 @@ export function peut(session, action) {
 }
 
 const MODULES_LIBRES = ["dashboard", "monAgenda", "notifications", "rapports", "monProgramme", "mesTaches", "mesObjectifs", "monRapportJournalier", "monProfil"];
-const MODULES_DIRECTION = ["auditGlobal", "utilisateurs", "rapportDirection", "performance", "importCentre", "risquesClients", "objectifsData", "pilotageEquipe", "quiFaitQuoi", "ajouterTache"];
+const MODULES_DIRECTION = ["auditGlobal", "utilisateurs", "rapportDirection", "performance", "importCentre", "risquesClients", "objectifsData", "pilotageEquipe", "quiFaitQuoi", "ajouterTache", "journalSecurite"];
 
 export function moduleVisible(session, id) {
     if (!session) return false;

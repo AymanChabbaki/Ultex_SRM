@@ -40,15 +40,85 @@ const mailTransporter = (process.env.SMTP_HOST && process.env.SMTP_USER && proce
     })
   : null;
 
+// Base64 of ubos-react/public/logo.svg, baked in so email sending doesn't
+// depend on a filesystem path that may differ across deploy contexts
+// (Docker image, dev machine, etc).
+const LOGO_SVG_BASE64 = 'PHN2ZyB3aWR0aD0iMTAyIiBoZWlnaHQ9IjI1IiB2aWV3Qm94PSIwIDAgMTAyIDI1IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8cGF0aCBkPSJNMjkuMDA2OCAyNC45NDM4QzI3LjUxODcgMjQuOTQzOCAyNi4yNjY4IDI0LjQyNDEgMjUuMzQ1NiAyMy40NzkzQzI0LjUxODggMjIuNjA1MyAyNC4wNDY0IDIxLjQwMDYgMjQuMDQ2NCAyMC4xNzIzVjIuOTA1MjdIMjguNjA1M1YxOS4xMDk0QzI4LjYwNTMgMTkuNTgxOCAyOC43MjM0IDIwLjAwNyAyOC45MzYgMjAuMzM3N0MyOS4wMDY4IDIwLjQzMjEgMjkuMDMwNSAyMC40Nzk0IDI5LjA1NDEgMjAuNTAzQzI5LjQwODQgMjAuOTUxOCAyOS45NzUzIDIxLjE4OCAzMC42MTMxIDIxLjE4OEg0MS4yNDI2VjI0LjkyMDJIMjkuMDA2OFYyNC45NDM4WiIgZmlsbD0iIzAxNTlBMyIvPgo8cGF0aCBkPSJNNTAuMzM2NiAxMi4wNDY5SDQ1Ljc3NzhWMjQuOTQ0SDUwLjMzNjZWMTIuMDQ2OVoiIGZpbGw9IiMwMTU5QTMiLz4KPHBhdGggZD0iTTU3Ljc3NzQgMi45MjkySDM4LjMxMzZWNi42NjEzNEg1Ny43Nzc0VjIuOTI5MloiIGZpbGw9IiNGRkM5MEQiLz4KPHBhdGggZD0iTTc5LjU1NiAyLjkyOTJINjIuMTIzNlY2LjY2MTM0SDc5LjU1NlYyLjkyOTJaIiBmaWxsPSIjRkZDOTBEIi8+CjxwYXRoIGQ9Ik02Ny4wODQgMjQuOTQ0QzY1LjU5NTkgMjQuOTQ0IDY0LjM0NCAyNC40MjQzIDYzLjQyMjggMjMuNDc5NUM2Mi41OTYgMjIuNjA1NSA2Mi4xMjM2IDIxLjQwMDggNjIuMTIzNiAyMC4xNzI1VjEyLjA0NjlINzguOTY1NVYxNS44MjYzSDY2LjY4MjVWMTkuMTA5NkM2Ni42ODI1IDE5LjcyMzcgNjYuODcxNCAyMC4yNDM0IDY3LjIyNTggMjAuNjIxM0M2Ny41ODAxIDIwLjk5OTMgNjguMDc2MSAyMS4yMTE5IDY4LjY5MDMgMjEuMjExOUg3OS4zNjdWMjQuOTQ0SDY3LjA4NFoiIGZpbGw9IiNGRkM5MEQiLz4KPHBhdGggZD0iTTk2LjMyNyAyNC45NDQxTDkyLjU5NDkgMTkuOTYwMUw4OC44NjI3IDI0Ljk0NDFIODMuNzM2OUw5MC4wNDM4IDE2LjUxMTRMODQuMjA5NCA4Ljc2MzY3SDg5LjMzNTFMOTIuNTk0OSAxMy4wODYzTDk1LjgzMDkgOC43NjM2N0gxMDAuOTU3TDk1LjE0NTkgMTYuNTExNEwxMDEuNSAyNC45NDQxSDk2LjMyN1oiIGZpbGw9IiNGRkM5MEQiLz4KPHBhdGggZD0iTTYuMzc3NyAyNC45NDM5QzQuNjc2OTggMjQuOTQzOSAzLjA3MDc1IDI0LjI4MjUgMS44NjYwNyAyMy4wNzc4QzAuNjYxMzkyIDIxLjg3MzIgMCAyMC4yNjY5IDAgMTguNTY2MlYyLjkyOTAySDQuODQyMzNWMTUuNDI0NkgxLjQ2NDUxTDguOTI4NzggMjIuODg4OUwxNi4zOTMxIDE1LjQyNDZIMTMuMDE1MlY1LjEyNTc4SDEwLjEzMzVMMTUuMjU5MiAwTDIwLjM4NSA1LjEyNTc4SDE3LjgzMzlWMTguNTY2MkMxNy44MzM5IDIwLjI2NjkgMTcuMTcyNiAyMS44NzMyIDE1Ljk2NzkgMjMuMDc3OEMxNC43NjMyIDI0LjI4MjUgMTMuMTU3IDI0Ljk0MzkgMTEuNDU2MiAyNC45NDM5SDYuMzc3N1oiIGZpbGw9IiMwMTU5QTMiLz4KPHBhdGggZD0iTTEzLjAxNTQgNS4xMDIwNUgxNS44MDI2QzE1LjM3NzUgNi4zMzAzNSAxNC43NjMzIDguMTk2NDIgMTQuMTQ5MiAxMC40NjRDMTMuNzAwNCAxMi4xMTc1IDEzLjMyMjQgMTMuNzcxIDEyLjk5MTcgMTUuNDAwOVY1LjEwMjA1SDEzLjAxNTRaIiBmaWxsPSIjMDA0NDcyIi8+CjxwYXRoIGQ9Ik00NS43Nzc4IDEyLjA0NjlINDguMDY5TDQ1Ljc3NzggMjQuOTQ0VjEyLjA0NjlaIiBmaWxsPSIjMDA0NDcyIi8+CjxwYXRoIGQ9Ik0yNC4wMjI2IDIuOTI5MkgyNS45MTIzTDI0LjAyMjYgMTkuMTU2OVYyLjkyOTJaIiBmaWxsPSIjMDA0NDcyIi8+Cjwvc3ZnPgo=';
+
+function construireEmailOtp(code, action, demandeur) {
+  const chiffres = String(code).split('');
+  const sujet = `${code} — Code de sécurité UBOS (${action})`;
+  const texte = `Code de vérification : ${code}\nAction demandée : ${action}\nDemandé par : ${demandeur}\nCe code expire dans 5 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.`;
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<body style="margin:0;padding:0;background:#eef1f5;font-family:'Segoe UI',Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f5;padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,20,60,0.08);">
+        <tr>
+          <td style="background:#0159A3;padding:24px 32px;">
+            <img src="cid:ubos-logo" alt="ULTEx" width="102" height="25" style="display:block;" />
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px 32px 8px 32px;">
+            <p style="margin:0 0 4px 0;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#0159A3;font-weight:700;">Code de sécurité</p>
+            <h1 style="margin:0 0 18px 0;font-size:20px;color:#0f1e33;">Validation d'une action sensible</h1>
+            <p style="margin:0 0 4px 0;font-size:14px;color:#4a5568;">Action demandée</p>
+            <p style="margin:0 0 18px 0;font-size:15px;color:#0f1e33;font-weight:600;">${action}</p>
+            <p style="margin:0 0 4px 0;font-size:14px;color:#4a5568;">Demandé par</p>
+            <p style="margin:0 0 24px 0;font-size:15px;color:#0f1e33;font-weight:600;">${demandeur}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 32px 24px 32px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;">
+              <tr>${chiffres.map(c => `<td style="width:16.66%;padding:0 4px;"><div style="background:#f3f6fb;border:1px solid #dbe4f0;border-radius:8px;text-align:center;padding:14px 0;font-size:26px;font-weight:700;color:#0159A3;letter-spacing:.02em;">${c}</div></td>`).join('')}</tr>
+            </table>
+            <p style="margin:16px 0 0 0;font-size:13px;color:#8a94a6;">Ce code expire dans <strong style="color:#4a5568;">5 minutes</strong> et ne peut être utilisé qu'une seule fois.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 32px 28px 32px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#fff8e6;border-left:3px solid #FFC90D;border-radius:6px;">
+              <tr><td style="padding:12px 14px;font-size:13px;color:#6b5b0d;">Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail — aucune action ne sera effectuée sans ce code.</td></tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:18px 32px;background:#f7f9fc;border-top:1px solid #edf1f7;">
+            <p style="margin:0;font-size:12px;color:#a0aab8;">UBOS — Plateforme interne ULTEx · Notification automatique, ne pas répondre.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+  return { sujet, texte, html };
+}
+
 async function envoyerOtpParEmail(code, action, demandeur) {
-  const sujet = `UBOS — Code de sécurité (${action})`;
-  const corps = `Code de vérification : ${code}\nAction demandée : ${action}\nDemandé par : ${demandeur}\nCe code expire dans 5 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.`;
+  const { sujet, texte, html } = construireEmailOtp(code, action, demandeur);
   if (!mailTransporter) {
     console.warn(`⚠️ SMTP non configuré — code OTP (${action}, demandé par ${demandeur}) : ${code}`);
     return;
   }
   try {
-    await mailTransporter.sendMail({ from: process.env.SMTP_USER, to: SECURITY_EMAIL, subject: sujet, text: corps });
+    await mailTransporter.sendMail({
+      from: `"UBOS — Sécurité ULTEx" <${process.env.SMTP_USER}>`,
+      to: SECURITY_EMAIL,
+      subject: sujet,
+      text: texte,
+      html,
+      attachments: [{
+        filename: 'logo.svg',
+        content: LOGO_SVG_BASE64,
+        encoding: 'base64',
+        cid: 'ubos-logo',
+        contentType: 'image/svg+xml'
+      }]
+    });
   } catch (e) {
     console.error('⚠️ Échec envoi e-mail OTP:', e.message);
     console.warn(`Code OTP (${action}, demandé par ${demandeur}) : ${code}`);
@@ -177,6 +247,7 @@ app.post('/api/auth/login', async (req, res) => {
     });
 
     if (!user) {
+      await ecrireJournalSecurite({ action: 'Connexion', utilisateur: identifiant, module: 'Sécurité', resultat: 'Échec — identifiant inconnu', ip: req.ip });
       return res.status(401).json({ error: 'Identifiant ou mot de passe incorrect' });
     }
 
@@ -190,8 +261,11 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     if (!motDePasseValide) {
+      await ecrireJournalSecurite({ action: 'Connexion', utilisateur: user.nomComplet || identifiant, module: 'Sécurité', resultat: 'Échec — mot de passe incorrect', ip: req.ip });
       return res.status(401).json({ error: 'Identifiant ou mot de passe incorrect' });
     }
+
+    await ecrireJournalSecurite({ action: 'Connexion', utilisateur: user.nomComplet || identifiant, module: 'Sécurité', resultat: 'Réussie', ip: req.ip });
 
     const token = jwt.sign(
       { id: user.id, identifiant: user.identifiant, role: user.role, nomComplet: user.nomComplet },
@@ -263,6 +337,7 @@ app.post('/api/security/otp/request', authMiddleware, async (req, res) => {
     const expiresAt = new Date(Date.now() + OTP_TTL_MS);
     await prisma.otpCode.create({ data: { codeHash, requestedBy: req.auth.id, action, expiresAt } });
     await envoyerOtpParEmail(code, action, req.auth.identifiant || req.auth.nomComplet || req.auth.id);
+    await ecrireJournalSecurite({ action: `Demande de code OTP (${action})`, utilisateur: req.auth.nomComplet || req.auth.identifiant, module: 'Sécurité', resultat: 'Code envoyé', ip: req.ip });
     res.json({ status: 'sent', expiresInSeconds: OTP_TTL_MS / 1000 });
   } catch (error) {
     console.error('OTP request error:', error);
@@ -289,11 +364,13 @@ app.post('/api/security/otp/verify', authMiddleware, async (req, res) => {
     if (!valide) {
       const attempts = otp.attempts + 1;
       await prisma.otpCode.update({ where: { id: otp.id }, data: { attempts } });
+      await ecrireJournalSecurite({ action: `Vérification code OTP (${otp.action})`, utilisateur: req.auth.nomComplet || req.auth.identifiant, module: 'Sécurité', resultat: `Échec — code incorrect (tentative ${attempts}/${OTP_MAX_ATTEMPTS})`, ip: req.ip });
       return res.status(400).json({ error: 'Code incorrect', tentativesRestantes: OTP_MAX_ATTEMPTS - attempts });
     }
 
     await prisma.otpCode.update({ where: { id: otp.id }, data: { used: true } });
     const elevationToken = jwt.sign({ id: req.auth.id, elevated: true }, ELEVATION_SECRET, { expiresIn: ELEVATION_TTL_SECONDS });
+    await ecrireJournalSecurite({ action: `Vérification code OTP (${otp.action})`, utilisateur: req.auth.nomComplet || req.auth.identifiant, module: 'Sécurité', resultat: 'Réussie — session sécurisée ouverte (15 min)', ip: req.ip });
     res.json({ elevationToken, expiresInSeconds: ELEVATION_TTL_SECONDS });
   } catch (error) {
     console.error('OTP verify error:', error);
@@ -527,6 +604,20 @@ async function synchroniserEtatComplet(fullState) {
 
 }
 
+// Direction security alert — reuses the same NotificationItem table the
+// rest of the app already writes to, so it shows up in the normal
+// notification center without a parallel delivery mechanism.
+async function alerterDirection(texte) {
+  try {
+    const code = `NTF${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    await prisma.notificationItem.create({
+      data: { code, dest: 'Direction', de: 'Sécurité', texte, module: 'Sécurité', lu: false, ts: BigInt(Date.now()), date: new Date().toLocaleDateString('fr-FR') + ' ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) }
+    });
+  } catch (e) {
+    console.error('Alerte Direction error:', e.message);
+  }
+}
+
 // Full Batch Sync (saves/replaces full state or incremental updates)
 app.post('/api/db/sync', authMiddleware, async (req, res) => {
   const fullState = req.body;
@@ -548,9 +639,13 @@ app.post('/api/security/restore', authMiddleware, requireElevation, async (req, 
   if (!fullState) return res.status(400).json({ error: 'Données invalides' });
   try {
     await synchroniserEtatComplet(fullState);
+    const auteur = req.auth.nomComplet || req.auth.identifiant;
+    await ecrireJournalSecurite({ action: 'Restauration complète', utilisateur: auteur, module: 'Sécurité', resultat: 'Réussie', ip: req.ip });
+    await alerterDirection(`${auteur} a restauré une sauvegarde complète de la base UBOS.`);
     res.json({ status: 'success', message: 'Restauration effectuée' });
   } catch (error) {
     console.error('Secure restore error:', error);
+    await ecrireJournalSecurite({ action: 'Restauration complète', utilisateur: req.auth.nomComplet || req.auth.identifiant, module: 'Sécurité', resultat: `Échec — ${error.message}`, ip: req.ip });
     res.status(500).json({ error: 'Erreur lors de la restauration' });
   }
 });
@@ -562,9 +657,13 @@ app.delete('/api/security/records/:collection/:code', authMiddleware, requireEle
   if (!COLLS.includes(collection)) return res.status(400).json({ error: 'Collection inconnue' });
   try {
     const deleted = await prisma.collectionItem.deleteMany({ where: { collection, code } });
+    const auteur = req.auth.nomComplet || req.auth.identifiant;
+    await ecrireJournalSecurite({ action: 'Suppression', utilisateur: auteur, module: collection, resultat: `${code} — ${deleted.count} enregistrement(s) supprimé(s)`, ip: req.ip });
+    await alerterDirection(`${auteur} a supprimé l'enregistrement ${code} (${collection}).`);
     res.json({ status: 'deleted', count: deleted.count });
   } catch (error) {
     console.error('Secure delete error:', error);
+    await ecrireJournalSecurite({ action: 'Suppression', utilisateur: req.auth.nomComplet || req.auth.identifiant, module: collection, resultat: `Échec — ${error.message}`, ip: req.ip });
     res.status(500).json({ error: 'Erreur lors de la suppression' });
   }
 });
@@ -600,9 +699,13 @@ app.post('/api/security/users', authMiddleware, requireElevation, async (req, re
   try {
     const data = construireDonneesUtilisateur(req.body || {}, null);
     const user = await prisma.user.create({ data });
+    const auteur = req.auth.nomComplet || req.auth.identifiant;
+    await ecrireJournalSecurite({ action: 'Création utilisateur', utilisateur: auteur, module: 'Utilisateurs', resultat: `${user.nomComplet} (${user.code}) — rôle ${user.role}`, ip: req.ip });
+    await alerterDirection(`${auteur} a créé le compte ${user.nomComplet}.`);
     res.json({ status: 'created', user: { id: user.id, code: user.code } });
   } catch (error) {
     console.error('Secure user create error:', error);
+    await ecrireJournalSecurite({ action: 'Création utilisateur', utilisateur: req.auth.nomComplet || req.auth.identifiant, module: 'Utilisateurs', resultat: `Échec — ${error.message}`, ip: req.ip });
     res.status(500).json({ error: "Erreur lors de la création de l'utilisateur" });
   }
 });
@@ -614,9 +717,17 @@ app.patch('/api/security/users/:id', authMiddleware, requireElevation, async (re
     const merged = { ...existing, ...req.body, code: existing.code };
     const data = construireDonneesUtilisateur(merged, existing);
     const user = await prisma.user.update({ where: { id: existing.id }, data });
+    const auteur = req.auth.nomComplet || req.auth.identifiant;
+    const changements = [];
+    if (existing.role !== data.role) changements.push(`rôle ${existing.role} → ${data.role}`);
+    if (existing.actif !== data.actif) changements.push(data.actif ? 'réactivé' : 'désactivé');
+    if (req.body && req.body.motDePasse) changements.push('mot de passe réinitialisé');
+    await ecrireJournalSecurite({ action: 'Modification utilisateur', utilisateur: auteur, module: 'Utilisateurs', resultat: `${user.nomComplet} (${user.code})${changements.length ? ' — ' + changements.join(', ') : ''}`, ip: req.ip });
+    if (changements.length) await alerterDirection(`${auteur} a modifié le compte ${user.nomComplet} (${changements.join(', ')}).`);
     res.json({ status: 'updated', user: { id: user.id, code: user.code } });
   } catch (error) {
     console.error('Secure user update error:', error);
+    await ecrireJournalSecurite({ action: 'Modification utilisateur', utilisateur: req.auth.nomComplet || req.auth.identifiant, module: 'Utilisateurs', resultat: `Échec — ${error.message}`, ip: req.ip });
     res.status(500).json({ error: "Erreur lors de la mise à jour de l'utilisateur" });
   }
 });
