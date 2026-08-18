@@ -85,3 +85,21 @@ model NotificationItem {
   @@index([dest, lu])
   @@map("notification_items")
 }
+
+// Deliberately NOT part of the generic CollectionItem model and never
+// exposed through /api/db — an OTP code (even hashed) has no business
+// being in the full-state dump every authenticated client can fetch.
+// Queried only by the dedicated /api/security/otp/* routes.
+model OtpCode {
+  id          String   @id @default(uuid())
+  codeHash    String
+  requestedBy String
+  action      String
+  used        Boolean  @default(false)
+  attempts    Int      @default(0)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([requestedBy])
+  @@map("otp_codes")
+}
