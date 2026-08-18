@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useSecurity } from '../../context/SecurityContext';
 import Topbar from '../layout/Topbar';
 import Modal from '../common/Modal';
 import { MODS } from '../../data/modules';
@@ -9,6 +10,7 @@ import { USERS } from '../../data/constants';
 import { pill, esc } from '../../utils/format';
 import { hashPassword } from '../../utils/passwordHash';
 import { EyeIcon, EyeOffIcon } from '../common/Icons';
+import { creerUtilisateurSecurise, modifierUtilisateurSecurise } from '../../services/security';
 
 const DEPARTEMENTS = ["Direction", "Commercial", "Études Commerciales", "Opérations Internationales", "Digital", "Administration"];
 const ACTIONS_PERM = ["voir", "ajouter", "modifier", "supprimer", "valider", "exporter"];
@@ -17,6 +19,7 @@ export default function Utilisateurs() {
   const { db, updateDB, genCode, audit, notifier } = useDB();
   const { estDirection, session } = useAuth();
   const { toast } = useToast();
+  const { demanderElevation } = useSecurity();
 
   const [showModal, setShowModal] = useState(false);
   const [editingCode, setEditingCode] = useState(null);
@@ -73,7 +76,7 @@ export default function Utilisateurs() {
     setShowModal(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const nom = formData.nomComplet.trim();
     const id = formData.identifiant.trim();
     const mdp = formData.motDePasse.trim();
@@ -88,6 +91,11 @@ export default function Utilisateurs() {
       return;
     }
 
+    if (!editingCode && !mdp) {
+      toast("Mot de passe obligatoire à la création.");
+      return;
+    }
+
     const nextUsers = [...utilisateurs];
     // Collected here and fired AFTER updateDB() below — audit()/notifier()
     // schedule a state update that resolves relative to whatever updateDB()
@@ -95,43 +103,61 @@ export default function Utilisateurs() {
     // be discarded by React's batching.
     let apresEnregistrement = null;
 
-    if (editingCode) {
-      const idx = nextUsers.findIndex(x => x.code === editingCode);
-      if (idx > -1) {
-        const u = { ...nextUsers[idx] };
-        u.nomComplet = nom;
-        u.identifiant = id;
-        u.poste = formData.poste;
-        u.departement = formData.departement;
-        u.actif = formData.actif;
-        u.services = formData.services;
-        u.modules = formData.modules;
-        u.permissions = formData.permissions;
+    try {
+      if (editingCode) {
+        const idx = nextUsers.findIndex(x => x.code === editingCode);
+        if (idx > -1) {
+          const existant = nextUsers[idx];
+          const u = { ...existant };
+          u.nomComplet = nom;
+          u.identifiant = id;
+          u.poste = formData.poste;
+          u.departement = formData.departement;
+          u.actif = formData.actif;
+          u.services = formData.services;
+          u.modules = formData.modules;
+          u.permissions = formData.permissions;
+          if (mdp) u.motDePasse = hashPassword(mdp);
 
-        if (mdp) u.motDePasse = hashPassword(mdp);
-        nextUsers[idx] = u;
-        apresEnregistrement = { type: 'edit', code: u.code, nom, id, nomComplet: u.nomComplet, mdpChange: !!mdp };
+          const elevationToken = await demanderElevation(`Modification utilisateur : ${nom}`);
+          // Full flat snapshot, not just the changed fields — the secure
+          // route merges onto the raw Postgres user record, which doesn't
+          // carry poste/departement/services/modules at the top level, so
+          // a partial patch would silently blank them out there.
+          await modifierUtilisateurSecurise(existant.id, {
+            identifiant: u.identifiant, nomComplet: u.nomComplet, poste: u.poste,
+            departement: u.departement, actif: u.actif, services: u.services,
+            modules: u.modules, permissions: u.permissions,
+            ...(mdp ? { motDePasse: u.motDePasse } : {})
+          }, elevationToken);
+
+          nextUsers[idx] = u;
+          apresEnregistrement = { type: 'edit', code: u.code, nom, id, nomComplet: u.nomComplet, mdpChange: !!mdp };
+        }
+      } else {
+        const u = {
+          code: genCode("USR"),
+          nomComplet: nom,
+          identifiant: id,
+          motDePasse: hashPassword(mdp),
+          poste: formData.poste,
+          departement: formData.departement,
+          services: formData.services,
+          modules: formData.modules,
+          permissions: formData.permissions,
+          actif: formData.actif,
+          ts: Date.now()
+        };
+
+        const elevationToken = await demanderElevation(`Création utilisateur : ${nom}`);
+        await creerUtilisateurSecurise(u, elevationToken);
+
+        nextUsers.push(u);
+        apresEnregistrement = { type: 'create', code: u.code, nom, id };
       }
-    } else {
-      if (!mdp) {
-        toast("Mot de passe obligatoire à la création.");
-        return;
-      }
-      const u = {
-        code: genCode("USR"),
-        nomComplet: nom,
-        identifiant: id,
-        motDePasse: hashPassword(mdp),
-        poste: formData.poste,
-        departement: formData.departement,
-        services: formData.services,
-        modules: formData.modules,
-        permissions: formData.permissions,
-        actif: formData.actif,
-        ts: Date.now()
-      };
-      nextUsers.push(u);
-      apresEnregistrement = { type: 'create', code: u.code, nom, id };
+    } catch (e) {
+      if (e && e.message !== 'Vérification annulée.') toast(e.message || "Échec de la vérification de sécurité.");
+      return;
     }
 
     updateDB({ ...db, utilisateurs: nextUsers });
@@ -150,7 +176,18 @@ export default function Utilisateurs() {
     setShowModal(false);
   };
 
-  const handleToggleActif = (u) => {
+  const handleToggleActif = async (u) => {
+    try {
+      const elevationToken = await demanderElevation(`${u.actif ? 'Désactivation' : 'Réactivation'} utilisateur : ${u.nomComplet}`);
+      await modifierUtilisateurSecurise(u.id, {
+        identifiant: u.identifiant, nomComplet: u.nomComplet, poste: u.poste,
+        departement: u.departement, services: u.services, modules: u.modules,
+        permissions: u.permissions, actif: !u.actif
+      }, elevationToken);
+    } catch (e) {
+      if (e && e.message !== 'Vérification annulée.') toast(e.message || "Échec de la vérification de sécurité.");
+      return;
+    }
     const nextUsers = utilisateurs.map(x => {
       if (x.code === u.code) {
         return { ...x, actif: !x.actif };
