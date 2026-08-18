@@ -336,7 +336,6 @@ app.post('/api/security/otp/request', authMiddleware, async (req, res) => {
     const codeHash = bcrypt.hashSync(code, 10);
     const expiresAt = new Date(Date.now() + OTP_TTL_MS);
     await prisma.otpCode.create({ data: { codeHash, requestedBy: req.auth.id, action, expiresAt } });
-    console.log('[TEMP TEST ONLY — REMOVE]', code);
     await envoyerOtpParEmail(code, action, req.auth.identifiant || req.auth.nomComplet || req.auth.id);
     await ecrireJournalSecurite({ action: `Demande de code OTP (${action})`, utilisateur: req.auth.nomComplet || req.auth.identifiant, module: 'Sécurité', resultat: 'Code envoyé', ip: req.ip });
     res.json({ status: 'sent', expiresInSeconds: OTP_TTL_MS / 1000 });
