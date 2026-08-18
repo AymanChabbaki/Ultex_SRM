@@ -443,10 +443,12 @@ td .acts{display:flex;gap:6px;flex-wrap:wrap}
 .spinner{width:28px;height:28px;border:3px solid var(--bord);border-top-color:var(--vert);border-radius:50%;animation:spin .8s linear infinite}
 
 .kanban{display:grid;grid-template-columns:repeat(6,minmax(220px,1fr));gap:12px;overflow-x:auto;padding-bottom:8px}
-.kanban-colonne{background:var(--ivoire);border:1px solid var(--bord);border-radius:var(--rayon);padding:10px;min-height:200px}
+.kanban-colonne{background:var(--ivoire);border:1px solid var(--bord);border-radius:var(--rayon);padding:10px;min-height:200px;transition:background .12s,border-color .12s}
+.kanban-colonne.survolee{background:color-mix(in srgb, var(--or) 12%, var(--ivoire));border-color:var(--or)}
 .kanban-colonne h4{display:flex;align-items:center;justify-content:space-between;font-size:13px;margin:0 0 10px;color:var(--vert)}
-.kanban-carte{background:var(--carte);border:1px solid var(--bord);border-radius:var(--rayon-sm);padding:10px;margin-bottom:8px;cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,.06);user-select:none;-webkit-user-select:none;-webkit-user-drag:element}
+.kanban-carte{background:var(--carte);border:1px solid var(--bord);border-radius:var(--rayon-sm);padding:10px;margin-bottom:8px;cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,.06);user-select:none;-webkit-user-select:none;-webkit-user-drag:element;transition:opacity .12s,transform .12s}
 .kanban-carte:active{cursor:grabbing}
+.kanban-carte.en-glissement{opacity:.4;transform:scale(.97)}
 .kanban-carte a{color:var(--encre);text-decoration:none}
 .kanban-carte .qui{font-size:11.5px;color:var(--gris);margin:4px 0 6px}
 @media(max-width:1200px){.kanban{grid-template-columns:repeat(3,minmax(220px,1fr))}}

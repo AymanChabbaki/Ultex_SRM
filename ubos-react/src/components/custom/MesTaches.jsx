@@ -37,6 +37,7 @@ export default function MesTaches({ user, isAdminView }) {
   const { toast } = useToast();
   const cible = user || {};
   const [dragCode, setDragCode] = useState(null);
+  const [overCol, setOverCol] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({});
 
@@ -49,6 +50,7 @@ export default function MesTaches({ user, isAdminView }) {
   }, [mesTaches]);
 
   const handleDrop = (colonne) => {
+    setOverCol(null);
     if (!dragCode || !peut('modifier')) { setDragCode(null); return; }
     const t = mesTaches.find(x => x.code === dragCode);
     if (!t || t.statut === colonne.statutDepot) { setDragCode(null); return; }
@@ -88,15 +90,16 @@ export default function MesTaches({ user, isAdminView }) {
         {COLONNES.map(col => (
           <div
             key={col.id}
-            className="kanban-colonne"
-            onDragOver={e => e.preventDefault()}
+            className={`kanban-colonne${overCol === col.id ? ' survolee' : ''}`}
+            onDragOver={e => { e.preventDefault(); if (overCol !== col.id) setOverCol(col.id); }}
+            onDragLeave={() => setOverCol(prev => (prev === col.id ? null : prev))}
             onDrop={e => { e.preventDefault(); handleDrop(col); }}
           >
             <h4>{col.label} <span className="pill p-gris">{parColonne[col.id].length}</span></h4>
             {parColonne[col.id].map(t => (
               <div
                 key={t.code}
-                className="kanban-carte"
+                className={`kanban-carte${dragCode === t.code ? ' en-glissement' : ''}`}
                 draggable={peut('modifier')}
                 onDragStart={e => {
                   // Firefox aborts the drag entirely if dataTransfer carries
@@ -105,7 +108,7 @@ export default function MesTaches({ user, isAdminView }) {
                   e.dataTransfer.effectAllowed = 'move';
                   setDragCode(t.code);
                 }}
-                onDragEnd={() => setDragCode(null)}
+                onDragEnd={() => { setDragCode(null); setOverCol(null); }}
               >
                 {/* draggable=false: without it the link itself grabs the
                     native browser drag gesture (dragging a URL) instead of
