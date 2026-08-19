@@ -7,16 +7,14 @@ import Modal from '../common/Modal';
 import FormField from '../common/FormField';
 import { pill } from '../../utils/format';
 import { tachesDeUtilisateur } from '../../utils/tachesPilotage';
-import { TYPES_TACHE, PRIORITES_TACHE } from '../../data/constants';
+import { PRIORITES_TACHE } from '../../data/constants';
 
+// Création rapide (§10) : minimum de champs — le reste (type, dossier,
+// heure...) reste éditable depuis la fiche complète si vraiment nécessaire.
 const CHAMPS_TACHE_PERSO = [
-  { k: "titre", l: "Titre", t: "text", req: 1 },
-  { k: "remarque", l: "Description", t: "textarea", large: 1 },
-  { k: "type", l: "Type de tâche", t: "select", opts: TYPES_TACHE },
-  { k: "dossier", l: "Dossier lié (optionnel)", t: "ref", coll: "dossiers", cle: "produit" },
-  { k: "datePrevue", l: "Date prévue", t: "date" },
-  { k: "heure", l: "Heure", t: "text", aide: "Ex. 08:45 — utilisé pour trier le programme du jour." },
-  { k: "echeance", l: "Échéance", t: "date" },
+  { k: "codeSuivi", l: "Code (facultatif)", t: "text", aide: "Un code de suivi Closing déjà ouvert — laissez vide sinon." },
+  { k: "titre", l: "Action à faire", t: "text", req: 1 },
+  { k: "quand", l: "Quand", t: "date", req: 1 },
   { k: "priorite", l: "Priorité", t: "select", opts: PRIORITES_TACHE }
 ];
 
@@ -67,13 +65,18 @@ export default function MesTaches({ user, isAdminView }) {
 
   const handleCreer = () => {
     if (!formData.titre) { toast('Le titre est obligatoire.'); return; }
+    const { codeSuivi, quand, ...reste } = formData;
+    const suiviLie = codeSuivi ? (db.suivisClosing || []).find(s => s.codeSuivi === codeSuivi.trim()) : null;
     const code = genCode('T');
     const tache = {
       code, ts: Date.now(), par: userCourant, assigne: cible.nomComplet,
-      statut: 'À faire', origine: 'Tâche courante', nbReports: 0, ...formData
+      statut: 'À faire', origine: 'Tâche courante', nbReports: 0,
+      datePrevue: quand, echeance: quand,
+      ...(suiviLie ? { objetType: 'suivisClosing', objetCode: suiviLie.code } : {}),
+      ...reste
     };
     updateDB({ ...db, taches: [tache, ...(db.taches || [])] });
-    audit('Tâches', 'Création (personnelle)', code, '—', '—', formData.titre, tache.dossier);
+    audit('Tâches', 'Création (personnelle)', code, '—', '—', formData.titre);
     toast(`Tâche ${code} créée.`);
     setShowForm(false);
     setFormData({});

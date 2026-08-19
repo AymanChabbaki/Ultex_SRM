@@ -224,6 +224,9 @@ objectifsData:{label:"Objectifs Service Data", ic:Gauge, grp:"Pilotage", coll:"o
   {k:"clientsContactesParJour",l:"Clients contactés / jour",t:"number"},
   {k:"relancesParJour",l:"Relances effectuées / jour",t:"number"},
   {k:"nouveauxClientsParJour",l:"Nouveaux clients créés / jour",t:"number"},
+  {k:"codesTraitesParJour",l:"[Closing] Codes traités / jour",t:"number"},
+  {k:"devisControlesParJour",l:"[Closing] Devis contrôlés / jour",t:"number"},
+  {k:"retoursMansouriParJour",l:"[Closing] Retours Mansouri traités / jour",t:"number"},
   {k:"utilisateur",l:"Utilisateur (optionnel — vide = objectif Data global)",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB)}
  ],
  cols:[["label","Période"],["utilisateur","Utilisateur",v=>v?esc(v):pill("Global Data","p-gris")],["dateDebut","Début"],["dateFin","Fin"],["demandesParJour","Demandes/j"],["clientsContactesParJour","Contacts/j"],["relancesParJour","Relances/j"],["nouveauxClientsParJour","Nouv. clients/j"]]},

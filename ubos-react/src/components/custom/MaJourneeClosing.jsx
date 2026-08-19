@@ -75,7 +75,7 @@ export default function MaJourneeClosing({ user }) {
       <div className="panneau">
         <div className="defile">
           <table>
-            <thead><tr><th>Code</th><th>Situation</th><th>Action aujourd'hui</th><th>Dernier contact</th><th>Priorité</th><th></th></tr></thead>
+            <thead><tr><th>Code</th><th>Situation</th><th>Action recommandée</th><th>Dernier contact</th><th>Prochaine échéance</th><th>Priorité</th><th></th></tr></thead>
             <tbody>
               {programme.length ? programme.map(item => (
                 <tr key={item.code}>
@@ -83,11 +83,12 @@ export default function MaJourneeClosing({ user }) {
                   <td>{item.situation}</td>
                   <td>{item.actionAujourdhui}</td>
                   <td>{item.dernierContact}</td>
+                  <td>{item.echeance}</td>
                   <td>{pill(item.priorite, item.pill)}</td>
                   <td><a className="btn mini or" href={item.lien}>TRAITER</a></td>
                 </tr>
               )) : (
-                <tr><td colSpan="6"><div className="vide"><b>Rien à traiter</b> Aucun code en attente d'action aujourd'hui.</div></td></tr>
+                <tr><td colSpan="7"><div className="vide"><b>Rien à traiter</b> Aucun code en attente d'action aujourd'hui.</div></td></tr>
               )}
             </tbody>
           </table>

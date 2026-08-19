@@ -43,6 +43,7 @@ export function genererProgrammeClosing(db, user) {
         situation: s.situationActuelle || s.statutPipeline || 'Nouveau',
         actionAujourdhui: s.actionRecommandee || (s.dernierContact ? 'Relancer' : 'Premier contact'),
         dernierContact: s.dernierContact || '—',
+        echeance: s.echeanceActionSuivante || '—',
         priorite: p.tag, pill: p.pill,
         lien: `#ficheSuiviClosing:${s.code}`
       };
@@ -79,7 +80,37 @@ export function genererAlertesClosing(db, user) {
 
   push('Devis à contrôler', suivis.filter(s => s.statutDevis === 'À contrôler'));
 
+  push('Dossier actif sans prochaine action', suivis.filter(s => !s.echeanceActionSuivante));
+
+  push('Confirmation obtenue, avance non enregistrée', suivis.filter(s => s.statutPipeline === 'Confirmation' && !s.montantAvance));
+
   return alertes;
+}
+
+/** Suivis "chez Mansouri" dont la tâche liée est en retard (§7 catégorie 4). */
+export function suivisRetourMansouriEnRetard(db, user) {
+  const auj = AUJOURD_HUI();
+  return suivisDeCoordinateur(db, user).filter(estSuiviOuvert).filter(s => {
+    if (s.responsableActionActuelle !== 'Mansouri') return false;
+    return (db.taches || []).some(t => t.objetType === 'suivisClosing' && t.objetCode === s.code && estTacheOuverte(t) && t.echeance && new Date(t.echeance) < auj);
+  });
+}
+
+/** Suivis dont Mansouri vient de rendre la main — dernière note mémoire = un retour non encore traité (§7 catégorie 3). */
+export function suivisRetourMansouriRecu(db, user) {
+  return suivisDeCoordinateur(db, user).filter(estSuiviOuvert).filter(s => {
+    if (s.responsableActionActuelle === 'Mansouri') return false;
+    const derniere = (s.memoire || [])[(s.memoire || []).length - 1];
+    return derniere && derniere.texte && derniere.texte.startsWith('Retour Mansouri');
+  });
+}
+
+const ETAPES_CANDIDATES_MANSOURI = ['Devis envoyé', 'Client intéressé', 'Attente client', 'Négociation'];
+
+/** Suivis prêts à être confiés à Mansouri mais pas encore transmis (§7 catégorie 1) — suggestion, pas une obligation. */
+export function suivisATransmettreMansouri(db, user) {
+  return suivisDeCoordinateur(db, user).filter(estSuiviOuvert)
+    .filter(s => ETAPES_CANDIDATES_MANSOURI.includes(s.statutPipeline) && s.responsableActionActuelle !== 'Mansouri');
 }
 
 const DELAI_JOURS = { 'Demain': 1, '2 jours': 2, '3 jours': 3, '7 jours': 7 };
@@ -102,6 +133,7 @@ const STATUT_SUGGERE_PAR_RESULTAT = {
 export function enregistrerResultatContact(suivi, resultat, echeanceSuivante) {
   const patch = {
     dernierContact: AJD_ISO(),
+    dernierContactHeure: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
     resultatDernierContact: resultat,
     echeanceActionSuivante: echeanceSuivante || suivi.echeanceActionSuivante
   };
@@ -111,6 +143,41 @@ export function enregistrerResultatContact(suivi, resultat, echeanceSuivante) {
     patch.statutPipeline = statutSuggere;
   }
   return patch;
+}
+
+/** Changement de statut en un clic (§4/§16 — éviter les formulaires). */
+export function changerStatutRapide(statut) {
+  return { statutPipeline: statut };
+}
+
+/**
+ * Retour Mansouri (§7/§11) : rend la main au coordinateur, capitalise la
+ * note, et propose immédiatement une prochaine échéance (aujourd'hui, sauf
+ * si "Fait" — rien à reprendre) plutôt que de laisser le code sans date et
+ * invisible du programme du jour.
+ */
+export function enregistrerRetourMansouri(suivi, label) {
+  const patch = {
+    dernierContact: AJD_ISO(),
+    responsableActionActuelle: suivi.coordinateur,
+    memoire: [...(suivi.memoire || []), { texte: `Retour Mansouri : ${label}`, date: AJD_ISO(), auteur: 'Mansouri' }]
+  };
+  if (label !== 'Fait') patch.echeanceActionSuivante = AJD_ISO();
+  return patch;
+}
+
+/** Tâche Mansouri construite une seule fois, réutilisée par toutes les pages qui transmettent un code (§16 — un seul moteur). */
+export function construireTachePourMansouri(suivi, genCode, par) {
+  return {
+    code: genCode('T'), ts: Date.now(), par, titre: `Coordination Closing — Code ${suivi.codeSuivi}`,
+    assigne: 'Mansouri', priorite: 'Normale', type: 'Action commerciale', statut: 'À faire', nbReports: 0,
+    objetType: 'suivisClosing', objetCode: suivi.code, resultatAttendu: 'Client traité', origine: 'Coordination Closing',
+    remarque: [
+      `Situation client : ${suivi.situationActuelle || suivi.statutPipeline || '—'}`,
+      `Dernière action : ${suivi.resultatDernierContact || '—'}`,
+      `Dernier contact : ${suivi.dernierContact || '—'}`
+    ].join('\n')
+  };
 }
 
 /** Compte par étape pour l'entonnoir (§15/§20). */
@@ -141,6 +208,35 @@ export function calculerObjectifsClosingJour(db, user) {
     codesTraitesMansouri: auditAujourdhui.filter(a => a.action === 'Confié à Mansouri' || a.action === 'Retour Mansouri').length,
     confirmationsSemaine: suivis.filter(s => s.dateConfirmation && new Date(s.dateConfirmation) >= septJoursAvant).length,
     avancesSemaine: suivis.filter(s => s.dateAvance && new Date(s.dateAvance) >= septJoursAvant).length
+  };
+}
+
+const ETAPES_DEVIS_ENVOYE_OU_PLUS = ['Devis envoyé', 'Client intéressé', 'Attente client', 'Négociation', 'Accord', 'Confirmation', 'Avance reçue'];
+
+/** KPI hebdo/mensuel du §11 — uniquement des agrégats de champs réels (dateConfirmation/dateAvance/montantAvance/ts). */
+export function calculerKpisClosingPeriode(db, user, jours = 7) {
+  const suivis = suivisDeCoordinateur(db, user);
+  const depuis = AUJOURD_HUI(); depuis.setDate(depuis.getDate() - jours);
+
+  const confirmes = suivis.filter(s => s.dateConfirmation && new Date(s.dateConfirmation) >= depuis);
+  const avances = suivis.filter(s => s.dateAvance && new Date(s.dateAvance) >= depuis);
+  const montantAvances = avances.reduce((sum, s) => sum + (Number(s.montantAvance) || 0), 0);
+  const perdus = suivis.filter(s => s.statutPipeline === 'Perdu / Abandonné' && s.ts && s.ts >= depuis.getTime());
+  const devisEnvoyesOuPlus = suivis.filter(s => ETAPES_DEVIS_ENVOYE_OU_PLUS.includes(s.statutPipeline));
+  const delais = suivis.filter(s => s.dateConfirmation && s.ts).map(s => Math.floor((new Date(s.dateConfirmation) - s.ts) / 864e5));
+  const auj = AUJOURD_HUI();
+
+  return {
+    confirmations: confirmes.length,
+    avancesObtenues: avances.length,
+    montantAvances,
+    tauxConversionPct: devisEnvoyesOuPlus.length ? Math.round((confirmes.length / devisEnvoyesOuPlus.length) * 100) : 0,
+    delaiMoyenJours: delais.length ? Math.round(delais.reduce((a, b) => a + b, 0) / delais.length) : null,
+    dossiersPerdus: perdus.length,
+    dossiersActifs: suivis.filter(estSuiviOuvert).length,
+    dossiersSansActionDepuis5j: suivis.filter(estSuiviOuvert).filter(s =>
+      !s.dernierContact || Math.floor((auj - new Date(s.dernierContact)) / 864e5) >= 5
+    ).length
   };
 }
 

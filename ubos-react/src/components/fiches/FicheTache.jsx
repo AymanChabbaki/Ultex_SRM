@@ -12,7 +12,7 @@ import { PERS_ET_SERVICES } from '../../data/permissions';
 import { pill, pillStatut } from '../../utils/format';
 import { OBJETS_LIABLES_TACHE, RETOURS_MANSOURI_CLOSING } from '../../data/constants';
 import { estTacheOuverte, estAjouteParDirection, calculerAlertesTache, construireMessageTache } from '../../utils/tachesPilotage';
-import { construireMessageSuiviClosing } from '../../utils/closingCoordination';
+import { construireMessageSuiviClosing, enregistrerRetourMansouri } from '../../utils/closingCoordination';
 
 const ETAPE_CHAMPS = [
   { k: 'libelle', l: 'Étape', t: 'text', req: 1, large: 1 },
@@ -196,12 +196,7 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
     updateDB({
       ...db,
       taches: (db.taches || []).map(t => t.code === code ? next : t),
-      suivisClosing: (db.suivisClosing || []).map(s => s.code === suiviClosingLie.code ? {
-        ...s,
-        dernierContact: new Date().toISOString().slice(0, 10),
-        responsableActionActuelle: s.coordinateur,
-        memoire: [...(s.memoire || []), { texte: `Retour Mansouri : ${label}`, date: new Date().toISOString().slice(0, 10), auteur: userCourant }]
-      } : s)
+      suivisClosing: (db.suivisClosing || []).map(s => s.code === suiviClosingLie.code ? { ...s, ...enregistrerRetourMansouri(s, label) } : s)
     });
     audit('Tâches', 'Terminée (retour Closing)', code, 'resultatObtenu', '—', label, tache.dossier);
     audit('Suivi Closing', 'Retour Mansouri', suiviClosingLie.code, 'resultatObtenu', '—', label);

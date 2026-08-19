@@ -124,7 +124,8 @@ export function genererAlertesData(db, user) {
 
 const OBJECTIF_PAR_DEFAUT = {
   label: 'Objectif par défaut (aucun objectif configuré par la Direction)', parDefaut: true,
-  demandesParJour: 5, clientsContactesParJour: 25, relancesParJour: 15, nouveauxClientsParJour: 6
+  demandesParJour: 5, clientsContactesParJour: 25, relancesParJour: 15, nouveauxClientsParJour: 6,
+  codesTraitesParJour: 10, devisControlesParJour: 5, retoursMansouriParJour: 5
 };
 
 /**

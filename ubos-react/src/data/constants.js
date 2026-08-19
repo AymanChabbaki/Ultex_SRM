@@ -153,10 +153,11 @@ export const OBJETS_LIABLES_TACHE = [
 ];
 export const RECURRENCES_TACHE = ["Aucune","Quotidienne","Hebdomadaire","Mensuelle"];
 
-export const STATUTS_PIPELINE_CLOSING = ["Nouveau","Calcul demandé","Devis en cours","Devis envoyé","Client intéressé","Négociation","Accord","Confirmation","Avance reçue","Perdu / Abandonné"];
+export const STATUTS_PIPELINE_CLOSING = ["Nouveau","Calcul demandé","Devis en cours","Devis envoyé","Client intéressé","Attente client","Négociation","Accord","Confirmation","Avance reçue","Perdu / Abandonné"];
 export const RESULTATS_CONTACT_CLOSING = ["Répondu","Pas répondu","Intéressé","Attente décision","Demande modification","Documents manquants","Attente paiement","À rappeler","Pas intéressé"];
 export const RETOURS_MANSOURI_CLOSING = ["Fait","Client contacté","Pas de réponse","Attente client","Blocage","À revoir avec Zoubida"];
-export const MOTIFS_REVOIR_DEVIS_CLOSING = ["Position douteuse","Documentation insuffisante","Incohérence produit","Tarif à confirmer","Autre"];
+export const MOTIFS_REVOIR_DEVIS_CLOSING = ["Position tarifaire","Valeur","Quantité","Transport","Marge / calcul","Document / information manquante","Autre"];
+export const STATUTS_RAPIDES_CLOSING = ["Devis envoyé","Client intéressé","Attente client","Négociation","Perdu / Abandonné"];
 export const STATUTS_CONSULTATION_FOURN = ["À contacter","Contacté","Attente réponse","Offre reçue","Offre incomplète","En négociation","Recommandé","Non retenu","Refusé","Sans réponse"];
 export const CONDITIONS_COMMANDE = ["Devis accepté","Bon de commande signé","Contrat signé","Acompte reçu","Preuve de paiement reçue","Validation exceptionnelle de la Direction"];
 export const METHODES_REPARTITION = ["Par poids","Par CBM","Par valeur marchandise","Par nombre de colis","Montant égal par dossier","Montant manuel","Non réparti","Entièrement affecté à ULTEx","Entièrement affecté à un dossier précis"];

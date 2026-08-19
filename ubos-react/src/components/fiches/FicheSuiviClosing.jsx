@@ -5,10 +5,10 @@ import Topbar from '../layout/Topbar';
 import Modal from '../common/Modal';
 import DataTable from '../common/DataTable';
 import { pill, pillStatut } from '../../utils/format';
-import { RESULTATS_CONTACT_CLOSING, MOTIFS_REVOIR_DEVIS_CLOSING } from '../../data/constants';
+import { RESULTATS_CONTACT_CLOSING, MOTIFS_REVOIR_DEVIS_CLOSING, STATUTS_RAPIDES_CLOSING } from '../../data/constants';
 import {
   calculerPrioriteSuivi, enregistrerResultatContact, calculerEcheanceRelance,
-  OPTIONS_DELAI_RELANCE, construireMessageSuiviClosing
+  OPTIONS_DELAI_RELANCE, construireMessageSuiviClosing, changerStatutRapide, construireTachePourMansouri
 } from '../../utils/closingCoordination';
 
 const CHECKLIST_DEVIS = [
@@ -93,21 +93,28 @@ export default function FicheSuiviClosing({ codeProp, code: codeFromProp }) {
     fermer();
   };
 
+  const handleDemanderVerification = () => {
+    audit('Suivi Closing', 'Vérification demandée', code, 'statutDevis', suivi.statutDevis, suivi.statutDevis);
+    notifier('Études & Chiffrage', construireMessageSuiviClosing(suivi, { titre: `Vérification demandée par ${userCourant} — Code ${suivi.codeSuivi}`, extra: noteMemoire || 'Point à clarifier avant validation.' }), 'Suivi Closing');
+    toast('Vérification demandée à Études & Chiffrage.');
+    fermer();
+  };
+
   const handleConfierMansouri = () => {
-    const tCode = genCode('T');
     updateDB({
       ...db,
-      taches: [{
-        code: tCode, ts: Date.now(), par: userCourant, titre: `Coordination Closing — Code ${suivi.codeSuivi}`,
-        assigne: 'Mansouri', priorite: 'Normale', type: 'Action commerciale', statut: 'À faire', nbReports: 0,
-        objetType: 'suivisClosing', objetCode: code, resultatAttendu: 'Client traité', origine: 'Coordination Closing'
-      }, ...(db.taches || [])],
+      taches: [construireTachePourMansouri(suivi, genCode, userCourant), ...(db.taches || [])],
       suivisClosing: (db.suivisClosing || []).map(s => s.code === code ? { ...s, responsableActionActuelle: 'Mansouri' } : s)
     });
     audit('Suivi Closing', 'Confié à Mansouri', code, 'responsableActionActuelle', suivi.responsableActionActuelle, 'Mansouri');
     notifier('Mansouri', construireMessageSuiviClosing({ ...suivi, responsableActionActuelle: 'Mansouri' }, { titre: `Code confié par ${userCourant} — Code ${suivi.codeSuivi}` }), 'Suivi Closing');
     toast('Confié à Mansouri.');
     fermer();
+  };
+
+  const handleStatutRapide = (statut) => {
+    majSuivi(changerStatutRapide(statut), 'Changement de statut', suivi.statutPipeline, statut);
+    toast(`Statut : ${statut}.`);
   };
 
   const handleProgrammerRelance = () => {
@@ -148,11 +155,12 @@ export default function FicheSuiviClosing({ codeProp, code: codeFromProp }) {
 
         <div className="bloc-fiche large">
           <div className="kv">
-            <div><label>Situation actuelle</label><span>{suivi.situationActuelle || suivi.statutPipeline || '—'}</span></div>
-            <div><label>Action recommandée</label><span>{suivi.actionRecommandee || (suivi.dernierContact ? 'Relancer' : 'Premier contact')}</span></div>
-            <div><label>Prochaine échéance</label><span>{suivi.echeanceActionSuivante || '—'}</span></div>
-            <div><label>Coordinateur</label><span>{suivi.coordinateur}</span></div>
-            <div><label>Responsable action actuelle</label><span>{suivi.responsableActionActuelle || suivi.coordinateur}</span></div>
+            <div><label>Statut actuel</label><span>{suivi.statutPipeline || 'Nouveau'}</span></div>
+            <div><label>Responsable actuel</label><span>{suivi.responsableActionActuelle || suivi.coordinateur}</span></div>
+            <div><label>Ancienneté du suivi</label><span>{Math.max(0, Math.floor((Date.now() - (suivi.ts || Date.now())) / 864e5))} jour(s)</span></div>
+            <div><label>Dernier contact</label><span>{suivi.dernierContact ? `${suivi.dernierContact}${suivi.dernierContactHeure ? ' – ' + suivi.dernierContactHeure : ''}` : '—'}</span></div>
+            <div><label>Prochaine action</label><span>{suivi.actionRecommandee || (suivi.dernierContact ? 'Relancer' : 'Premier contact')}</span></div>
+            <div><label>Échéance</label><span>{suivi.echeanceActionSuivante || '—'}</span></div>
           </div>
         </div>
 
@@ -164,6 +172,14 @@ export default function FicheSuiviClosing({ codeProp, code: codeFromProp }) {
             <button className="btn or gros" onClick={() => setPanneau('mansouri')}>👤 Mansouri</button>
             <button className="btn or gros" onClick={() => setPanneau('relance')}>⏰ Programmer relance</button>
             <button className="btn or gros" onClick={() => setPanneau('confirmation')}>✅ Confirmation</button>
+          </div>
+          <div style={{ marginTop: '14px' }}>
+            <label style={{ fontSize: '12px', color: 'var(--gris)' }}>Changer le statut en un clic</label>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
+              {STATUTS_RAPIDES_CLOSING.map(s => (
+                <button key={s} className={`btn mini ${suivi.statutPipeline === s ? 'or' : 'doux'}`} onClick={() => handleStatutRapide(s)}>{s}</button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -229,7 +245,8 @@ export default function FicheSuiviClosing({ codeProp, code: codeFromProp }) {
             ) : (
               <>
                 <button className="btn doux" onClick={fermer}>Fermer</button>
-                <button className="btn rouge" onClick={handleRevoirDevis}>❌ À revoir</button>
+                <button className="btn doux" onClick={handleDemanderVerification}>🔍 Demander vérification</button>
+                <button className="btn rouge" onClick={handleRevoirDevis}>❌ Retourner pour correction</button>
                 <button className="btn vert" onClick={handleValiderDevis}>✅ Valider</button>
               </>
             )

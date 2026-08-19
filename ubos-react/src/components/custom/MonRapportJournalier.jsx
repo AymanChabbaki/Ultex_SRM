@@ -117,11 +117,19 @@ export default function MonRapportJournalier({ user, isAdminView }) {
           {form.aReprendreDemain !== undefined && (
             <div className="champ large"><label>À reprendre demain (codes Closing)</label><textarea readOnly value={form.aReprendreDemain || 'Aucun'} /></div>
           )}
+          <div className="champ large">
+            <label>Observation Direction</label>
+            {isAdminView ? (
+              <textarea value={form.observationDirection || ''} onChange={e => handleChange('observationDirection', e.target.value)} placeholder="Visible par la collaboratrice, non modifiable par elle." />
+            ) : (
+              <textarea readOnly value={form.observationDirection || 'Aucune observation pour l\'instant.'} />
+            )}
+          </div>
         </div>
       </div>
 
       <div className="outils">
-        <button className="btn or" onClick={handleDeposer}>{form.depose ? 'Mettre à jour mon rapport' : 'Déposer mon rapport journalier'}</button>
+        <button className="btn or" onClick={handleDeposer}>{isAdminView ? "Enregistrer l'observation" : (form.depose ? 'Mettre à jour mon rapport' : 'Déposer mon rapport journalier')}</button>
       </div>
     </div>
   );
