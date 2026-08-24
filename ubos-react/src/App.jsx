@@ -22,6 +22,7 @@ import FicheChecklistLimex from './components/fiches/FicheChecklistLimex';
 import FicheTache from './components/fiches/FicheTache';
 import FicheSuiviClosing from './components/fiches/FicheSuiviClosing';
 import FicheClientClosing from './components/fiches/FicheClientClosing';
+import FicheSuiviLimex from './components/fiches/FicheSuiviLimex';
 
 // Custom Modules
 import Notifications from './components/custom/Notifications';
@@ -52,6 +53,10 @@ import CoordinationMansouri from './components/custom/CoordinationMansouri';
 import MonPortefeuilleClosing from './components/custom/MonPortefeuilleClosing';
 import EtatClosing from './components/custom/EtatClosing';
 import AQualifierClosing from './components/custom/AQualifierClosing';
+import MaJourneeImane from './components/custom/MaJourneeImane';
+import SuiviLimex from './components/custom/SuiviLimex';
+import EtudesCalcul from './components/custom/EtudesCalcul';
+import PaiementsEcheances from './components/custom/PaiementsEcheances';
 
 // Generic
 import GenericModule from './components/modules/GenericModule';
@@ -173,9 +178,14 @@ const Router = () => {
       case 'coordinationMansouri': return <PersonalPageRoute Component={CoordinationMansouri} identifiant={params} />;
       case 'monPortefeuilleClosing': return <PersonalPageRoute Component={MonPortefeuilleClosing} identifiant={params} />;
       case 'aQualifierClosing': return <PersonalPageRoute Component={AQualifierClosing} identifiant={params} />;
+      case 'maJourneeImane': return <PersonalPageRoute Component={MaJourneeImane} identifiant={params} />;
+      case 'suiviLimex': return <PersonalPageRoute Component={SuiviLimex} identifiant={params} />;
+      case 'etudesCalcul': return <EtudesCalcul />;
+      case 'paiementsEcheances': return <PaiementsEcheances />;
       case 'etatClosing': return <EtatClosing />;
       case 'ficheSuiviClosing': return <FicheSuiviClosing codeProp={params} code={params} />;
       case 'ficheClientClosing': return <FicheClientClosing codeProp={params} code={params} />;
+      case 'ficheSuiviLimex': return <FicheSuiviLimex codeProp={params} code={params} />;
       case 'ajouterTache': return <AjouterTache />;
       case 'ficheTache': return <FicheTache codeProp={params} code={params} />;
       case 'ficheClient': return <FicheClient codeProp={params} code={params} />;

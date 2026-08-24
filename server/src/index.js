@@ -147,7 +147,8 @@ const COLLS = [
   "limexPortesValidation", "limexImportHistory",
   "demandeLignes", "demandeRoutages", "objectifsData",
   "tacheEtapes", "rapportsJournaliers", "journalSecurite",
-  "suivisClosing"
+  "suivisClosing",
+  "suivisLimex", "actionsLimex", "instructionsLimex", "documentsComptablesCasa"
 ];
 
 const PFX_ANNEE = ["DOS", "FF", "AV", "REL", "ABD", "IMP", "RMB", "CMD", "DMD", "ARR"];

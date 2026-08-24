@@ -6,7 +6,8 @@ import { useDB } from '../../context/DBContext';
 import Toast from '../common/Toast';
 import { verifierTachesAutomatiques, calculerOccurrencesRecurrentesDues } from '../../utils/tachesPilotage';
 import { verifierTachesAutoClosing, suivisDeCoordinateur, construireRapportAutoJour } from '../../utils/closingCoordination';
-import { migrerRoleZoubidaClosing, migrerSuivisClosingV2 } from '../../data/permissions';
+import { verifierActionsAutoLimex, verifierEcheancesProduction, suivisLimexDeCoordinateur, construireRapportAutoJourImane } from '../../utils/limexCoordination';
+import { migrerRoleZoubidaClosing, migrerSuivisClosingV2, migrerRoleImaneLimex } from '../../data/permissions';
 
 const SidebarContext = createContext();
 export const useSidebar = () => useContext(SidebarContext);
@@ -24,27 +25,33 @@ const Layout = ({ children }) => {
 
     const migrationRoleJouee = migrerRoleZoubidaClosing(db, (...args) => audit(...args));
     const migrationSuivisJouee = migrerSuivisClosingV2(db, (...args) => audit(...args));
-    const migrationJouee = migrationRoleJouee || migrationSuivisJouee;
+    const migrationImaneJouee = migrerRoleImaneLimex(db, (...args) => audit(...args));
+    const migrationJouee = migrationRoleJouee || migrationSuivisJouee || migrationImaneJouee;
 
     const ajd = new Date().toISOString().slice(0, 10);
     let toutesNouvelles = [];
     if (db._tachesAutoDate !== ajd) {
       const nouvellesAuto = verifierTachesAutomatiques(db, genCode);
       const nouvellesClosing = verifierTachesAutoClosing(db, genCode);
+      const nouvellesLimex = verifierActionsAutoLimex(db, genCode);
+      const nouvellesProduction = verifierEcheancesProduction(db, genCode);
       const occurrences = calculerOccurrencesRecurrentesDues(db.taches || [], ajd);
-      toutesNouvelles = [...nouvellesAuto, ...nouvellesClosing, ...occurrences];
+      toutesNouvelles = [...nouvellesAuto, ...nouvellesClosing, ...nouvellesLimex, ...nouvellesProduction, ...occurrences];
       db._tachesAutoDate = ajd;
     }
 
-    // Rapport journalier silencieux (simplification profil Zoubida) : la
-    // page dédiée n'est plus dans sa navigation, mais les données doivent
-    // continuer d'exister pour la Direction — recalculé et enregistré à
-    // chaque ouverture de session, sans aucune action de sa part.
+    // Rapports journaliers silencieux (simplification profil Zoubida/Imane) :
+    // les pages dédiées ne sont plus dans leur navigation, mais les données
+    // doivent continuer d'exister pour la Direction — recalculées et
+    // enregistrées à chaque ouverture de session, sans action de leur part.
+    const nom = session.nomComplet || session.identifiant;
+    const existantRapport = (db.rapportsJournaliers || []).find(r => r.utilisateur === nom && r.date === ajd);
+    let auto = null;
+    if (suivisDeCoordinateur(db, session).length) auto = construireRapportAutoJour(db, session);
+    else if (suivisLimexDeCoordinateur(db, session).length) auto = construireRapportAutoJourImane(db, session);
+
     let rapportsSuivants = null;
-    if (suivisDeCoordinateur(db, session).length) {
-      const auto = construireRapportAutoJour(db, session);
-      const nom = session.nomComplet || session.identifiant;
-      const existantRapport = (db.rapportsJournaliers || []).find(r => r.utilisateur === nom && r.date === ajd);
+    if (auto) {
       if (existantRapport) {
         rapportsSuivants = (db.rapportsJournaliers || []).map(r => r.code === existantRapport.code ? { ...r, ...auto } : r);
       } else {

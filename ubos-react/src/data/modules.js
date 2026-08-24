@@ -7,7 +7,10 @@ import {
     CANAUX_RECEPTION_DEMANDE, TYPES_PROJET_DEMANDE, TYPES_USAGE_DEMANDE,
     STATUTS_LIGNE_DEMANDE, STATUTS_HS_CODE, CRITERES_CLIENT_DEMANDE, TYPES_TRAITEMENT_LIGNE,
     PIPELINE_ETAPES_CLIENT, PRIORITES_TACHE, STATUTS_TACHE, TYPES_TACHE, OBJETS_LIABLES_TACHE,
-    RECURRENCES_TACHE, STATUTS_PIPELINE_CLOSING, PRIORITES_CLOSING
+    RECURRENCES_TACHE, STATUTS_PIPELINE_CLOSING, PRIORITES_CLOSING,
+    ETATS_GLOBAUX_LIMEX, STATUTS_ACTION_LIMEX, ATTENTE_TYPES_LIMEX,
+    SOURCES_INSTRUCTION_LIMEX, PRIORITES_LIMEX, TYPES_DOC_COMPTABLE_CASA, STATUTS_DOC_COMPTABLE_CASA,
+    DEVISES_PAIEMENT, PRIORITES_PAIEMENT, STATUTS_PAIEMENT_IMANE
 } from './constants';
 import { pill, pillStatut, esc, refLabel, fmtMAD } from '../utils/format';
 import { PERS_ET_SERVICES } from './permissions';
@@ -20,7 +23,8 @@ import {
   PackageSearch, Calculator, FileSignature, Wallet, ClipboardCheck, Ship, Scale, Award,
   Anchor, Truck, Landmark, AlertTriangle, Receipt, Handshake, Factory, Flag, Warehouse,
   Package, FolderOpen, ClipboardList, CheckSquare, Bell, Mail, CalendarDays, Gauge,
-  FileBarChart, FileBarChart2, Users, TrendingUp, UploadCloud, ShieldAlert, History, KeyRound
+  FileBarChart, FileBarChart2, Users, TrendingUp, UploadCloud, ShieldAlert, History, KeyRound,
+  ListChecks, Banknote, FolderArchive
 } from 'lucide-react';
 
 export const MODS = {
@@ -387,16 +391,33 @@ offres:{label:"Closing", ic:FileSignature, grp:"Commercial", coll:"offres", pfx:
 
 paiements:{label:"Paiements", ic:Wallet, grp:"Finance", coll:"paiements", pfx:"PAY", statut:"statut",
  champs:[
-  {k:"dossier",l:"Dossier",t:"ref",coll:"dossiers",cle:"produit",req:1},
-  {k:"nature",l:"Nature",t:"select",opts:["Acompte","Solde","Reliquat","Paiement fournisseur","Droits de douane","Fret"]},
-  {k:"montant",l:"Montant (MAD)",t:"number",req:1},
-  {k:"echeance",l:"Échéance",t:"date"},
-  {k:"statut",l:"Statut",t:"select",opts:["Prévu","En attente","Payé","En retard","Annulé"]},
+  {k:"dossier",l:"Dossier (si rattaché)",t:"ref",coll:"dossiers",cle:"produit"},
+  {k:"codeReference",l:"Code LIMEX (si suivi provisoire)",t:"text"},
+  {k:"nature",l:"Nature",t:"select",opts:["Acompte","Avance fournisseur","Solde","Reliquat","Reliquat fournisseur","Paiement fournisseur","Paiement total","Droits de douane","Douane","Fret","Transport international","Transport national","Transitaire","Certification","Laboratoire","Port / magasinage","Assurance","Autre"]},
+  {k:"beneficiaire",l:"Bénéficiaire",t:"text"},
+  {k:"banque",l:"Banque",t:"text"},
+  {k:"iban",l:"Compte / IBAN",t:"text"},
+  {k:"montant",l:"Montant",t:"number",req:1},
+  {k:"devise",l:"Devise",t:"select",opts:DEVISES_PAIEMENT},
+  {k:"echeance",l:"Date prévue",t:"date"},
+  {k:"dateLimite",l:"Date limite",t:"date"},
+  {k:"delaiProductionJours",l:"Délai de production après paiement (jours)",t:"number"},
+  {k:"montantFournisseurTotal",l:"Montant fournisseur total",t:"number"},
+  {k:"avancePayee",l:"Avance déjà payée",t:"number"},
+  {k:"priorite",l:"Priorité",t:"select",opts:PRIORITES_PAIEMENT},
+  {k:"responsablePreparation",l:"Préparé par",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB)},
+  {k:"statut",l:"Statut",t:"select",opts:STATUTS_PAIEMENT_IMANE},
   {k:"remarque",l:"Référence bancaire / notes",t:"textarea",large:1}
  ],
+ avantSauve: (DB, o) => {
+   if(o.montantFournisseurTotal){
+     o.reliquat = Math.max(0, (+o.montantFournisseurTotal||0) - (+o.avancePayee||0));
+   }
+ },
  apresSauve: (DB, o, ancien, ctx) => {
    if(o.statut==="Payé" && (!ancien || ancien.statut!=="Payé")){
-     ctx.notifier("Closing", `Paiement ${o.code} (${o.nature}) confirmé — ${fmtMAD(o.montant)} sur ${o.dossier||"dossier"}`, "Paiements");
+     if(!o.datePaiementEffectif) o.datePaiementEffectif = new Date().toISOString().slice(0,10);
+     ctx.notifier("Closing", `Paiement ${o.code} (${o.nature}) confirmé — ${fmtMAD(o.montant)} sur ${o.dossier||o.codeReference||"dossier"}`, "Paiements");
      if(o.nature==="Acompte"){
        ctx.notifier("Analyse Dossiers", `Acompte encaissé sur ${o.dossier||"un dossier"} : dossier transféré aux Opérations.`, "Paiements");
        const d = DB.dossiers.find(x=>x.code===o.dossier);
@@ -407,7 +428,7 @@ paiements:{label:"Paiements", ic:Wallet, grp:"Finance", coll:"paiements", pfx:"P
      }
    }
  },
- cols:[["dossier","Dossier",v=>`<span class="pill p-gris">${esc(v||"—")}</span>`],["nature","Nature"],["montant","Montant",v=>fmtMAD(v)],["echeance","Échéance"],["statut","Statut",v=>pillStatut(v)]]},
+ cols:[["dossier","Dossier",v=>v?`<span class="pill p-gris">${esc(v)}</span>`:"—"],["codeReference","Code LIMEX"],["nature","Nature"],["montant","Montant",(v,o)=>`${Number(v||0).toLocaleString("fr-FR")} ${o.devise||"MAD"}`],["echeance","Échéance"],["statut","Statut",v=>pillStatut(v)]]},
 
 analyses:{label:"Analyse Dossier", ic:ClipboardCheck, grp:"Opérations", coll:"analyses", pfx:"ANA", statut:"statut",
  champs:[
@@ -785,6 +806,67 @@ suivisClosing:{label:"Suivis Closing", ic:Handshake, grp:"Pilotage", coll:"suivi
  fiche:"ficheSuiviClosing",
  cols:[["codeClient","Client"],["codeDossier","Dossier"],["statutPipeline","Statut",v=>pillStatut(v)],["coordinateur","Coordinateur"],["responsableActionActuelle","Responsable action"],["echeanceActionSuivante","Échéance"]]},
 
+suivisLimex:{label:"Suivis LIMEX", ic:ListChecks, grp:"LIMEX", coll:"suivisLimex", pfx:"SVL", statut:"etatGlobal",
+ champs:[
+  {k:"codeReference",l:"Code",t:"text",req:1,aide:"Code du dossier — jamais recréé, rattachable plus tard au vrai dossier."},
+  {k:"etatGlobal",l:"État global",t:"select",opts:ETATS_GLOBAUX_LIMEX},
+  {k:"coordinateur",l:"Coordinateur",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB),req:1},
+  {k:"executantPrincipal",l:"Exécutant principal",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB)},
+  {k:"derniereActualite",l:"Dernière actualité",t:"date"},
+  {k:"prochaineVerification",l:"Prochaine vérification",t:"date"},
+  {k:"attenteType",l:"Attente",t:"select",opts:ATTENTE_TYPES_LIMEX},
+  {k:"attenteDetail",l:"Bloqué chez",t:"text",aide:"Ex. Yasser, ou Fournisseur, Transitaire…"},
+  {k:"client",l:"Client (si rattaché)",t:"ref",coll:"clients",cle:"nom"},
+  {k:"demande",l:"Demande (si rattachée)",t:"ref",coll:"demandes",cle:"code"},
+  {k:"commande",l:"Commande (si rattachée)",t:"ref",coll:"commandes",cle:"code"},
+  {k:"dossier",l:"Dossier (si rattaché)",t:"ref",coll:"dossiers",cle:"produit"},
+  {k:"remarque",l:"Remarque",t:"textarea",large:1}
+ ],
+ avantSauve: (DB, o) => { if(!o.etatGlobal) o.etatGlobal = "Nouveau"; if(!o.memoire) o.memoire = []; if(!o.blocages) o.blocages = []; },
+ fiche:"ficheSuiviLimex",
+ cols:[["codeReference","Code"],["etatGlobal","État",v=>pillStatut(v)],["coordinateur","Coordinateur"],["executantPrincipal","Exécutant"],["prochaineVerification","Prochaine vérif."]]},
+
+actionsLimex:{label:"Actions LIMEX", ic:ClipboardCheck, grp:"LIMEX", coll:"actionsLimex", pfx:"ACL", statut:"statut",
+ champs:[
+  {k:"suivi",l:"Suivi LIMEX",t:"ref",coll:"suivisLimex",cle:"codeReference",req:1},
+  {k:"libelle",l:"Que faut-il faire ?",t:"text",req:1},
+  {k:"responsable",l:"Responsable",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB),req:1},
+  {k:"echeance",l:"Échéance",t:"date"},
+  {k:"priorite",l:"Priorité",t:"select",opts:PRIORITES_LIMEX},
+  {k:"interneExterne",l:"Attente",t:"select",opts:ATTENTE_TYPES_LIMEX},
+  {k:"statut",l:"Statut",t:"select",opts:STATUTS_ACTION_LIMEX},
+  {k:"resultat",l:"Résultat",t:"text"},
+  {k:"prochaineAction",l:"Prochaine action",t:"text"}
+ ],
+ avantSauve: (DB, o) => { if(!o.statut) o.statut = "À faire"; if(!o.priorite) o.priorite = "Normale"; },
+ cols:[["suivi","Suivi"],["libelle","Action"],["responsable","Responsable"],["statut","Statut",v=>pillStatut(v)],["echeance","Échéance"]]},
+
+instructionsLimex:{label:"Instructions LIMEX", ic:Mail, grp:"LIMEX", coll:"instructionsLimex", pfx:"INL", statut:"statut",
+ champs:[
+  {k:"suivi",l:"Suivi LIMEX",t:"ref",coll:"suivisLimex",cle:"codeReference",req:1},
+  {k:"source",l:"Source de l'instruction",t:"select",opts:SOURCES_INSTRUCTION_LIMEX,req:1},
+  {k:"texteOriginal",l:"Texte original",t:"textarea",large:1,req:1},
+  {k:"destinataires",l:"Destinataires",t:"text",aide:"Séparés par une virgule."},
+  {k:"pieceJointe",l:"Capture / pièce jointe",t:"file"},
+  {k:"statut",l:"Statut",t:"select",opts:["Brouillon","Envoyée"]}
+ ],
+ avantSauve: (DB, o) => { if(!o.statut) o.statut = "Brouillon"; if(!o.actionsGenerees) o.actionsGenerees = []; },
+ cols:[["suivi","Suivi"],["source","Source"],["destinataires","Destinataires"],["statut","Statut",v=>pillStatut(v)]]},
+
+documentsComptablesCasa:{label:"Documents comptables Casa", ic:FolderArchive, grp:"Finance", coll:"documentsComptablesCasa", pfx:"DCC", statut:"statut",
+ champs:[
+  {k:"date",l:"Date",t:"date",req:1},
+  {k:"dossier",l:"Dossier",t:"text"},
+  {k:"typeDocument",l:"Type de document",t:"select",opts:TYPES_DOC_COMPTABLE_CASA,req:1},
+  {k:"fournisseur",l:"Fournisseur / tiers",t:"text"},
+  {k:"montant",l:"Montant",t:"number"},
+  {k:"paiement",l:"Paiement lié (si connu)",t:"ref",coll:"paiements",cle:"code"},
+  {k:"document",l:"Document",t:"file"},
+  {k:"statut",l:"Statut",t:"select",opts:STATUTS_DOC_COMPTABLE_CASA}
+ ],
+ avantSauve: (DB, o) => { if(!o.statut) o.statut = "À classer"; },
+ cols:[["date","Date"],["dossier","Dossier"],["typeDocument","Type"],["fournisseur","Fournisseur"],["montant","Montant",v=>fmtMAD(v)],["statut","Statut",v=>pillStatut(v)]]},
+
 notifications:{label:"Notifications", ic:Bell, grp:"Transverse"},
 messagerie:{label:"Messagerie interne", ic:Mail, grp:"Transverse", coll:"communicationsDossier", pfx:"MSG", statut:"type",
  champs:[
@@ -822,17 +904,21 @@ devisAControler:{label:"Devis à contrôler", ic:Calculator, grp:"Mon espace"},
 coordinationMansouri:{label:"Coordination Mansouri", ic:Users, grp:"Mon espace"},
 monPortefeuilleClosing:{label:"Mon portefeuille Closing", ic:FolderKanban, grp:"Mon espace"},
 aQualifierClosing:{label:"À qualifier", ic:AlertTriangle, grp:"Mon espace"},
-etatClosing:{label:"État du Closing", ic:Gauge, grp:"Pilotage"}
+etatClosing:{label:"État du Closing", ic:Gauge, grp:"Pilotage"},
+maJourneeImane:{label:"Ma journée", ic:ListChecks, grp:"Mon espace"},
+suiviLimex:{label:"Suivi LIMEX", ic:ListChecks, grp:"Mon espace"},
+etudesCalcul:{label:"Études & Calcul", ic:Calculator, grp:"Mon espace"},
+paiementsEcheances:{label:"Paiements & Échéances", ic:Banknote, grp:"Mon espace"}
 };
 
 export const ORDRE_NAV = [
- ["Mon espace",["dashboard","tableauBordData","maJourneeClosing","monProgramme","mesTaches","mesObjectifs","devisAControler","coordinationMansouri","monPortefeuilleClosing","aQualifierClosing","monRapportJournalier","monAgenda","notifications","monProfil"]],
+ ["Mon espace",["dashboard","tableauBordData","maJourneeClosing","maJourneeImane","suiviLimex","etudesCalcul","paiementsEcheances","monProgramme","mesTaches","mesObjectifs","devisAControler","coordinationMansouri","monPortefeuilleClosing","aQualifierClosing","monRapportJournalier","monAgenda","notifications","monProfil"]],
  ["Pilotage",["pilotageEquipe","quiFaitQuoi","ajouterTache","rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal","journalSecurite","etatClosing","suivisClosing"]],
  ["Commercial",["clients","contacts","demandes","commandes","dossiers","offres","reclamations"]],
  ["Études",["sourcings","etudes"]],
- ["LIMEX",["dashboardLimex","arrivages","rapportLimexDirection"]],
+ ["LIMEX",["dashboardLimex","arrivages","rapportLimexDirection","suivisLimex","actionsLimex","instructionsLimex"]],
  ["Opérations",["analyses","transports","transits","certifs","transportsNat"]],
- ["Finance",["paiements","pmtIntl","facturation"]],
+ ["Finance",["paiements","pmtIntl","facturation","documentsComptablesCasa"]],
  ["Référentiels",["fournisseurs","partenaires","produits","stockage"]],
  ["Transverse",["documents","messagerie","taches"]],
  ["Archives",["leads"]]

@@ -10,9 +10,10 @@ import LigneModal from '../common/LigneModal';
 import { MODS } from '../../data/modules';
 import { PERS_ET_SERVICES } from '../../data/permissions';
 import { pill, pillStatut } from '../../utils/format';
-import { OBJETS_LIABLES_TACHE, RETOURS_MANSOURI_CLOSING } from '../../data/constants';
+import { OBJETS_LIABLES_TACHE, RETOURS_MANSOURI_CLOSING, RETOURS_EXECUTANT_LIMEX } from '../../data/constants';
 import { estTacheOuverte, estAjouteParDirection, calculerAlertesTache, construireMessageTache } from '../../utils/tachesPilotage';
 import { construireMessageSuiviClosing, enregistrerRetourMansouri } from '../../utils/closingCoordination';
+import { construireMessageSuiviLimex, enregistrerRetourExecutant } from '../../utils/limexCoordination';
 
 const ETAPE_CHAMPS = [
   { k: 'libelle', l: 'Étape', t: 'text', req: 1, large: 1 },
@@ -97,6 +98,9 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
   const peutAccuserReception = ajouteeParDirection && !tache.luLe && tache.assigne === userCourant;
   const suiviClosingLie = tache.objetType === 'suivisClosing' && tache.objetCode ? (db.suivisClosing || []).find(s => s.code === tache.objetCode) : null;
   const estRetourClosing = !!suiviClosingLie && ouverte && !enValidation && tache.assigne === userCourant;
+  const actionLimexLiee = tache.objetType === 'actionsLimex' && tache.objetCode ? (db.actionsLimex || []).find(a => a.code === tache.objetCode) : null;
+  const suiviLimexLie = actionLimexLiee ? (db.suivisLimex || []).find(s => s.code === actionLimexLiee.suivi) : null;
+  const estRetourLimex = !!actionLimexLiee && !!suiviLimexLie && ouverte && !enValidation && tache.assigne === userCourant;
 
   const handleAjouterEtape = (data) => {
     const isEdit = !!etapeEnCours?.code;
@@ -204,6 +208,22 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
     toast('Retour enregistré.');
   };
 
+  // Retour simple exécutant LIMEX (§12) — même mécanique que le retour
+  // Mansouri côté Closing : termine la tâche avec un libellé fixe et met à
+  // jour l'action LIMEX liée sans que l'exécutant n'ait à ouvrir le suivi.
+  const handleRetourLimex = (label) => {
+    const next = { ...tache, statut: 'Terminée', resultatObtenu: label };
+    updateDB({
+      ...db,
+      taches: (db.taches || []).map(t => t.code === code ? next : t),
+      actionsLimex: (db.actionsLimex || []).map(a => a.code === actionLimexLiee.code ? { ...a, ...enregistrerRetourExecutant(label) } : a)
+    });
+    audit('Tâches', 'Terminée (retour LIMEX)', code, 'resultatObtenu', '—', label, tache.dossier);
+    audit('Suivi LIMEX', `Retour exécutant (${label})`, suiviLimexLie.code, 'resultat', '—', label);
+    notifier(suiviLimexLie.coordinateur, construireMessageSuiviLimex(suiviLimexLie, { titre: `${userCourant} a mis à jour le code ${suiviLimexLie.codeReference}`, extra: `${actionLimexLiee.libelle} — Retour : ${label}` }), 'Suivi LIMEX');
+    toast('Retour enregistré.');
+  };
+
   const handleValider = () => {
     updateDB({ ...db, taches: (db.taches || []).map(t => t.code === code ? { ...t, statut: 'Terminée' } : t) });
     audit('Tâches', 'Validation', code, 'statut', tache.statut, 'Terminée', tache.dossier);
@@ -249,7 +269,7 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
           {estDirection() && <button className="btn doux" onClick={() => setShowReaffecter(true)}>Réaffecter</button>}
           {ouverte && !enValidation && tache.statut !== 'Bloquée' && peut('modifier') && <button className="btn doux" onClick={() => setShowBlocage(true)}>Signaler un blocage</button>}
           {ouverte && !enValidation && peut('modifier') && <button className="btn doux" onClick={() => setShowReporter(true)}>Reporter</button>}
-          {ouverte && !enValidation && !estRetourClosing && peut('modifier') && <button className="btn or" onClick={handleOuvrirTerminer}>Terminer la tâche</button>}
+          {ouverte && !enValidation && !estRetourClosing && !estRetourLimex && peut('modifier') && <button className="btn or" onClick={handleOuvrirTerminer}>Terminer la tâche</button>}
         </div>
 
         {estRetourClosing && (
@@ -259,6 +279,18 @@ export default function FicheTache({ codeProp, code: codeFromProp }) {
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {RETOURS_MANSOURI_CLOSING.map(r => (
                 <button key={r} className="btn or" onClick={() => handleRetourClosing(r)}>{r}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {estRetourLimex && (
+          <div className="bloc-fiche large" style={{ background: 'var(--fond-jaune)' }}>
+            <h4>Suivi LIMEX — Code {suiviLimexLie.codeReference}</h4>
+            <p style={{ margin: '0 0 10px' }}>{actionLimexLiee.libelle}</p>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {RETOURS_EXECUTANT_LIMEX.map(r => (
+                <button key={r} className="btn or" onClick={() => handleRetourLimex(r)}>{r}</button>
               ))}
             </div>
           </div>

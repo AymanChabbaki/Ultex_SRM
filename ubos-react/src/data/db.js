@@ -19,7 +19,8 @@ export function baseVide() {
     limexPortesValidation: [], limexImportHistory: [],
     demandeLignes: [], demandeRoutages: [], objectifsData: [],
     tacheEtapes: [], rapportsJournaliers: [], journalSecurite: [],
-    suivisClosing: []
+    suivisClosing: [],
+    suivisLimex: [], actionsLimex: [], instructionsLimex: [], documentsComptablesCasa: []
   };
 }
 

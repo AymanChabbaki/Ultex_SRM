@@ -40,15 +40,25 @@ const MODULES_DIRECTION = ["auditGlobal", "utilisateurs", "rapportDirection", "p
 // "mesTaches" reste visible : c'est aussi son seul accès à ses tâches hors
 // Closing (son rôle Analyse Dossiers / Transit & Douane reste actif).
 const MODULES_FUSIONNES_CLOSING = ["monProgramme", "mesObjectifs", "monRapportJournalier", "monAgenda", "suivisClosing"];
+// Même principe pour Imane (§2 du besoin LIMEX) — 4 espaces seulement
+// (Ma journée, Suivi LIMEX, Études & Calcul, Paiements & Échéances) ;
+// "mesTaches" reste visible pour les exécutants (Yasser/Nisrine/etc.) qui
+// reçoivent leurs actions LIMEX comme de vraies tâches.
+const MODULES_FUSIONNES_LIMEX = ["monProgramme", "mesObjectifs", "monRapportJournalier", "monAgenda", "suivisLimex", "actionsLimex", "instructionsLimex"];
 
 export function estCoordinateurClosing(session) {
     return !!session && (session.modules || []).includes("maJourneeClosing");
+}
+
+export function estCoordinateurLimex(session) {
+    return !!session && (session.modules || []).includes("maJourneeImane");
 }
 
 export function moduleVisible(session, id) {
     if (!session) return false;
     if (MODULES_DIRECTION.includes(id)) return estDirection(session);
     if (estCoordinateurClosing(session) && MODULES_FUSIONNES_CLOSING.includes(id)) return false;
+    if (estCoordinateurLimex(session) && MODULES_FUSIONNES_LIMEX.includes(id)) return false;
     if (MODULES_LIBRES.includes(id)) return true;
     return estDirection(session) || (session.modules || []).includes(id);
 }
@@ -110,6 +120,34 @@ export function migrerRoleZoubidaClosing(DB, auditFn = () => {}) {
         }
     }
     DB._migrationZoubidaClosingFaite = true;
+    return true;
+}
+
+/**
+ * Ajoute le rôle "Coordination LIMEX" au compte Imane sans rien retirer de
+ * son rôle Transport / Études & Chiffrage actuel — même décision additive
+ * que pour Zoubida. Un seul passage, jamais rejoué.
+ */
+export function migrerRoleImaneLimex(DB, auditFn = () => {}) {
+    if (DB._migrationImaneLimexFaite) return false;
+    const NOUVEAUX_MODULES = ["suivisLimex", "actionsLimex", "instructionsLimex", "documentsComptablesCasa", "maJourneeImane", "suiviLimex", "etudesCalcul", "paiementsEcheances"];
+    const imane = (DB.utilisateurs || []).find(u =>
+        u.identifiant === "imane" || (u.nomComplet || "").toLowerCase().includes("imane")
+    );
+    if (imane) {
+        if (!(imane.services || []).includes("LIMEX")) {
+            const avant = (imane.services || []).join(", ");
+            imane.services = [...(imane.services || []), "LIMEX"];
+            auditFn("Utilisateurs", "Service ajouté (Coordination LIMEX)", imane.code, "services", avant, imane.services.join(", "));
+        }
+        const manquants = NOUVEAUX_MODULES.filter(m => !(imane.modules || []).includes(m));
+        if (manquants.length) {
+            const avant = (imane.modules || []).join(", ");
+            imane.modules = [...(imane.modules || []), ...manquants];
+            auditFn("Utilisateurs", "Modules ajoutés (Coordination LIMEX)", imane.code, "modules", avant, imane.modules.join(", "));
+        }
+    }
+    DB._migrationImaneLimexFaite = true;
     return true;
 }
 

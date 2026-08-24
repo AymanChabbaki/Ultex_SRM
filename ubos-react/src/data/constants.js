@@ -176,6 +176,23 @@ export const RESULTATS_CONTACT_CLOSING = ["Répondu","Pas répondu","Intéressé
 export const RETOURS_MANSOURI_CLOSING = ["Fait","Client contacté","Pas de réponse","Attente client","Blocage","À revoir avec Zoubida"];
 export const MOTIFS_REVOIR_DEVIS_CLOSING = ["Position tarifaire","Valeur","Quantité","Transport","Marge / calcul","Document / information manquante","Autre"];
 export const MOTIFS_ARCHIVAGE_CLOSING = ["Erreur de saisie","Doublon","Test","Client non concerné","Autre"];
+
+// ---------- Profil Imane : Coordination LIMEX / Études & Calcul / Paiements ----------
+export const ETATS_GLOBAUX_LIMEX = ["Nouveau","En traitement","Attente retour","Bloqué","Prêt pour validation","Validé","Clôturé"];
+export const STATUTS_ACTION_LIMEX = ["À faire","En cours","Attente fournisseur","Attente collègue","Reçue","À confirmer","Retard","Bloqué","Fait","Annulée"];
+export const ATTENTE_TYPES_LIMEX = ["Interne","Externe"];
+export const ATTENTE_EXTERNE_LIMEX = ["Fournisseur","Client","Transitaire","Banque","Compagnie maritime","Compagnie aérienne","Laboratoire","Administration","Autre"];
+export const SOURCES_INSTRUCTION_LIMEX = ["Direction","WhatsApp LIMEX","Imane","Réunion","Email","Téléphone","Autre"];
+export const RETOURS_EXECUTANT_LIMEX = ["Fait","En cours","Attente fournisseur","Bloqué"];
+export const PRIORITES_LIMEX = ["Critique","Urgente","Haute","Normale"];
+export const MOTIFS_RETOUR_CALCUL = ["Prix","Quantité","Poids / CBM","Transport","HS Code","Douane","Marge","Formule","Document","Autre"];
+export const NIVEAUX_CONFIANCE_HS = ["Élevé","À confirmer","Faible"];
+export const TYPES_PAIEMENT_IMANE = ["Avance fournisseur","Reliquat fournisseur","Paiement total","Transport international","Transport national","Transitaire","Douane","Certification","Laboratoire","Port / magasinage","Assurance","Autre"];
+export const STATUTS_PAIEMENT_IMANE = ["À préparer","Prêt à payer","Soumis Direction","Autorisé","Payé","Partiellement payé","Bloqué","Reporté","Annulé"];
+export const PRIORITES_PAIEMENT = ["Priorité 1","Priorité 2","Priorité 3"];
+export const DEVISES_PAIEMENT = ["MAD","USD","EUR"];
+export const TYPES_DOC_COMPTABLE_CASA = ["Facture","Reçu","Banque","Transport","Transitaire","Douane","Magasinage","Certification","Fournisseur","Charge","Autre"];
+export const STATUTS_DOC_COMPTABLE_CASA = ["À classer","Classé","Pièce manquante","Transmis comptable"];
 export const STATUTS_CONSULTATION_FOURN = ["À contacter","Contacté","Attente réponse","Offre reçue","Offre incomplète","En négociation","Recommandé","Non retenu","Refusé","Sans réponse"];
 export const CONDITIONS_COMMANDE = ["Devis accepté","Bon de commande signé","Contrat signé","Acompte reçu","Preuve de paiement reçue","Validation exceptionnelle de la Direction"];
 export const METHODES_REPARTITION = ["Par poids","Par CBM","Par valeur marchandise","Par nombre de colis","Montant égal par dossier","Montant manuel","Non réparti","Entièrement affecté à ULTEx","Entièrement affecté à un dossier précis"];
@@ -271,7 +288,7 @@ export const TYPES_MESSAGE = ["Information","Action demandée","Validation deman
 export const PRIORITES_MESSAGE = ["Normale","Élevée","Urgente"];
 
 export const PFX_ANNEE = ["DOS","FF","AV","REL","ABD","IMP","RMB","CMD","DMD","ARR"];
-export const COLLS = ["clients","leads","fournisseurs","produits","dossiers","sourcings","etudes","offres","paiements","analyses","transports","transits","documents","taches","rapports","reclamations","stockage","certifs","transportsNat","pmtIntl","erreurs","utilisateurs","facturesFinales","avoirsFF","abandons","impayes","remboursements","contacts","demandes","commandes","arrivages","analysesLimex","bonsLancement","stocks","mouvementsStock","livraisons","transfertsServices","communicationsDossier","partenaires","importJobs","importFiles","importModels","importMappings","importRows","importErrors","importHistory","importDetectedTypes","importExtractedData","importAttachments","importRollbacks","controlesLimex","dossierControlesLimex","limexDiagnosticOumaima","limexPortesValidation","limexImportHistory","demandeLignes","demandeRoutages","objectifsData","tacheEtapes","rapportsJournaliers","journalSecurite","suivisClosing"];
+export const COLLS = ["clients","leads","fournisseurs","produits","dossiers","sourcings","etudes","offres","paiements","analyses","transports","transits","documents","taches","rapports","reclamations","stockage","certifs","transportsNat","pmtIntl","erreurs","utilisateurs","facturesFinales","avoirsFF","abandons","impayes","remboursements","contacts","demandes","commandes","arrivages","analysesLimex","bonsLancement","stocks","mouvementsStock","livraisons","transfertsServices","communicationsDossier","partenaires","importJobs","importFiles","importModels","importMappings","importRows","importErrors","importHistory","importDetectedTypes","importExtractedData","importAttachments","importRollbacks","controlesLimex","dossierControlesLimex","limexDiagnosticOumaima","limexPortesValidation","limexImportHistory","demandeLignes","demandeRoutages","objectifsData","tacheEtapes","rapportsJournaliers","journalSecurite","suivisClosing","suivisLimex","actionsLimex","instructionsLimex","documentsComptablesCasa"];
 
 // ---------- Checklist Maître LIMEX (import CHECKLIST_MAITRE_ULTEX_LIMEX.xlsx, onglet 3_Checklist_Maitre) ----------
 export const STATUTS_CONTROLE_LIMEX = [
