@@ -6,7 +6,7 @@ import { useDB } from '../../context/DBContext';
 import Toast from '../common/Toast';
 import { verifierTachesAutomatiques, calculerOccurrencesRecurrentesDues } from '../../utils/tachesPilotage';
 import { verifierTachesAutoClosing, suivisDeCoordinateur, construireRapportAutoJour } from '../../utils/closingCoordination';
-import { migrerRoleZoubidaClosing } from '../../data/permissions';
+import { migrerRoleZoubidaClosing, migrerSuivisClosingV2 } from '../../data/permissions';
 
 const SidebarContext = createContext();
 export const useSidebar = () => useContext(SidebarContext);
@@ -22,7 +22,9 @@ const Layout = ({ children }) => {
     if (!session || dbLoading || dejaVerifieRef.current) return;
     dejaVerifieRef.current = true;
 
-    const migrationJouee = migrerRoleZoubidaClosing(db, (...args) => audit(...args));
+    const migrationRoleJouee = migrerRoleZoubidaClosing(db, (...args) => audit(...args));
+    const migrationSuivisJouee = migrerSuivisClosingV2(db, (...args) => audit(...args));
+    const migrationJouee = migrationRoleJouee || migrationSuivisJouee;
 
     const ajd = new Date().toISOString().slice(0, 10);
     let toutesNouvelles = [];

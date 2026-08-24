@@ -1,16 +1,105 @@
 import { getUtilisateurParNom, estTacheOuverte, genererTacheAuto, tachesDeUtilisateur, STATUTS_TERMINES } from './tachesPilotage';
 import { clientsDeAgent } from './dataPipeline';
 
-export const STATUTS_FERMES_CLOSING = ['Avance reçue', 'Perdu / Abandonné'];
+export const STATUTS_FERMES_CLOSING = ['Avance reçue', 'Perdu / Abandonné', 'Clôturé'];
 
+/** Ouvert = pas dans un statut terminal, pas archivé. Les archivés n'apparaissent plus nulle part par défaut (§5) — seule la fiche + une vue Direction peuvent les restaurer. */
 export function estSuiviOuvert(suivi) {
-  return !STATUTS_FERMES_CLOSING.includes(suivi.statutPipeline);
+  return !suivi.archive && !STATUTS_FERMES_CLOSING.includes(suivi.statutPipeline);
+}
+
+/** Les anciennes données non encore qualifiées (§24-25) vivent hors des compteurs/alertes normaux — c'est le bug corrigé : un "Nouveau" jamais qualifié n'est plus compté comme une vraie action à faire. */
+export function estQualifie(suivi) {
+  return suivi.statutPipeline !== 'À qualifier';
 }
 
 /** Suivis coordonnés par cet utilisateur (elle ne les perd jamais, §10). */
 export function suivisDeCoordinateur(db, user) {
   const nom = user?.nomComplet || user?.identifiant;
   return (db.suivisClosing || []).filter(s => s.coordinateur === nom);
+}
+
+/** Affichage "8477" si dossier unique, "8477 / 8477-D02" sinon (§15) — un seul endroit pour ce libellé. */
+export function libelleCode(suivi) {
+  if (!suivi) return '';
+  if (!suivi.codeDossier || suivi.codeDossier === suivi.codeClient) return suivi.codeClient || suivi.codeSuivi || '';
+  return `${suivi.codeClient} / ${suivi.codeDossier}`;
+}
+
+/**
+ * Normalisation de code (§3) : espaces retirés, majuscules, préfixe "L"
+ * isolé retiré si le reste est numérique — L6242 / l6242 / L 6242 → 6242.
+ */
+export function normaliserCodeClient(code) {
+  if (!code) return '';
+  let c = String(code).replace(/\s+/g, '').toUpperCase();
+  if (/^L\d+$/.test(c)) c = c.slice(1);
+  return c;
+}
+
+/**
+ * Détection de doublon (§3/§4) — cherche sur TOUS les suivis (pas seulement
+ * ceux du coordinateur courant : un doublon peut avoir été créé par
+ * n'importe qui) par codeClient normalisé, puis par téléphone si le suivi
+ * est déjà rattaché à un vrai client UBOS. Ignore les suivis archivés.
+ */
+export function trouverClientExistant(db, codeSaisi, ignorerCode) {
+  const cible = normaliserCodeClient(codeSaisi);
+  if (!cible) return null;
+  return (db.suivisClosing || []).find(s =>
+    !s.archive && s.code !== ignorerCode && normaliserCodeClient(s.codeClient || s.codeSuivi) === cible
+  ) || null;
+}
+
+/** Prochain identifiant de dossier pour un client donné (§16) — 8477-D02, -D03… */
+export function genererCodeDossierSuivant(db, codeClient) {
+  const existants = (db.suivisClosing || []).filter(s => normaliserCodeClient(s.codeClient) === normaliserCodeClient(codeClient));
+  const n = existants.length + 1;
+  return `${codeClient}-D${String(n).padStart(2, '0')}`;
+}
+
+/** Tous les dossiers d'un même client, triés du plus récent au plus ancien. */
+export function dossiersDuClient(db, codeClient) {
+  const cible = normaliserCodeClient(codeClient);
+  return (db.suivisClosing || []).filter(s => normaliserCodeClient(s.codeClient) === cible).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+}
+
+/**
+ * Recherche (§7-8) : match partiel sur codeClient/codeDossier normalisés,
+ * sur le produit, et sur nom/téléphone du client UBOS si rattaché. Jamais
+ * de "aucun résultat" quand le code existe réellement — recherche large,
+ * filtrage à l'affichage.
+ */
+export function rechercherSuivis(db, user, texte) {
+  const suivis = suivisDeCoordinateur(db, user);
+  const q = normaliserCodeClient(texte);
+  if (!q) return suivis;
+  return suivis.filter(s => {
+    if (normaliserCodeClient(s.codeClient || s.codeSuivi).includes(q)) return true;
+    if (normaliserCodeClient(s.codeDossier).includes(q)) return true;
+    if (s.produit && normaliserCodeClient(s.produit).includes(q)) return true;
+    if (s.client) {
+      const client = (db.clients || []).find(c => c.code === s.client);
+      if (client && ((client.nom && client.nom.toUpperCase().includes(texte.toUpperCase())) || (client.telephone && client.telephone.replace(/\s+/g, '').includes(texte.replace(/\s+/g, ''))))) return true;
+    }
+    return false;
+  });
+}
+
+/**
+ * Fusion (§6) — retourne le patch à appliquer à la cible ; rien n'est
+ * jamais perdu : la mémoire des deux est concaténée (dédoublonnée), les
+ * champs vides de la cible sont complétés par la source. L'appelant se
+ * charge de réassigner les tâches liées et d'archiver la source.
+ */
+export function fusionnerSuivis(source, cible) {
+  const memoireFusionnee = [...(cible.memoire || []), ...(source.memoire || [])]
+    .filter((m, i, arr) => arr.findIndex(x => x.texte === m.texte && x.date === m.date) === i);
+  const patch = { memoire: memoireFusionnee };
+  ['situationActuelle', 'actionRecommandee', 'dernierContact', 'echeanceActionSuivante', 'produit', 'client', 'dossier'].forEach(k => {
+    if (!cible[k] && source[k]) patch[k] = source[k];
+  });
+  return patch;
 }
 
 const AUJOURD_HUI = () => new Date(new Date().toDateString());
@@ -32,6 +121,7 @@ export function genererProgrammeClosing(db, user) {
   const auj = AUJOURD_HUI();
   const items = suivisDeCoordinateur(db, user)
     .filter(estSuiviOuvert)
+    .filter(estQualifie)
     .filter(s => {
       const echeance = s.echeanceActionSuivante ? new Date(s.echeanceActionSuivante) : null;
       const due = echeance && echeance <= auj;
@@ -40,7 +130,7 @@ export function genererProgrammeClosing(db, user) {
     .map(s => {
       const p = calculerPrioriteSuivi(s);
       return {
-        code: s.code, codeSuivi: s.codeSuivi,
+        code: s.code, codeSuivi: libelleCode(s),
         situation: s.situationActuelle || s.statutPipeline || 'Nouveau',
         actionAujourdhui: s.actionRecommandee || (s.dernierContact ? 'Relancer' : 'Premier contact'),
         dernierContact: s.dernierContact || '—',
@@ -57,7 +147,7 @@ const SEUIL_JOURS_SANS_ACTION = 3;
 /** Les 5 alertes du §13 — uniquement dérivées de champs réels, jamais fabriquées. */
 export function genererAlertesClosing(db, user) {
   const auj = AUJOURD_HUI();
-  const suivis = suivisDeCoordinateur(db, user).filter(estSuiviOuvert);
+  const suivis = suivisDeCoordinateur(db, user).filter(estSuiviOuvert).filter(estQualifie);
   const alertes = [];
   const push = (titre, liste) => { if (liste.length) alertes.push({ titre, suivis: liste }); };
 
@@ -114,12 +204,12 @@ export function suivisATransmettreMansouri(db, user) {
     .filter(s => ETAPES_CANDIDATES_MANSOURI.includes(s.statutPipeline) && s.responsableActionActuelle !== 'Mansouri');
 }
 
-const DELAI_JOURS = { 'Demain': 1, '2 jours': 2, '3 jours': 3, '7 jours': 7 };
+const DELAI_JOURS = { "Aujourd'hui": 0, 'Demain': 1, '2 jours': 2, '3 jours': 3, '7 jours': 7 };
 export const OPTIONS_DELAI_RELANCE = Object.keys(DELAI_JOURS);
 
 export function calculerEcheanceRelance(delaiLabel, dateChoisie) {
   if (dateChoisie) return dateChoisie;
-  const jours = DELAI_JOURS[delaiLabel] || 2;
+  const jours = delaiLabel in DELAI_JOURS ? DELAI_JOURS[delaiLabel] : 2;
   const d = new Date();
   d.setDate(d.getDate() + jours);
   return d.toISOString().slice(0, 10);
@@ -149,6 +239,76 @@ export function enregistrerResultatContact(suivi, resultat, echeanceSuivante) {
 /** Changement de statut en un clic (§4/§16 — éviter les formulaires). */
 export function changerStatutRapide(statut) {
   return { statutPipeline: statut };
+}
+
+/**
+ * Statuts suivants pertinents selon l'état actuel (§11/§12) — jamais les 33
+ * valeurs en même temps, seulement un sous-ensemble contextuel.
+ */
+export const PROCHAINS_STATUTS = {
+  'À qualifier': ['Nouveau', 'Perdu / Abandonné'],
+  'Nouveau': ['Premier contact', 'Contacté', 'Perdu / Abandonné'],
+  'Premier contact': ['Contacté', 'Pas intéressé'],
+  'Contacté': ['Calcul à demander', 'Client intéressé', 'Attente client', 'Informations manquantes'],
+  'Informations manquantes': ['Contacté', 'Bloqué'],
+  'Calcul à demander': ['Calcul demandé'],
+  'Calcul demandé': ['Calcul en cours', 'Devis à contrôler'],
+  'Calcul en cours': ['Devis à contrôler'],
+  'Devis en cours': ['Devis à contrôler'],
+  'Devis à contrôler': ['Devis validé', 'Devis retourné'],
+  'Devis retourné': ['Calcul en cours'],
+  'Devis validé': ['Devis envoyé'],
+  'Devis envoyé': ['Attente retour client', 'Client intéressé', 'Négociation', 'Pas intéressé'],
+  'Attente retour client': ['Relance prévue', 'Client intéressé'],
+  'Relance prévue': ['Relance effectuée'],
+  'Relance effectuée': ['Client intéressé', 'Attente client', 'Négociation'],
+  'Client intéressé': ['Négociation', 'Attente décision'],
+  'Attente client': ['Relance prévue', 'Négociation'],
+  'Négociation': ['Attente décision', 'Confirmation probable', 'Accord'],
+  'Modification demandée': ['Calcul en cours'],
+  'Attente Mansouri': ['Chez Mansouri'],
+  'Chez Mansouri': ['Retour Mansouri reçu'],
+  'Retour Mansouri reçu': ['Client intéressé', 'Négociation', 'Attente décision'],
+  'Attente décision': ['Confirmation probable', 'Accord', 'Pas intéressé'],
+  'Confirmation probable': ['Accord', 'Confirmation'],
+  'Accord': ['Confirmation'],
+  'Confirmation': ['Avance attendue', 'Avance reçue'],
+  'Avance attendue': ['Avance reçue'],
+  'Avance reçue': ['Clôturé'],
+  'Bloqué': ['Contacté', 'Perdu / Abandonné'],
+  'Pas intéressé': ['Perdu / Abandonné'],
+  'Perdu / Abandonné': [],
+  'Clôturé': []
+};
+
+/**
+ * Les 8 boutons "Que s'est-il passé ?" du flux TRAITER unifié (§17). Deux
+ * d'entre eux (calcul/Mansouri) ont un vrai effet de bord (création de
+ * tâche) et sont traités à part par la page — les six autres sont de purs
+ * changements de statut/contact.
+ */
+export const ACTIONS_TRAITER = [
+  { label: 'Client contacté', type: 'patch', statut: 'Contacté' },
+  { label: 'Pas de réponse', type: 'patch', resultat: 'Pas répondu' },
+  { label: 'Informations reçues', type: 'patch', statut: 'Contacté', resultat: 'Répondu' },
+  { label: 'Demander calcul', type: 'calcul' },
+  { label: 'Programmer relance', type: 'patch', statut: 'Relance prévue' },
+  { label: 'Client intéressé', type: 'patch', statut: 'Client intéressé', resultat: 'Intéressé' },
+  { label: 'Transmettre Mansouri', type: 'mansouri' },
+  { label: 'Bloqué', type: 'patch', statut: 'Bloqué' }
+];
+
+/** Construit le patch d'un bouton "patch" du flux TRAITER — un seul updateDB côté page. */
+export function construirePatchTraiter(suivi, actionDef, echeance, note) {
+  const patch = {
+    dernierContact: AJD_ISO(),
+    dernierContactHeure: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  };
+  if (actionDef.statut) patch.statutPipeline = actionDef.statut;
+  if (actionDef.resultat) patch.resultatDernierContact = actionDef.resultat;
+  if (echeance) patch.echeanceActionSuivante = echeance;
+  if (note && note.trim()) patch.memoire = [...(suivi.memoire || []), { texte: note.trim(), date: AJD_ISO(), auteur: suivi.coordinateur }];
+  return patch;
 }
 
 /**

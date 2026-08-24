@@ -89,7 +89,7 @@ export function seedUsers(DB) {
  */
 export function migrerRoleZoubidaClosing(DB, auditFn = () => {}) {
     if (DB._migrationZoubidaClosingFaite) return false;
-    const NOUVEAUX_MODULES = ["suivisClosing", "maJourneeClosing", "devisAControler", "coordinationMansouri", "monPortefeuilleClosing"];
+    const NOUVEAUX_MODULES = ["suivisClosing", "maJourneeClosing", "devisAControler", "coordinationMansouri", "monPortefeuilleClosing", "aQualifierClosing"];
     // Recherche par nom plutôt que par identifiant exact : le compte réel
     // peut avoir été renommé/recodé en production (ex. identifiant "SATLI"
     // pour "Zoubida Satli") depuis que le modèle de seed a été écrit.
@@ -111,6 +111,35 @@ export function migrerRoleZoubidaClosing(DB, auditFn = () => {}) {
     }
     DB._migrationZoubidaClosingFaite = true;
     return true;
+}
+
+/**
+ * Correctif Client/Dossier + nettoyage des compteurs (§24 du besoin) — un
+ * seul passage sur les suivis Closing déjà en production. Ne supprime et
+ * ne recalcule rien : ajoute seulement codeClient/codeDossier (repris de
+ * l'ancien codeSuivi, donc identiques pour l'existant — rien ne change
+ * visuellement) et reclasse les "Nouveau" jamais travaillés en "À
+ * qualifier" pour qu'ils arrêtent de polluer les compteurs "calcul à
+ * demander"/"premier contact" (c'était le bug réel : un code jamais touché
+ * était compté comme une vraie action à faire).
+ */
+export function migrerSuivisClosingV2(DB, auditFn = () => {}) {
+    if (DB._migrationSuivisClosingV2Faite) return false;
+    let n = 0;
+    (DB.suivisClosing || []).forEach(s => {
+        if (!s.codeClient) {
+            s.codeClient = s.codeSuivi;
+            s.codeDossier = s.codeSuivi;
+            n++;
+        }
+        if (s.statutPipeline === "Nouveau" && !s.dernierContact) {
+            auditFn("Suivi Closing", "Reclassé À qualifier (migration)", s.code, "statutPipeline", "Nouveau", "À qualifier");
+            s.statutPipeline = "À qualifier";
+            n++;
+        }
+    });
+    DB._migrationSuivisClosingV2Faite = true;
+    return n > 0;
 }
 
 export function migrerEtapesDossiers(DB, auditFn = () => {}) {

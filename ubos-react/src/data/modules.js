@@ -7,7 +7,7 @@ import {
     CANAUX_RECEPTION_DEMANDE, TYPES_PROJET_DEMANDE, TYPES_USAGE_DEMANDE,
     STATUTS_LIGNE_DEMANDE, STATUTS_HS_CODE, CRITERES_CLIENT_DEMANDE, TYPES_TRAITEMENT_LIGNE,
     PIPELINE_ETAPES_CLIENT, PRIORITES_TACHE, STATUTS_TACHE, TYPES_TACHE, OBJETS_LIABLES_TACHE,
-    RECURRENCES_TACHE, STATUTS_PIPELINE_CLOSING
+    RECURRENCES_TACHE, STATUTS_PIPELINE_CLOSING, PRIORITES_CLOSING
 } from './constants';
 import { pill, pillStatut, esc, refLabel, fmtMAD } from '../utils/format';
 import { PERS_ET_SERVICES } from './permissions';
@@ -758,21 +758,32 @@ taches:{label:"Tâches & Décisions", ic:CheckSquare, grp:"Transverse", coll:"ta
 
 suivisClosing:{label:"Suivis Closing", ic:Handshake, grp:"Pilotage", coll:"suivisClosing", pfx:"SVC", statut:"statutPipeline",
  champs:[
-  {k:"codeSuivi",l:"Code",t:"text",req:1},
+  {k:"codeClient",l:"Code client",t:"text",req:1,aide:"Code permanent du client — jamais recréé pour une nouvelle opération du même client."},
+  {k:"codeDossier",l:"Code dossier",t:"text",aide:"Identifiant de cette opération précise. Égal au code client s'il s'agit du seul dossier."},
+  {k:"produit",l:"Produit / opération",t:"text"},
   {k:"statutPipeline",l:"Statut pipeline",t:"select",opts:STATUTS_PIPELINE_CLOSING},
+  {k:"priorite",l:"Priorité",t:"select",opts:PRIORITES_CLOSING},
   {k:"situationActuelle",l:"Situation actuelle",t:"text"},
   {k:"actionRecommandee",l:"Action recommandée",t:"text"},
   {k:"coordinateur",l:"Coordinateur",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB),req:1},
   {k:"responsableActionActuelle",l:"Responsable de l'action actuelle",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB)},
   {k:"dernierContact",l:"Dernier contact",t:"date"},
   {k:"echeanceActionSuivante",l:"Prochaine échéance",t:"date"},
+  {k:"dateSourceData",l:"Date source / DATA (historique)",t:"date"},
+  {k:"dateDebutSuiviClosing",l:"Date début suivi Closing",t:"date"},
   {k:"client",l:"Client (si rattaché)",t:"ref",coll:"clients",cle:"nom"},
   {k:"dossier",l:"Dossier (si rattaché)",t:"ref",coll:"dossiers",cle:"produit"},
   {k:"remarque",l:"Remarque",t:"textarea",large:1}
  ],
- avantSauve: (DB, o) => { if(!o.statutPipeline) o.statutPipeline = "Nouveau"; if(!o.memoire) o.memoire = []; },
+ avantSauve: (DB, o) => {
+   if(!o.statutPipeline) o.statutPipeline = "Nouveau";
+   if(!o.memoire) o.memoire = [];
+   if(!o.codeClient) o.codeClient = o.codeSuivi;
+   if(!o.codeDossier) o.codeDossier = o.codeClient;
+   if(!o.codeSuivi) o.codeSuivi = o.codeClient;
+ },
  fiche:"ficheSuiviClosing",
- cols:[["codeSuivi","Code"],["statutPipeline","Statut",v=>pillStatut(v)],["coordinateur","Coordinateur"],["responsableActionActuelle","Responsable action"],["echeanceActionSuivante","Échéance"]]},
+ cols:[["codeClient","Client"],["codeDossier","Dossier"],["statutPipeline","Statut",v=>pillStatut(v)],["coordinateur","Coordinateur"],["responsableActionActuelle","Responsable action"],["echeanceActionSuivante","Échéance"]]},
 
 notifications:{label:"Notifications", ic:Bell, grp:"Transverse"},
 messagerie:{label:"Messagerie interne", ic:Mail, grp:"Transverse", coll:"communicationsDossier", pfx:"MSG", statut:"type",
@@ -810,11 +821,12 @@ maJourneeClosing:{label:"Ma journée", ic:Handshake, grp:"Mon espace"},
 devisAControler:{label:"Devis à contrôler", ic:Calculator, grp:"Mon espace"},
 coordinationMansouri:{label:"Coordination Mansouri", ic:Users, grp:"Mon espace"},
 monPortefeuilleClosing:{label:"Mon portefeuille Closing", ic:FolderKanban, grp:"Mon espace"},
+aQualifierClosing:{label:"À qualifier", ic:AlertTriangle, grp:"Mon espace"},
 etatClosing:{label:"État du Closing", ic:Gauge, grp:"Pilotage"}
 };
 
 export const ORDRE_NAV = [
- ["Mon espace",["dashboard","tableauBordData","maJourneeClosing","monProgramme","mesTaches","mesObjectifs","devisAControler","coordinationMansouri","monPortefeuilleClosing","monRapportJournalier","monAgenda","notifications","monProfil"]],
+ ["Mon espace",["dashboard","tableauBordData","maJourneeClosing","monProgramme","mesTaches","mesObjectifs","devisAControler","coordinationMansouri","monPortefeuilleClosing","aQualifierClosing","monRapportJournalier","monAgenda","notifications","monProfil"]],
  ["Pilotage",["pilotageEquipe","quiFaitQuoi","ajouterTache","rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal","journalSecurite","etatClosing","suivisClosing"]],
  ["Commercial",["clients","contacts","demandes","commandes","dossiers","offres","reclamations"]],
  ["Études",["sourcings","etudes"]],

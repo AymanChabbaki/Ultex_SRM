@@ -21,6 +21,7 @@ import FicheFF from './components/fiches/FicheFF';
 import FicheChecklistLimex from './components/fiches/FicheChecklistLimex';
 import FicheTache from './components/fiches/FicheTache';
 import FicheSuiviClosing from './components/fiches/FicheSuiviClosing';
+import FicheClientClosing from './components/fiches/FicheClientClosing';
 
 // Custom Modules
 import Notifications from './components/custom/Notifications';
@@ -50,6 +51,7 @@ import DevisAControler from './components/custom/DevisAControler';
 import CoordinationMansouri from './components/custom/CoordinationMansouri';
 import MonPortefeuilleClosing from './components/custom/MonPortefeuilleClosing';
 import EtatClosing from './components/custom/EtatClosing';
+import AQualifierClosing from './components/custom/AQualifierClosing';
 
 // Generic
 import GenericModule from './components/modules/GenericModule';
@@ -170,8 +172,10 @@ const Router = () => {
       case 'devisAControler': return <PersonalPageRoute Component={DevisAControler} identifiant={params} />;
       case 'coordinationMansouri': return <PersonalPageRoute Component={CoordinationMansouri} identifiant={params} />;
       case 'monPortefeuilleClosing': return <PersonalPageRoute Component={MonPortefeuilleClosing} identifiant={params} />;
+      case 'aQualifierClosing': return <PersonalPageRoute Component={AQualifierClosing} identifiant={params} />;
       case 'etatClosing': return <EtatClosing />;
       case 'ficheSuiviClosing': return <FicheSuiviClosing codeProp={params} code={params} />;
+      case 'ficheClientClosing': return <FicheClientClosing codeProp={params} code={params} />;
       case 'ajouterTache': return <AjouterTache />;
       case 'ficheTache': return <FicheTache codeProp={params} code={params} />;
       case 'ficheClient': return <FicheClient codeProp={params} code={params} />;
