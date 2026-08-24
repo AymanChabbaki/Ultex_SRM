@@ -22,6 +22,17 @@ export const DBProvider = ({ children }) => {
   // results immediately, instead of racing on a stale value.
   const dbRef = useRef(db);
 
+  // audit()/notifier()/updateDB() each trigger their own saveDBSync() call,
+  // and callers routinely fire several of them back-to-back without
+  // awaiting (e.g. every "retour" handler: updateDB, then audit, audit,
+  // notifier). Without this queue those requests race the network — the
+  // server does a full-state overwrite per request, so whichever response
+  // arrives last wins even if it was sent first with less-complete data,
+  // silently dropping whatever the later calls added (a notification, an
+  // audit line...). Queuing guarantees requests reach the server in the
+  // same order they were made, so the most complete state always wins.
+  const syncQueueRef = useRef(Promise.resolve());
+
   useEffect(() => {
     let isMounted = true;
     checkBackendHealth().then(health => {
@@ -63,17 +74,27 @@ export const DBProvider = ({ children }) => {
   // PostgreSQL. If that fails, the optimistic change is rolled back and
   // the user is told — instead of the previous silent fire-and-forget
   // that could leave the browser and the database disagreeing.
-  const commit = useCallback(async (next) => {
+  const commit = useCallback((next) => {
     const previous = dbRef.current;
     dbRef.current = next;
     setDb(next);
-    try {
-      await saveDBSync(next);
-    } catch (e) {
-      dbRef.current = previous;
-      setDb(previous);
-      toast(e && e.name === 'AuthError' ? 'Session expirée — reconnectez-vous.' : "Échec de l'enregistrement — vérifiez votre connexion.");
-    }
+
+    const enqueued = syncQueueRef.current.then(async () => {
+      try {
+        await saveDBSync(next);
+      } catch (e) {
+        // Only roll back if nothing more recent has already superseded
+        // this commit locally — otherwise a slow, now-stale failed request
+        // would wipe out newer local changes made while it was in flight.
+        if (dbRef.current === next) {
+          dbRef.current = previous;
+          setDb(previous);
+        }
+        toast(e && e.name === 'AuthError' ? 'Session expirée — reconnectez-vous.' : "Échec de l'enregistrement — vérifiez votre connexion.");
+      }
+    });
+    syncQueueRef.current = enqueued;
+    return enqueued;
   }, [toast]);
 
   // Returns the underlying promise so call sites that need to know when a
