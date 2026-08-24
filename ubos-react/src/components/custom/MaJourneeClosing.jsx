@@ -3,9 +3,11 @@ import { useDB } from '../../context/DBContext';
 import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import Modal from '../common/Modal';
-import StatCard from '../common/StatCard';
 import { pill } from '../../utils/format';
-import { genererProgrammeClosing, genererAlertesClosing, suivisDeCoordinateur, estSuiviOuvert, calculerObjectifsClosingJour } from '../../utils/closingCoordination';
+import {
+  genererProgrammeClosing, genererAlertesClosing, suivisDeCoordinateur, estSuiviOuvert, estQualifie,
+  calculerObjectifsClosingJour, libelleCode, trouverClientExistant, genererCodeDossierSuivant
+} from '../../utils/closingCoordination';
 
 const BLOCS_HORAIRE = [
   { debut: 9, fin: 11, titre: '09h–11h — Préparation & Relances', desc: 'Codes à traiter, WhatsApp, clients à relancer, calculs à lancer.' },
@@ -19,40 +21,68 @@ export default function MaJourneeClosing({ user }) {
   const cible = user || {};
   const [showAjouter, setShowAjouter] = useState(false);
   const [nouveauCode, setNouveauCode] = useState('');
+  const [conflit, setConflit] = useState(null);
+  const [filtreActif, setFiltreActif] = useState(null);
 
+  const auj = new Date(new Date().toDateString());
   const suivis = suivisDeCoordinateur(db, cible);
-  const suivisOuverts = suivis.filter(estSuiviOuvert);
+  const suivisOuverts = suivis.filter(estSuiviOuvert).filter(estQualifie);
   const programme = genererProgrammeClosing(db, cible);
   const alertes = genererAlertesClosing(db, cible);
   const resume = calculerObjectifsClosingJour(db, cible);
 
-  const relances = suivisOuverts.filter(s => s.echeanceActionSuivante && new Date(s.echeanceActionSuivante) <= new Date(new Date().toDateString())).length;
-  const devisAControler = suivisOuverts.filter(s => s.statutDevis === 'À contrôler').length;
-  const attenteMansouri = suivisOuverts.filter(s => s.responsableActionActuelle === 'Mansouri').length;
-  const retards = programme.filter(p => p.priorite === 'Retard').length;
+  const suivisARelancer = suivisOuverts.filter(s => s.echeanceActionSuivante && new Date(s.echeanceActionSuivante) <= auj);
+  const suivisDevis = suivisOuverts.filter(s => s.statutDevis === 'À contrôler');
+  const suivisMansouri = suivisOuverts.filter(s => s.responsableActionActuelle === 'Mansouri');
+  const suivisRetard = suivisOuverts.filter(s => s.echeanceActionSuivante && new Date(s.echeanceActionSuivante) < auj);
 
   const heureActuelle = new Date().getHours();
 
+  const CARTES = [
+    { id: 'traiter', label: "À faire aujourd'hui", liste: programme.map(p => suivis.find(s => s.code === p.code)).filter(Boolean) },
+    { id: 'relancer', label: 'À relancer', liste: suivisARelancer },
+    { id: 'devis', label: 'Devis à contrôler', liste: suivisDevis },
+    { id: 'mansouri', label: 'Attente Mansouri', liste: suivisMansouri },
+    { id: 'retards', label: 'Retards', liste: suivisRetard, alerte: true }
+  ];
+  const carteActive = CARTES.find(c => c.id === filtreActif);
+
   const handleAjouter = () => {
-    const codeSuivi = nouveauCode.trim();
-    if (!codeSuivi) { toast('Entrez un code.'); return; }
-    const existant = (db.suivisClosing || []).find(s => s.codeSuivi === codeSuivi && estSuiviOuvert(s));
-    if (existant) {
-      toast(`Un suivi existe déjà pour le code ${codeSuivi}.`);
-      window.location.hash = `#ficheSuiviClosing:${existant.code}`;
-      setShowAjouter(false);
-      setNouveauCode('');
-      return;
-    }
+    const codeSaisi = nouveauCode.trim();
+    if (!codeSaisi) { toast('Entrez un code.'); return; }
+    const existant = trouverClientExistant(db, codeSaisi);
+    if (existant) { setConflit(existant); return; }
+    creerNouveauClient(codeSaisi);
+  };
+
+  const creerNouveauClient = (codeSaisi) => {
     const code = genCode('SVC');
-    const suivi = { code, codeSuivi, statutPipeline: 'Nouveau', coordinateur: userCourant, memoire: [], par: userCourant, ts: Date.now() };
+    const suivi = {
+      code, codeClient: codeSaisi, codeDossier: codeSaisi, codeSuivi: codeSaisi,
+      statutPipeline: 'Nouveau', coordinateur: userCourant, memoire: [], par: userCourant, ts: Date.now()
+    };
     updateDB({ ...db, suivisClosing: [suivi, ...(db.suivisClosing || [])] });
-    audit('Suivi Closing', 'Création (suivi provisoire)', code, '—', '—', codeSuivi);
-    toast(`Suivi provisoire ${codeSuivi} créé.`);
-    setShowAjouter(false);
-    setNouveauCode('');
+    audit('Suivi Closing', 'Création (suivi provisoire)', code, '—', '—', codeSaisi);
+    toast(`Suivi provisoire ${codeSaisi} créé.`);
+    fermerAjout();
     window.location.hash = `#ficheSuiviClosing:${code}`;
   };
+
+  const handleAjouterNouveauDossier = () => {
+    const codeDossier = genererCodeDossierSuivant(db, conflit.codeClient);
+    const code = genCode('SVC');
+    const suivi = {
+      code, codeClient: conflit.codeClient, codeDossier, codeSuivi: codeDossier,
+      statutPipeline: 'Nouveau', coordinateur: conflit.coordinateur, memoire: [], par: userCourant, ts: Date.now()
+    };
+    updateDB({ ...db, suivisClosing: [suivi, ...(db.suivisClosing || [])] });
+    audit('Suivi Closing', 'Création (nouveau dossier)', code, '—', '—', codeDossier);
+    toast(`Dossier ${codeDossier} créé.`);
+    fermerAjout();
+    window.location.hash = `#ficheSuiviClosing:${code}`;
+  };
+
+  const fermerAjout = () => { setShowAjouter(false); setNouveauCode(''); setConflit(null); };
 
   return (
     <div>
@@ -64,12 +94,62 @@ export default function MaJourneeClosing({ user }) {
       </div>
 
       <div className="stats">
-        <StatCard label="À faire aujourd'hui" value={programme.length} />
-        <StatCard label="À relancer" value={relances} />
-        <StatCard label="Devis à contrôler" value={devisAControler} />
-        <StatCard label="Attente Mansouri" value={attenteMansouri} />
-        <StatCard label="Retards" value={retards} alerte={retards > 0} />
+        {CARTES.map(c => (
+          <div key={c.id} onClick={() => setFiltreActif(filtreActif === c.id ? null : c.id)} style={{ cursor: 'pointer' }}>
+            <div className={`stat-card-modern ${filtreActif === c.id ? 'alerte-border' : ''}`}>
+              <div className="stat-card-top">
+                <span className="stat-label">{c.label}</span>
+                {c.alerte && c.liste.length > 0 ? <span className="stat-badge alert">Attention</span> : <span className="stat-badge active">Actif</span>}
+              </div>
+              <div className="stat-card-val-wrap"><span className="stat-val">{c.liste.length}</span></div>
+              <div className="stat-card-bar"></div>
+            </div>
+          </div>
+        ))}
       </div>
+
+      {carteActive && (
+        <div className="panneau">
+          <div className="outils">
+            <b>{carteActive.label}</b>
+            <span className="spacer"></span>
+            <button className="btn mini doux" onClick={() => setFiltreActif(null)}>✕ Retirer le filtre</button>
+          </div>
+          <div className="defile">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th><th>Situation</th>
+                  {filtreActif === 'retards' ? <><th>Retard depuis</th><th>Responsable</th></> : <><th>Dernier contact</th><th>Prochaine échéance</th></>}
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {carteActive.liste.length ? carteActive.liste.map(s => (
+                  <tr key={s.code}>
+                    <td className="code">{libelleCode(s)}</td>
+                    <td>{s.situationActuelle || s.statutPipeline || 'Nouveau'}</td>
+                    {filtreActif === 'retards' ? (
+                      <>
+                        <td>{Math.floor((auj - new Date(s.echeanceActionSuivante)) / 864e5)} j</td>
+                        <td>{s.responsableActionActuelle || s.coordinateur}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td>{s.dernierContact || '—'}</td>
+                        <td>{s.echeanceActionSuivante || '—'}</td>
+                      </>
+                    )}
+                    <td><a className="btn mini or" href={`#ficheSuiviClosing:${s.code}`}>TRAITER</a></td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan="5"><div className="vide">Rien dans cette catégorie.</div></td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {programme.length > 0 && (
         <div className="bloc-fiche large">
@@ -119,7 +199,7 @@ export default function MaJourneeClosing({ user }) {
           <div key={i} style={{ marginBottom: '10px' }}>
             <b>{a.titre}</b> {pill(a.suivis.length, 'p-rouge')}
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
-              {a.suivis.map(s => <a key={s.code} className="pill p-gris" href={`#ficheSuiviClosing:${s.code}`}>{s.codeSuivi}</a>)}
+              {a.suivis.map(s => <a key={s.code} className="pill p-gris" href={`#ficheSuiviClosing:${s.code}`}>{libelleCode(s)}</a>)}
             </div>
           </div>
         )) : <div className="vide">Aucune alerte pour l'instant — bonne mémoire, UBOS surveille.</div>}
@@ -137,15 +217,30 @@ export default function MaJourneeClosing({ user }) {
       })}
 
       {showAjouter && (
-        <Modal title="Ajouter un code à mon suivi" onClose={() => setShowAjouter(false)} footer={
-          <><button className="btn doux" onClick={() => setShowAjouter(false)}>Annuler</button><button className="btn or" onClick={handleAjouter}>Ajouter</button></>
+        <Modal title="Ajouter un code à mon suivi" onClose={fermerAjout} footer={
+          conflit ? (
+            <><button className="btn doux" onClick={fermerAjout}>Annuler</button></>
+          ) : (
+            <><button className="btn doux" onClick={fermerAjout}>Annuler</button><button className="btn or" onClick={handleAjouter}>Ajouter</button></>
+          )
         }>
-          <div className="corps">
-            <div className="champ large">
-              <label>Code client</label>
-              <input autoFocus value={nouveauCode} onChange={e => setNouveauCode(e.target.value)} placeholder="Ex. 8477" onKeyDown={e => e.key === 'Enter' && handleAjouter()} />
+          {conflit ? (
+            <div className="corps">
+              <p style={{ gridColumn: '1/-1' }}>Le client <b>{conflit.codeClient}</b> existe déjà.</p>
+              <div className="champ large" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <a className="btn or" href={`#ficheClientClosing:${conflit.codeClient}`}>Ouvrir le client</a>
+                <button className="btn doux" onClick={handleAjouterNouveauDossier}>Ajouter un nouveau dossier</button>
+                <button className="btn doux" onClick={fermerAjout}>Annuler</button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="corps">
+              <div className="champ large">
+                <label>Code client</label>
+                <input autoFocus value={nouveauCode} onChange={e => setNouveauCode(e.target.value)} placeholder="Ex. 8477" onKeyDown={e => e.key === 'Enter' && handleAjouter()} />
+              </div>
+            </div>
+          )}
         </Modal>
       )}
     </div>

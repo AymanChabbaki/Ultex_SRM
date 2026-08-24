@@ -236,11 +236,6 @@ export function enregistrerResultatContact(suivi, resultat, echeanceSuivante) {
   return patch;
 }
 
-/** Changement de statut en un clic (§4/§16 — éviter les formulaires). */
-export function changerStatutRapide(statut) {
-  return { statutPipeline: statut };
-}
-
 /**
  * Statuts suivants pertinents selon l'état actuel (§11/§12) — jamais les 33
  * valeurs en même temps, seulement un sous-ensemble contextuel.

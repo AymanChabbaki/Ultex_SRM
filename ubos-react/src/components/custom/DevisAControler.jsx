@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useDB } from '../../context/DBContext';
 import Topbar from '../layout/Topbar';
 import { pill } from '../../utils/format';
-import { suivisDeCoordinateur, calculerPrioriteSuivi } from '../../utils/closingCoordination';
+import { suivisDeCoordinateur, calculerPrioriteSuivi, libelleCode } from '../../utils/closingCoordination';
 
 const ONGLETS = ['Tous', 'Nouveaux', 'Urgents', 'Retournés'];
 
@@ -42,7 +42,7 @@ export default function DevisAControler({ user }) {
         {affiches.length ? affiches.map(s => (
           <div key={s.code} className="bloc-fiche large" style={{ marginBottom: '12px' }}>
             <h4>
-              Code {s.codeSuivi}
+              Code {libelleCode(s)}
               {s.motifRevoir && <span style={{ float: 'right' }}>{pill('Retourné', 'p-ambre')}</span>}
             </h4>
             <div className="kv">
