@@ -14,7 +14,7 @@ import { PERS_ET_SERVICES } from './permissions';
 import { calculFF } from '../utils/businessActions';
 import { genererControlesDossier } from '../utils/limex';
 import { construireMessageTache } from '../utils/tachesPilotage';
-import { construireMessageSuiviClosing } from '../utils/closingCoordination';
+import { construireMessageSuiviClosing, enregistrerCalculTermine } from '../utils/closingCoordination';
 import {
   LayoutDashboard, Contact2, Building2, Archive, ClipboardEdit, ShoppingCart, FolderKanban,
   PackageSearch, Calculator, FileSignature, Wallet, ClipboardCheck, Ship, Scale, Award,
@@ -748,7 +748,7 @@ taches:{label:"Tâches & Décisions", ic:CheckSquare, grp:"Transverse", coll:"ta
      const suivi = (DB.suivisClosing||[]).find(s=>s.code===o.objetCode);
      if(suivi && suivi.statutPipeline==="Calcul demandé") {
        suivi.statutPipeline = "Devis en cours";
-       suivi.statutDevis = "À contrôler";
+       Object.assign(suivi, enregistrerCalculTermine());
        ctx.notifier(suivi.coordinateur, construireMessageSuiviClosing(suivi, { titre: `Calcul terminé par ${ctx.userCourant} — devis à contrôler`, extra: `Code : ${suivi.codeSuivi}` }), "Suivi Closing");
      }
    }

@@ -6,7 +6,7 @@ import { pillStatut, pill } from '../../utils/format';
 import {
   suivisDeCoordinateur, estSuiviOuvert, suivisATransmettreMansouri,
   suivisRetourMansouriRecu, suivisRetourMansouriEnRetard,
-  construireTachePourMansouri, construireMessageSuiviClosing
+  construireTachePourMansouri, construireMessageSuiviClosing, confierAMansouri
 } from '../../utils/closingCoordination';
 
 function queFaire(suivi) {
@@ -16,6 +16,11 @@ function queFaire(suivi) {
   if (suivi.statutPipeline === 'Devis envoyé') return 'Relancer le client pour avis sur le devis.';
   if (suivi.statutPipeline === 'Négociation') return 'Poursuivre la négociation jusqu\'à accord.';
   return 'Faire le point avec le client et remonter le résultat à Zoubida.';
+}
+
+function joursDepuis(dateIso) {
+  if (!dateIso) return null;
+  return Math.max(0, Math.floor((Date.now() - new Date(dateIso)) / 864e5));
 }
 
 export default function CoordinationMansouri({ user }) {
@@ -33,7 +38,7 @@ export default function CoordinationMansouri({ user }) {
     updateDB({
       ...db,
       taches: [construireTachePourMansouri(suivi, genCode, userCourant), ...(db.taches || [])],
-      suivisClosing: (db.suivisClosing || []).map(s => s.code === suivi.code ? { ...s, responsableActionActuelle: 'Mansouri' } : s)
+      suivisClosing: (db.suivisClosing || []).map(s => s.code === suivi.code ? { ...s, ...confierAMansouri() } : s)
     });
     audit('Suivi Closing', 'Confié à Mansouri', suivi.code, 'responsableActionActuelle', suivi.responsableActionActuelle, 'Mansouri');
     notifier('Mansouri', construireMessageSuiviClosing({ ...suivi, responsableActionActuelle: 'Mansouri' }, { titre: `Code confié par ${userCourant} — Code ${suivi.codeSuivi}` }), 'Suivi Closing');
@@ -57,17 +62,17 @@ export default function CoordinationMansouri({ user }) {
       <Topbar titre="Coordination avec Mansouri" />
 
       <div className="bloc-fiche large">
-        <h4>À transmettre à Mansouri {pill(aTransmettre.length, 'p-gris')}</h4>
+        <h4>À transmettre {pill(aTransmettre.length, 'p-gris')}</h4>
         {aTransmettre.length ? (
           <div className="defile">
             <table>
-              <thead><tr><th>Code</th><th>Statut</th><th>Dernier contact</th><th></th></tr></thead>
+              <thead><tr><th>Code</th><th>Ce qu'il doit faire</th><th>Échéance</th><th>Action</th></tr></thead>
               <tbody>
                 {aTransmettre.map(s => (
                   <tr key={s.code}>
                     <td className="code"><a href={`#ficheSuiviClosing:${s.code}`}>{s.codeSuivi}</a></td>
-                    <td>{pillStatut(s.statutPipeline)}</td>
-                    <td>{s.dernierContact || '—'}</td>
+                    <td>{queFaire(s)}</td>
+                    <td>{s.echeanceActionSuivante || '—'}</td>
                     <td><button className="btn mini or" onClick={() => handleTransmettre(s)}>Transmettre</button></td>
                   </tr>
                 ))}
@@ -78,36 +83,37 @@ export default function CoordinationMansouri({ user }) {
       </div>
 
       <div className="bloc-fiche large">
-        <h4>Chez Mansouri / en attente de retour {pill(chezMansouri.length, 'p-gris')}</h4>
-        {chezMansouri.length ? chezMansouri.map(s => {
-          const jours = Math.max(0, Math.floor((Date.now() - (s.ts || Date.now())) / 864e5));
-          return (
-            <div key={s.code} className="bloc-fiche large" style={{ marginBottom: '12px' }}>
-              <h4>
-                Code {s.codeSuivi}
-                <span style={{ float: 'right' }}>{pillStatut(s.statutPipeline)}</span>
-              </h4>
-              <div className="kv">
-                <div><label>Dernière action</label><span>{s.resultatDernierContact || '—'}</span></div>
-                <div><label>Dernier contact</label><span>{s.dernierContact || '—'}</span></div>
-                <div><label>Prochaine action</label><span>{s.echeanceActionSuivante || 'Aujourd\'hui'}</span></div>
-                <div><label>Jours en suivi</label><span>{jours} jour(s)</span></div>
-              </div>
-              <div style={{ marginTop: '10px', padding: '10px', background: 'var(--fond-jaune)', borderRadius: '8px' }}>
-                <b>« Que faire maintenant ? »</b><br />{queFaire(s)}
-              </div>
-              <a className="btn mini or" style={{ marginTop: '10px', display: 'inline-block' }} href={`#ficheSuiviClosing:${s.code}`}>Ouvrir le code</a>
-            </div>
-          );
-        }) : <div className="vide">Rien chez Mansouri pour l'instant.</div>}
+        <h4>Attente Mansouri {pill(chezMansouri.length, 'p-gris')}</h4>
+        {chezMansouri.length ? (
+          <div className="defile">
+            <table>
+              <thead><tr><th>Code</th><th>Ce qu'il doit faire</th><th>Transmis depuis</th><th>Échéance</th><th>Retour</th><th>Action</th></tr></thead>
+              <tbody>
+                {chezMansouri.map(s => {
+                  const jours = joursDepuis(s.dateConfieAMansouri);
+                  return (
+                    <tr key={s.code}>
+                      <td className="code"><a href={`#ficheSuiviClosing:${s.code}`}>{s.codeSuivi}</a></td>
+                      <td>{queFaire(s)}</td>
+                      <td>{jours !== null ? `${jours} j` : '—'}</td>
+                      <td>{s.echeanceActionSuivante || 'Aujourd\'hui'}</td>
+                      <td>{pillStatut(s.statutPipeline)}</td>
+                      <td><a className="btn mini doux" href={`#ficheSuiviClosing:${s.code}`}>Ouvrir</a></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : <div className="vide">Rien chez Mansouri pour l'instant.</div>}
       </div>
 
       <div className="bloc-fiche large">
-        <h4>Retour Mansouri reçu {pill(retourRecu.length, 'p-vert')}</h4>
+        <h4>Retour reçu {pill(retourRecu.length, 'p-vert')}</h4>
         {retourRecu.length ? (
           <div className="defile">
             <table>
-              <thead><tr><th>Code</th><th>Dernier retour</th><th>Prochaine relance proposée</th><th></th></tr></thead>
+              <thead><tr><th>Code</th><th>Retour de Mansouri</th><th>Prochaine relance proposée</th><th>Action</th></tr></thead>
               <tbody>
                 {retourRecu.map(s => (
                   <tr key={s.code}>
@@ -124,11 +130,11 @@ export default function CoordinationMansouri({ user }) {
       </div>
 
       <div className="bloc-fiche large">
-        <h4>Retour en retard {pill(retourEnRetard.length, retourEnRetard.length ? 'p-rouge' : 'p-gris')}</h4>
+        <h4>En retard {pill(retourEnRetard.length, retourEnRetard.length ? 'p-rouge' : 'p-gris')}</h4>
         {retourEnRetard.length ? (
           <div className="defile">
             <table>
-              <thead><tr><th>Code</th><th>Statut</th><th></th></tr></thead>
+              <thead><tr><th>Code</th><th>Statut</th><th>Action</th></tr></thead>
               <tbody>
                 {retourEnRetard.map(s => (
                   <tr key={s.code}>

@@ -31,9 +31,24 @@ export function peut(session, action) {
 const MODULES_LIBRES = ["dashboard", "monAgenda", "notifications", "rapports", "monProgramme", "mesTaches", "mesObjectifs", "monRapportJournalier", "monProfil"];
 const MODULES_DIRECTION = ["auditGlobal", "utilisateurs", "rapportDirection", "performance", "importCentre", "risquesClients", "objectifsData", "pilotageEquipe", "quiFaitQuoi", "ajouterTache", "journalSecurite", "etatClosing"];
 
+// Un coordinateur Closing travaille dans 4 espaces seulement (Ma journée,
+// Mon portefeuille Closing, Devis à contrôler, Coordination Mansouri) —
+// ces pages génériques sont désormais fusionnées dedans plutôt que
+// supprimées : les données/fonctions continuent d'exister et de tourner
+// en arrière-plan (cf. Layout.jsx), seule la navigation est cachée pour
+// cette catégorie d'utilisateur. Les autres profils les voient comme avant.
+// "mesTaches" reste visible : c'est aussi son seul accès à ses tâches hors
+// Closing (son rôle Analyse Dossiers / Transit & Douane reste actif).
+const MODULES_FUSIONNES_CLOSING = ["monProgramme", "mesObjectifs", "monRapportJournalier", "monAgenda", "suivisClosing"];
+
+export function estCoordinateurClosing(session) {
+    return !!session && (session.modules || []).includes("maJourneeClosing");
+}
+
 export function moduleVisible(session, id) {
     if (!session) return false;
     if (MODULES_DIRECTION.includes(id)) return estDirection(session);
+    if (estCoordinateurClosing(session) && MODULES_FUSIONNES_CLOSING.includes(id)) return false;
     if (MODULES_LIBRES.includes(id)) return true;
     return estDirection(session) || (session.modules || []).includes(id);
 }

@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useDB } from '../../context/DBContext';
 import Toast from '../common/Toast';
 import { verifierTachesAutomatiques, calculerOccurrencesRecurrentesDues } from '../../utils/tachesPilotage';
-import { verifierTachesAutoClosing } from '../../utils/closingCoordination';
+import { verifierTachesAutoClosing, suivisDeCoordinateur, construireRapportAutoJour } from '../../utils/closingCoordination';
 import { migrerRoleZoubidaClosing } from '../../data/permissions';
 
 const SidebarContext = createContext();
@@ -34,8 +34,31 @@ const Layout = ({ children }) => {
       db._tachesAutoDate = ajd;
     }
 
-    if (migrationJouee || toutesNouvelles.length) {
-      updateDB({ ...db, taches: [...toutesNouvelles, ...(db.taches || [])] });
+    // Rapport journalier silencieux (simplification profil Zoubida) : la
+    // page dédiée n'est plus dans sa navigation, mais les données doivent
+    // continuer d'exister pour la Direction — recalculé et enregistré à
+    // chaque ouverture de session, sans aucune action de sa part.
+    let rapportsSuivants = null;
+    if (suivisDeCoordinateur(db, session).length) {
+      const auto = construireRapportAutoJour(db, session);
+      const nom = session.nomComplet || session.identifiant;
+      const existantRapport = (db.rapportsJournaliers || []).find(r => r.utilisateur === nom && r.date === ajd);
+      if (existantRapport) {
+        rapportsSuivants = (db.rapportsJournaliers || []).map(r => r.code === existantRapport.code ? { ...r, ...auto } : r);
+      } else {
+        rapportsSuivants = [{
+          code: genCode('RJU'), ts: Date.now(), utilisateur: nom, date: ajd, depose: true,
+          faitsImportants: '', problemes: '', besoins: '', prioriteDemain: '', ...auto
+        }, ...(db.rapportsJournaliers || [])];
+      }
+    }
+
+    if (migrationJouee || toutesNouvelles.length || rapportsSuivants) {
+      updateDB({
+        ...db,
+        taches: [...toutesNouvelles, ...(db.taches || [])],
+        ...(rapportsSuivants ? { rapportsJournaliers: rapportsSuivants } : {})
+      });
       toutesNouvelles.forEach(t => audit('Tâches', 'Création automatique', t.code, '—', '—', t.titre, t.dossier));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

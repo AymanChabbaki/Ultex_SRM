@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
-import { tachesDeUtilisateur, STATUTS_TERMINES } from '../../utils/tachesPilotage';
-import { clientsDeAgent } from '../../utils/dataPipeline';
-import { suivisDeCoordinateur, estSuiviOuvert, calculerObjectifsClosingJour } from '../../utils/closingCoordination';
+import { construireRapportAutoJour } from '../../utils/closingCoordination';
 
 const VIDE = { faitsImportants: '', problemes: '', besoins: '', prioriteDemain: '' };
 
@@ -17,46 +15,10 @@ export default function MonRapportJournalier({ user, isAdminView }) {
 
   const existant = (db.rapportsJournaliers || []).find(r => r.utilisateur === nom && r.date === ajd);
 
-  const genererAuto = () => {
-    const mesTaches = tachesDeUtilisateur(db, cible);
-    const prevues = mesTaches.filter(t => t.datePrevue === ajd || t.echeance === ajd);
-    const terminees = prevues.filter(t => STATUTS_TERMINES.includes(t.statut) && t.statut !== 'Annulée');
-    const nonTerminees = prevues.filter(t => !STATUTS_TERMINES.includes(t.statut));
-    const reportees = mesTaches.filter(t => t.statut === 'Reportée');
-    const clientsContactes = clientsDeAgent(db, cible).filter(c => c.dernierContact === ajd).length;
-    const dateAuditAjd = new Date().toLocaleDateString('fr-FR');
-    const auditAujourdhui = (db.audit || []).filter(a => a.utilisateur === nom && a.date === dateAuditAjd);
-    const demandesTraitees = auditAujourdhui.filter(a => a.module === 'Demandes' || a.module === 'Lignes de demande').length;
-    const documentsCrees = auditAujourdhui.filter(a => a.module === 'Documents' && a.action === 'Création').length;
-    const dossiers = [...new Set(mesTaches.filter(t => t.dossier).map(t => t.dossier))];
-    const base = {
-      tachesPrevues: prevues.length, tachesTerminees: terminees.length,
-      tachesNonTerminees: nonTerminees.length, tachesReportees: reportees.length,
-      clientsContactes, demandesTraitees, documentsCrees,
-      dossiersTravailles: dossiers.join(', ')
-    };
-    // Compteurs Coordination Closing (§19) — seulement pour les coordinateurs
-    // Closing, en plus des champs génériques ci-dessus, pas à la place.
-    if (suivisDeCoordinateur(db, cible).length) {
-      const c = calculerObjectifsClosingJour(db, cible);
-      base.closingCodesSuivis = c.codesSuivis;
-      base.closingClientsContactes = c.clientsContactes;
-      base.closingDevisValides = c.devisValides;
-      base.closingRetoursCorrection = c.retoursCorrection;
-      base.closingCodesMansouri = c.codesTraitesMansouri;
-      base.closingConfirmationsSemaine = c.confirmationsSemaine;
-      base.closingAvancesSemaine = c.avancesSemaine;
-      base.aReprendreDemain = suivisDeCoordinateur(db, cible).filter(estSuiviOuvert)
-        .filter(s => s.echeanceActionSuivante && s.echeanceActionSuivante <= ajd)
-        .map(s => `${s.codeSuivi} — ${s.resultatDernierContact || s.statutPipeline || 'à traiter'}`).join('\n');
-    }
-    return base;
-  };
-
-  const [form, setForm] = useState(() => existant || { ...genererAuto(), ...VIDE });
+  const [form, setForm] = useState(() => existant || { ...construireRapportAutoJour(db, cible), ...VIDE });
 
   useEffect(() => {
-    setForm(existant || { ...genererAuto(), ...VIDE });
+    setForm(existant || { ...construireRapportAutoJour(db, cible), ...VIDE });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nom]);
 

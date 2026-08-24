@@ -5,9 +5,7 @@ import Topbar from '../layout/Topbar';
 import Modal from '../common/Modal';
 import StatCard from '../common/StatCard';
 import { pill } from '../../utils/format';
-import { genererProgrammeClosing, genererAlertesClosing, suivisDeCoordinateur, estSuiviOuvert } from '../../utils/closingCoordination';
-
-const RESULTATS_ATTENTE = ['Attente décision', 'À rappeler', 'Documents manquants', 'Attente paiement'];
+import { genererProgrammeClosing, genererAlertesClosing, suivisDeCoordinateur, estSuiviOuvert, calculerObjectifsClosingJour } from '../../utils/closingCoordination';
 
 const BLOCS_HORAIRE = [
   { debut: 9, fin: 11, titre: '09h–11h — Préparation & Relances', desc: 'Codes à traiter, WhatsApp, clients à relancer, calculs à lancer.' },
@@ -26,10 +24,11 @@ export default function MaJourneeClosing({ user }) {
   const suivisOuverts = suivis.filter(estSuiviOuvert);
   const programme = genererProgrammeClosing(db, cible);
   const alertes = genererAlertesClosing(db, cible);
+  const resume = calculerObjectifsClosingJour(db, cible);
 
   const relances = suivisOuverts.filter(s => s.echeanceActionSuivante && new Date(s.echeanceActionSuivante) <= new Date(new Date().toDateString())).length;
-  const reponsesAttente = suivisOuverts.filter(s => RESULTATS_ATTENTE.includes(s.resultatDernierContact)).length;
-  const calculsADemander = suivisOuverts.filter(s => s.statutPipeline === 'Nouveau').length;
+  const devisAControler = suivisOuverts.filter(s => s.statutDevis === 'À contrôler').length;
+  const attenteMansouri = suivisOuverts.filter(s => s.responsableActionActuelle === 'Mansouri').length;
   const retards = programme.filter(p => p.priorite === 'Retard').length;
 
   const heureActuelle = new Date().getHours();
@@ -65,11 +64,30 @@ export default function MaJourneeClosing({ user }) {
       </div>
 
       <div className="stats">
-        <StatCard label="Codes à traiter aujourd'hui" value={programme.length} />
-        <StatCard label="Clients à relancer" value={relances} />
-        <StatCard label="Réponses en attente" value={reponsesAttente} />
-        <StatCard label="Calculs à demander" value={calculsADemander} />
+        <StatCard label="À faire aujourd'hui" value={programme.length} />
+        <StatCard label="À relancer" value={relances} />
+        <StatCard label="Devis à contrôler" value={devisAControler} />
+        <StatCard label="Attente Mansouri" value={attenteMansouri} />
         <StatCard label="Retards" value={retards} alerte={retards > 0} />
+      </div>
+
+      {programme.length > 0 && (
+        <div className="bloc-fiche large">
+          <h4>UBOS vous recommande de commencer par :</h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {programme.slice(0, 3).map((item, i) => (
+              <div key={item.code} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: i < 2 ? '1px solid var(--bord)' : 'none' }}>
+                <b style={{ color: 'var(--gris)' }}>{i + 1}.</b>
+                <span style={{ flex: 1 }}>CODE {item.codeSuivi} — {item.actionAujourdhui}</span>
+                <a className="btn mini or" href={item.lien}>TRAITER</a>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="vide" style={{ textAlign: 'left' }}>
+        <b>Aujourd'hui</b> {resume.clientsContactes} client(s) contacté(s) · {resume.devisValides} devis validé(s) · {resume.codesTraitesMansouri} code(s) traité(s) avec Mansouri
       </div>
 
       <div className="panneau">

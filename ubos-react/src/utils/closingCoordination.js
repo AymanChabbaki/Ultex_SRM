@@ -1,4 +1,5 @@
-import { getUtilisateurParNom, estTacheOuverte, genererTacheAuto } from './tachesPilotage';
+import { getUtilisateurParNom, estTacheOuverte, genererTacheAuto, tachesDeUtilisateur, STATUTS_TERMINES } from './tachesPilotage';
+import { clientsDeAgent } from './dataPipeline';
 
 export const STATUTS_FERMES_CLOSING = ['Avance reçue', 'Perdu / Abandonné'];
 
@@ -166,6 +167,16 @@ export function enregistrerRetourMansouri(suivi, label) {
   return patch;
 }
 
+/** Patch de transmission à Mansouri — un seul endroit pour dater "transmis depuis" (§7 colonne dédiée), réutilisé par toutes les pages qui confient un code. */
+export function confierAMansouri() {
+  return { responsableActionActuelle: 'Mansouri', dateConfieAMansouri: AJD_ISO() };
+}
+
+/** Capture automatique de l'heure de fin de calcul — Zoubida n'a rien à saisir (§16). */
+export function enregistrerCalculTermine() {
+  return { statutDevis: 'À contrôler', calculTermineHeure: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) };
+}
+
 /** Tâche Mansouri construite une seule fois, réutilisée par toutes les pages qui transmettent un code (§16 — un seul moteur). */
 export function construireTachePourMansouri(suivi, genCode, par) {
   return {
@@ -275,6 +286,48 @@ export function verifierTachesAutoClosing(db, genCode) {
     });
   });
   return nouvelles;
+}
+
+/**
+ * Rapport journalier auto-rempli — extrait de MonRapportJournalier.jsx pour
+ * être réutilisé aussi par la génération silencieuse (§ simplification
+ * Zoubida : la page disparaît de sa navigation mais les données continuent
+ * d'être calculées et enregistrées en arrière-plan, cf. Layout.jsx).
+ */
+export function construireRapportAutoJour(db, user) {
+  const nom = user?.nomComplet || user?.identifiant;
+  const ajd = AJD_ISO();
+  const mesTaches = tachesDeUtilisateur(db, user);
+  const prevues = mesTaches.filter(t => t.datePrevue === ajd || t.echeance === ajd);
+  const terminees = prevues.filter(t => STATUTS_TERMINES.includes(t.statut) && t.statut !== 'Annulée');
+  const nonTerminees = prevues.filter(t => !STATUTS_TERMINES.includes(t.statut));
+  const reportees = mesTaches.filter(t => t.statut === 'Reportée');
+  const clientsContactes = clientsDeAgent(db, user).filter(c => c.dernierContact === ajd).length;
+  const dateAuditAjd = new Date().toLocaleDateString('fr-FR');
+  const auditAujourdhui = (db.audit || []).filter(a => a.utilisateur === nom && a.date === dateAuditAjd);
+  const demandesTraitees = auditAujourdhui.filter(a => a.module === 'Demandes' || a.module === 'Lignes de demande').length;
+  const documentsCrees = auditAujourdhui.filter(a => a.module === 'Documents' && a.action === 'Création').length;
+  const dossiers = [...new Set(mesTaches.filter(t => t.dossier).map(t => t.dossier))];
+  const base = {
+    tachesPrevues: prevues.length, tachesTerminees: terminees.length,
+    tachesNonTerminees: nonTerminees.length, tachesReportees: reportees.length,
+    clientsContactes, demandesTraitees, documentsCrees,
+    dossiersTravailles: dossiers.join(', ')
+  };
+  if (suivisDeCoordinateur(db, user).length) {
+    const c = calculerObjectifsClosingJour(db, user);
+    base.closingCodesSuivis = c.codesSuivis;
+    base.closingClientsContactes = c.clientsContactes;
+    base.closingDevisValides = c.devisValides;
+    base.closingRetoursCorrection = c.retoursCorrection;
+    base.closingCodesMansouri = c.codesTraitesMansouri;
+    base.closingConfirmationsSemaine = c.confirmationsSemaine;
+    base.closingAvancesSemaine = c.avancesSemaine;
+    base.aReprendreDemain = suivisDeCoordinateur(db, user).filter(estSuiviOuvert)
+      .filter(s => s.echeanceActionSuivante && s.echeanceActionSuivante <= ajd)
+      .map(s => `${s.codeSuivi} — ${s.resultatDernierContact || s.statutPipeline || 'à traiter'}`).join('\n');
+  }
+  return base;
 }
 
 export { getUtilisateurParNom };

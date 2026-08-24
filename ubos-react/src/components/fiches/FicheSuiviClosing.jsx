@@ -8,7 +8,7 @@ import { pill, pillStatut } from '../../utils/format';
 import { RESULTATS_CONTACT_CLOSING, MOTIFS_REVOIR_DEVIS_CLOSING, STATUTS_RAPIDES_CLOSING } from '../../data/constants';
 import {
   calculerPrioriteSuivi, enregistrerResultatContact, calculerEcheanceRelance,
-  OPTIONS_DELAI_RELANCE, construireMessageSuiviClosing, changerStatutRapide, construireTachePourMansouri
+  OPTIONS_DELAI_RELANCE, construireMessageSuiviClosing, changerStatutRapide, construireTachePourMansouri, confierAMansouri
 } from '../../utils/closingCoordination';
 
 const CHECKLIST_DEVIS = [
@@ -104,7 +104,7 @@ export default function FicheSuiviClosing({ codeProp, code: codeFromProp }) {
     updateDB({
       ...db,
       taches: [construireTachePourMansouri(suivi, genCode, userCourant), ...(db.taches || [])],
-      suivisClosing: (db.suivisClosing || []).map(s => s.code === code ? { ...s, responsableActionActuelle: 'Mansouri' } : s)
+      suivisClosing: (db.suivisClosing || []).map(s => s.code === code ? { ...s, ...confierAMansouri() } : s)
     });
     audit('Suivi Closing', 'Confié à Mansouri', code, 'responsableActionActuelle', suivi.responsableActionActuelle, 'Mansouri');
     notifier('Mansouri', construireMessageSuiviClosing({ ...suivi, responsableActionActuelle: 'Mansouri' }, { titre: `Code confié par ${userCourant} — Code ${suivi.codeSuivi}` }), 'Suivi Closing');
@@ -245,9 +245,9 @@ export default function FicheSuiviClosing({ codeProp, code: codeFromProp }) {
             ) : (
               <>
                 <button className="btn doux" onClick={fermer}>Fermer</button>
-                <button className="btn doux" onClick={handleDemanderVerification}>🔍 Demander vérification</button>
-                <button className="btn rouge" onClick={handleRevoirDevis}>❌ Retourner pour correction</button>
-                <button className="btn vert" onClick={handleValiderDevis}>✅ Valider</button>
+                <button className="btn doux" onClick={handleDemanderVerification}>DEMANDER EXPLICATION</button>
+                <button className="btn rouge" onClick={handleRevoirDevis}>RETOURNER POUR CORRECTION</button>
+                <button className="btn vert" onClick={handleValiderDevis}>VALIDER</button>
               </>
             )
           }>
