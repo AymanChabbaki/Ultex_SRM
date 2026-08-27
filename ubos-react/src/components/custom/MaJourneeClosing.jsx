@@ -26,6 +26,7 @@ export default function MaJourneeClosing({ user }) {
 
   const auj = new Date(new Date().toDateString());
   const suivis = suivisDeCoordinateur(db, cible);
+  const aQualifier = suivis.filter(s => !s.archive && s.statutPipeline === 'À qualifier');
   const suivisOuverts = suivis.filter(estSuiviOuvert).filter(estQualifie);
   const programme = genererProgrammeClosing(db, cible);
   const alertes = genererAlertesClosing(db, cible);
@@ -87,6 +88,13 @@ export default function MaJourneeClosing({ user }) {
   return (
     <div>
       <Topbar titre={`Bonjour ${(cible.nomComplet || 'Zoubida').split(' ')[0]} — Programme du ${new Date().toLocaleDateString('fr-FR')}`} />
+
+      {aQualifier.length > 0 && (
+        <div className="vide" style={{ textAlign: 'left', marginBottom: '14px', background: 'var(--fond-jaune)' }}>
+          <b>{aQualifier.length} code(s) à qualifier</b> — présents dans votre suivi mais pas encore classés (rien n'est perdu, ils n'apparaissent juste pas encore ici tant qu'ils ne sont pas qualifiés).{' '}
+          <a href="#aQualifierClosing">Les qualifier maintenant</a> · <a href="#monPortefeuilleClosing">Voir tout mon portefeuille</a>
+        </div>
+      )}
 
       <div className="outils">
         <span className="spacer"></span>
