@@ -2,9 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { useDB } from '../../context/DBContext';
 import Topbar from '../layout/Topbar';
 import { pill, pillStatut } from '../../utils/format';
-import { suivisDeCoordinateur, estSuiviOuvert, estQualifie, calculerPrioriteSuivi, rechercherSuivis, dossiersDuClient } from '../../utils/closingCoordination';
+import { suivisDeCoordinateur, estSuiviOuvert, calculerPrioriteSuivi, rechercherSuivis, dossiersDuClient } from '../../utils/closingCoordination';
 
-const FILTRES = ['Tous', "Aujourd'hui", 'À relancer', 'Attente client', 'Attente Mansouri', 'Devis', 'Urgents', 'Retards', 'Sans prochaine action', 'Confirmés'];
+const FILTRES = ['Tous', "Aujourd'hui", 'À relancer', 'Attente client', 'Attente Mansouri', 'Devis', 'Urgents', 'Retards', 'Sans prochaine action', 'À qualifier', 'Confirmés'];
 
 export default function MonPortefeuilleClosing({ user }) {
   const { db } = useDB();
@@ -12,7 +12,12 @@ export default function MonPortefeuilleClosing({ user }) {
   const [filtre, setFiltre] = useState('Tous');
   const [recherche, setRecherche] = useState('');
 
-  const tous = suivisDeCoordinateur(db, cible).filter(estQualifie);
+  // "Tous" veut dire tous — un code "À qualifier" n'est pas archivé, il ne
+  // doit jamais disparaître du portefeuille (c'était le bug : il était
+  // exclu même sous "Tous", donnant l'impression que des codes avaient été
+  // supprimés alors qu'ils étaient juste non qualifiés).
+  const tous = suivisDeCoordinateur(db, cible).filter(s => !s.archive);
+  const aQualifierCount = tous.filter(s => s.statutPipeline === 'À qualifier').length;
   const auj = new Date(new Date().toDateString());
 
   const filtres = useMemo(() => {
@@ -26,6 +31,7 @@ export default function MonPortefeuilleClosing({ user }) {
       case 'Urgents': base = tous.filter(s => ['Retard', "Aujourd'hui"].includes(calculerPrioriteSuivi(s).tag)); break;
       case 'Retards': base = tous.filter(s => estSuiviOuvert(s) && s.echeanceActionSuivante && new Date(s.echeanceActionSuivante) < auj); break;
       case 'Sans prochaine action': base = tous.filter(s => estSuiviOuvert(s) && !s.echeanceActionSuivante); break;
+      case 'À qualifier': base = tous.filter(s => s.statutPipeline === 'À qualifier'); break;
       case 'Confirmés': base = tous.filter(s => ['Confirmation', 'Avance reçue'].includes(s.statutPipeline)); break;
       default: base = tous;
     }
@@ -61,9 +67,18 @@ export default function MonPortefeuilleClosing({ user }) {
 
       <div className="outils">
         {FILTRES.map(f => (
-          <button key={f} className={`btn mini ${filtre === f ? 'or' : 'doux'}`} onClick={() => setFiltre(f)}>{f}</button>
+          <button key={f} className={`btn mini ${filtre === f ? 'or' : 'doux'}`} onClick={() => setFiltre(f)}>
+            {f}{f === 'À qualifier' && aQualifierCount > 0 ? ` (${aQualifierCount})` : ''}
+          </button>
         ))}
       </div>
+
+      {aQualifierCount > 0 && filtre !== 'À qualifier' && (
+        <div className="vide" style={{ textAlign: 'left', marginBottom: '10px' }}>
+          <b>{aQualifierCount} code(s) à qualifier</b> — présents mais pas encore classés dans le vrai pipeline.{' '}
+          <a href="#" onClick={e => { e.preventDefault(); setFiltre('À qualifier'); }}>Les afficher</a>
+        </div>
+      )}
 
       <div className="panneau">
         <div className="defile">
