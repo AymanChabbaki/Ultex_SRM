@@ -60,6 +60,9 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
 
   const mainFields = [
     { k: 'client', l: 'Client', render: () => demande.client ? <a href={`#ficheClient:${demande.client}`}>{client.nom || demande.client}</a> : '—' },
+    { k: 'codeClientUltex', l: 'Code client ULTEX' },
+    { k: 'typeDemande', l: 'Type de demande (ULTEX)' },
+    { k: 'sensOperation', l: "Sens de l'opération" },
     { k: 'dateDemande', l: 'Date', render: (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—' },
     { k: 'canalReception', l: 'Canal de réception' },
     { k: 'typeProjet', l: 'Type de projet' },

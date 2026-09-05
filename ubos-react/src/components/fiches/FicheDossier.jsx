@@ -104,6 +104,9 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
 
   const mainFields = [
     {k: "client", l: "Client"},
+    {k: "codeClientUltex", l: "Code client ULTEX"},
+    {k: "typeDemande", l: "Type de demande (ULTEX)"},
+    {k: "sensOperation", l: "Sens de l'opération"},
     {k: "produit", l: "Produit"},
     {k: "fournisseur", l: "Fournisseur"},
     {k: "incoterm", l: "Incoterm"},
@@ -117,6 +120,7 @@ const FicheDossier = ({ codeProp, code: codeFromProp }) => {
     {k: "poids", l: "Poids (kg)"},
     {k: "responsable", l: "Responsable"},
     {k: "statut", l: "Statut"},
+    {k: "tagsPipeline", l: "Tags pipeline ULTEX (Data → Closing)"},
     {k: "remarque", l: "Remarques"}
   ];
 

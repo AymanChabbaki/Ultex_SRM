@@ -36,7 +36,7 @@ const CHAMPS_SUIVI_DATA = [
 ];
 
 const CHAMPS_IDENTITE = [
-  {k:"type",l:"Type"}, {k:"nom",l:"Nom"}, {k:"raisonSociale",l:"Raison sociale"},
+  {k:"type",l:"Type"}, {k:"nom",l:"Nom"}, {k:"codeClientUltex",l:"Code client ULTEX"}, {k:"raisonSociale",l:"Raison sociale"},
   {k:"ice",l:"ICE"}, {k:"idFiscal",l:"Identifiant fiscal (IF)"}, {k:"rc",l:"RC"}, {k:"cnss",l:"CNSS"},
   {k:"adresse",l:"Adresse"}, {k:"ville",l:"Ville"}, {k:"pays",l:"Pays"},
   {k:"telephone",l:"Téléphone"}, {k:"whatsapp",l:"WhatsApp"}, {k:"email",l:"E-mail"},
