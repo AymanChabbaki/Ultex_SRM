@@ -830,9 +830,10 @@ app.post('/api/ocr/pdf', authMiddleware, async (req, res) => {
 
 // -----------------------------------------------------------------------
 // ULTEX sync — pushes a client contact/request from the ULTEX workflow app
-// into this CRM in real time (contact + client + demande, mirroring the
-// CRM's own manual lifecycle: contact reaches out -> becomes a client ->
-// files a demande). One-way (ULTEX -> CRM); the CRM never writes back.
+// into this CRM in real time (contact + client + demande + dossier,
+// mirroring the CRM's own manual lifecycle: contact reaches out -> becomes
+// a client -> files a demande -> becomes a dossier). One-way (ULTEX ->
+// CRM); the CRM never writes back.
 // -----------------------------------------------------------------------
 
 function ultexSyncAuth(req, res, next) {
@@ -876,7 +877,16 @@ async function trouverParUltexId(collection, ultexDossierId) {
 app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   const {
     ultexDossierId, referenceCode, nom, telephone, email, ville,
-    objectifGeneral, typeProjet, urgence, budgetGlobalEstime, remarque
+    objectifGeneral, typeProjet, urgence, budgetGlobalEstime, remarque,
+    // Global ULTEX client code (e.g. "A201"), shared across all of that
+    // client's dossiers -- visible cross-system identifier, not just an
+    // internal workflow value. Type de demande (Sourcing/Proforma/
+    // Négociation), sens de l'opération (Import/Export/Accompagnement),
+    // current pipeline stage + Data->Closing disposition tags, and the
+    // product/transport fields for the dossiers collection below.
+    codeClientUltex, typeDemande, sensOperation, etape, tagsPipeline,
+    produit, quantite, incoterm, paysOrigine, paysProvenance,
+    modeTransport, cbm, poids, poidsNet, hsCode
   } = req.body || {};
 
   if (!ultexDossierId || !nom) {
@@ -898,6 +908,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         telephone: telephone || client.data.telephone,
         email: email || client.data.email,
         ville: ville || client.data.ville,
+        codeClientUltex: codeClientUltex || client.data.codeClientUltex,
         dernierContact: aujourdhui
       };
       client = await prisma.collectionItem.update({
@@ -909,6 +920,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       const data = {
         ultexDossierId, id: code, code, nom,
         telephone: telephone || '', email: email || '', ville: ville || '',
+        codeClientUltex: codeClientUltex || '',
         segment: 'Prospect', dernierContact: aujourdhui, nbRelances: 0,
         remarque: origineRemarque
       };
@@ -958,6 +970,9 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       const merged = {
         ...demande.data,
         client: client.data.nom,
+        codeClientUltex: codeClientUltex || demande.data.codeClientUltex,
+        typeDemande: typeDemande || demande.data.typeDemande,
+        sensOperation: sensOperation || demande.data.sensOperation,
         objectifGeneral: objectifGeneral || demande.data.objectifGeneral,
         typeProjet: typeProjet || demande.data.typeProjet,
         urgence: urgence || demande.data.urgence,
@@ -972,6 +987,8 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       const code = await genererCodeAtomique('DMD');
       const data = {
         ultexDossierId, id: code, code, client: client.data.nom,
+        codeClientUltex: codeClientUltex || '',
+        typeDemande: typeDemande || undefined, sensOperation: sensOperation || undefined,
         dateDemande: aujourdhui, source: 'WhatsApp', canalReception: 'WhatsApp',
         objectifGeneral: objectifGeneral || '—', typeProjet: typeProjet || undefined,
         urgence: urgence || 'Normale',
@@ -983,11 +1000,66 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       });
     }
 
+    // 4. Dossier — upsert by ultexDossierId, mirroring the "dossiers"
+    // collection's own fields (produit/quantité/transport/etc., which this
+    // integration didn't seed at all before). `etape` and `statut` are
+    // CRM-owned once set (advanced manually via the "Étape suivante"
+    // button/statut dropdown, like demandes.statut above) -- only seeded on
+    // first creation, never overwritten by a later sync. Everything else
+    // (product/transport info, the tags/type/sens fields) is descriptive
+    // and safe to keep refreshed on every sync.
+    let dossierItem = await trouverParUltexId('dossiers', ultexDossierId);
+    if (dossierItem) {
+      const merged = {
+        ...dossierItem.data,
+        client: client.data.nom,
+        codeClientUltex: codeClientUltex || dossierItem.data.codeClientUltex,
+        typeDemande: typeDemande || dossierItem.data.typeDemande,
+        sensOperation: sensOperation || dossierItem.data.sensOperation,
+        tagsPipeline: tagsPipeline || dossierItem.data.tagsPipeline,
+        produit: produit || dossierItem.data.produit,
+        quantite: quantite || dossierItem.data.quantite,
+        incoterm: incoterm || dossierItem.data.incoterm,
+        paysOrigine: paysOrigine || dossierItem.data.paysOrigine,
+        paysProvenance: paysProvenance || dossierItem.data.paysProvenance,
+        modeTransport: modeTransport || dossierItem.data.modeTransport,
+        cbm: cbm != null ? cbm : dossierItem.data.cbm,
+        poids: poids != null ? poids : dossierItem.data.poids,
+        poidsNet: poidsNet != null ? poidsNet : dossierItem.data.poidsNet,
+        hsCode: hsCode || dossierItem.data.hsCode
+      };
+      dossierItem = await prisma.collectionItem.update({
+        where: { collection_id: { collection: 'dossiers', id: dossierItem.id } },
+        data: { data: merged }
+      });
+    } else {
+      const code = await genererCodeAtomique('DOS');
+      const data = {
+        ultexDossierId, id: code, code, client: client.data.nom,
+        demande: demande.code,
+        codeClientUltex: codeClientUltex || '',
+        typeDemande: typeDemande || undefined, sensOperation: sensOperation || undefined,
+        tagsPipeline: tagsPipeline || undefined,
+        produit: produit || '', quantite: quantite || undefined,
+        incoterm: incoterm || undefined,
+        paysOrigine: paysOrigine || undefined, paysProvenance: paysProvenance || undefined,
+        modeTransport: modeTransport || undefined,
+        cbm: cbm != null ? cbm : undefined, poids: poids != null ? poids : undefined,
+        poidsNet: poidsNet != null ? poidsNet : undefined,
+        etape: etape || undefined, statut: 'Actif',
+        remarque: remarque || origineRemarque
+      };
+      dossierItem = await prisma.collectionItem.create({
+        data: { collection: 'dossiers', id: code, code, data }
+      });
+    }
+
     res.json({
       status: 'ok',
       client: { code: client.code },
       contact: { code: contact.code },
-      demande: { code: demande.code }
+      demande: { code: demande.code },
+      dossier: { code: dossierItem.code }
     });
   } catch (error) {
     console.error('ULTEX sync error:', error);
