@@ -140,68 +140,126 @@ async function main() {
     console.log(`${noPhone.length} client record(s) have no phone number -- skipped (can't match to ULTEX or detect duplicates): ${noPhone.map((r) => r.code).join(', ')}\n`);
   }
 
+  console.log('=== Clients ===\n');
   if (!plan.length) {
-    console.log('Nothing to do -- no renames or merges needed.');
-    return;
-  }
+    console.log('Nothing to do -- no renames or merges needed.\n');
+  } else {
+    console.log(`Plan (${plan.length} action(s)):\n`);
+    for (const item of plan) {
+      if (item.type === 'rename') {
+        console.log(`  RENAME  ${item.record.code}  ->  ${item.newCode}   (${item.record.data.nom || '—'})`);
+      } else {
+        const oldCodes = item.others.map((r) => r.code).join(', ');
+        console.log(`  MERGE   [${item.keeper.code}, ${oldCodes}]  ->  ${item.targetCode}   (${item.keeper.data.nom || '—'})`);
+      }
+    }
+    console.log('');
 
-  console.log(`Plan (${plan.length} action(s)):\n`);
-  for (const item of plan) {
-    if (item.type === 'rename') {
-      console.log(`  RENAME  ${item.record.code}  ->  ${item.newCode}   (${item.record.data.nom || '—'})`);
+    if (APPLY) {
+      for (const item of plan) {
+        await prisma.$transaction(async (tx) => {
+          if (item.type === 'rename') {
+            const r = item.record;
+            await tx.collectionItem.delete({ where: { collection_id: { collection: 'clients', id: r.id } } });
+            await tx.collectionItem.create({
+              data: {
+                collection: 'clients', id: item.newCode, code: item.newCode,
+                data: { ...r.data, id: item.newCode, code: item.newCode, codeClientUltex: item.newCode },
+                createdAt: r.createdAt,
+              },
+            });
+            await repointContacts(tx, [r.code], item.newCode);
+          } else {
+            const { keeper, others, targetCode, mergedData } = item;
+            for (const o of others) {
+              await tx.collectionItem.delete({ where: { collection_id: { collection: 'clients', id: o.id } } });
+            }
+            if (keeper.code === targetCode) {
+              await tx.collectionItem.update({
+                where: { collection_id: { collection: 'clients', id: keeper.id } },
+                data: { data: { ...mergedData, id: targetCode, code: targetCode, codeClientUltex: targetCode } },
+              });
+            } else {
+              await tx.collectionItem.delete({ where: { collection_id: { collection: 'clients', id: keeper.id } } });
+              await tx.collectionItem.create({
+                data: {
+                  collection: 'clients', id: targetCode, code: targetCode,
+                  data: { ...mergedData, id: targetCode, code: targetCode, codeClientUltex: targetCode },
+                  createdAt: keeper.createdAt,
+                },
+              });
+            }
+            const oldCodes = [keeper.code, ...others.map((r) => r.code)].filter((c) => c !== targetCode);
+            await repointContacts(tx, oldCodes, targetCode);
+          }
+        });
+        console.log(`Applied: ${item.type === 'rename' ? `${item.record.code} -> ${item.newCode}` : `merge -> ${item.targetCode}`}`);
+      }
     } else {
-      const oldCodes = item.others.map((r) => r.code).join(', ');
-      console.log(`  MERGE   [${item.keeper.code}, ${oldCodes}]  ->  ${item.targetCode}   (${item.keeper.data.nom || '—'})`);
+      console.log('Dry run only -- no changes made.');
     }
   }
-  console.log('');
 
-  if (!APPLY) {
-    console.log('Dry run only -- no changes made. Re-run with --apply to execute this plan.');
-    return;
+  // --- Contacts: same duplication bug (one per dossier instead of one per
+  // client), already fixed going forward in index.js's sync route -- this
+  // merges the pre-existing duplicates the same way the clients above were
+  // merged, but keyed by codeClientAssocie (falling back to phone), since
+  // no other collection references a contact by code (checked modules.js --
+  // nothing has {t:"ref", coll:"contacts"}), so no repointing is needed.
+  console.log('\n=== Contacts ===\n');
+  const contacts = await prisma.collectionItem.findMany({
+    where: { collection: 'contacts' },
+    orderBy: { createdAt: 'asc' },
+  });
+  const contactGroups = new Map();
+  const contactNoKey = [];
+  for (const c of contacts) {
+    const key = c.data.codeClientAssocie || digits(c.data.telephone);
+    if (!key) { contactNoKey.push(c); continue; }
+    if (!contactGroups.has(key)) contactGroups.set(key, []);
+    contactGroups.get(key).push(c);
+  }
+  const contactPlan = [];
+  for (const records of contactGroups.values()) {
+    if (records.length < 2) continue;
+    const keeper = records[0];
+    const others = records.slice(1);
+    contactPlan.push({ keeper, others, mergedData: mergeData(others, keeper.data) });
   }
 
-  for (const item of plan) {
-    await prisma.$transaction(async (tx) => {
-      if (item.type === 'rename') {
-        const r = item.record;
-        await tx.collectionItem.delete({ where: { collection_id: { collection: 'clients', id: r.id } } });
-        await tx.collectionItem.create({
-          data: {
-            collection: 'clients', id: item.newCode, code: item.newCode,
-            data: { ...r.data, id: item.newCode, code: item.newCode, codeClientUltex: item.newCode },
-            createdAt: r.createdAt,
-          },
-        });
-        await repointContacts(tx, [r.code], item.newCode);
-      } else {
-        const { keeper, others, targetCode, mergedData } = item;
-        for (const o of others) {
-          await tx.collectionItem.delete({ where: { collection_id: { collection: 'clients', id: o.id } } });
-        }
-        if (keeper.code === targetCode) {
+  if (contactNoKey.length) {
+    console.log(`${contactNoKey.length} contact record(s) have neither codeClientAssocie nor phone -- skipped: ${contactNoKey.map((r) => r.code).join(', ')}\n`);
+  }
+
+  if (!contactPlan.length) {
+    console.log('Nothing to do -- no duplicate contacts found.');
+  } else {
+    console.log(`Plan (${contactPlan.length} merge(s)):\n`);
+    for (const item of contactPlan) {
+      const oldCodes = item.others.map((r) => r.code).join(', ');
+      console.log(`  MERGE   [${item.keeper.code}, ${oldCodes}]  ->  ${item.keeper.code}   (${item.keeper.data.nom || '—'})`);
+    }
+    console.log('');
+
+    if (APPLY) {
+      for (const item of contactPlan) {
+        await prisma.$transaction(async (tx) => {
+          for (const o of item.others) {
+            await tx.collectionItem.delete({ where: { collection_id: { collection: 'contacts', id: o.id } } });
+          }
           await tx.collectionItem.update({
-            where: { collection_id: { collection: 'clients', id: keeper.id } },
-            data: { data: { ...mergedData, id: targetCode, code: targetCode, codeClientUltex: targetCode } },
+            where: { collection_id: { collection: 'contacts', id: item.keeper.id } },
+            data: { data: item.mergedData },
           });
-        } else {
-          await tx.collectionItem.delete({ where: { collection_id: { collection: 'clients', id: keeper.id } } });
-          await tx.collectionItem.create({
-            data: {
-              collection: 'clients', id: targetCode, code: targetCode,
-              data: { ...mergedData, id: targetCode, code: targetCode, codeClientUltex: targetCode },
-              createdAt: keeper.createdAt,
-            },
-          });
-        }
-        const oldCodes = [keeper.code, ...others.map((r) => r.code)].filter((c) => c !== targetCode);
-        await repointContacts(tx, oldCodes, targetCode);
+        });
+        console.log(`Applied: merge -> ${item.keeper.code}`);
       }
-    });
-    console.log(`Applied: ${item.type === 'rename' ? `${item.record.code} -> ${item.newCode}` : `merge -> ${item.targetCode}`}`);
+    } else {
+      console.log('Dry run only -- no changes made.');
+    }
   }
 
-  console.log('\nDone.');
+  console.log(`\n${APPLY ? 'Done.' : 'Re-run with --apply to execute the plan(s) above.'}`);
 }
 
 async function repointContacts(tx, oldCodes, newCode) {
