@@ -233,12 +233,13 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
         {onglet === "docs" && (
           <div className="bloc-fiche large">
             <h4>Documents liés</h4>
-            <DataTable 
+            <DataTable
               columns={[
                 {key: 'code', label: 'Code', render: (val) => <a href={`#ficheDocument:${val}`}>{val}</a>},
                 {key: 'nom', label: 'Nom'},
-                {key: 'categorie', label: 'Catégorie'},
-                {key: 'dateCreation', label: 'Date', render: (val) => val ? new Date(val).toLocaleDateString() : ''}
+                {key: 'type', label: 'Catégorie', render: (v) => v ? pill(v, 'p-gris') : '—'},
+                {key: 'url', label: 'Lien', render: (v) => v ? <a href={v} target="_blank" rel="noreferrer">Ouvrir</a> : '—'},
+                {key: 'statut', label: 'Statut', render: (v) => <Pill type={v} texte={v} />}
               ]}
               data={docs}
             />
