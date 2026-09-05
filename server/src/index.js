@@ -642,7 +642,11 @@ async function alerterDirection(texte) {
   }
 }
 
-// Full Batch Sync (saves/replaces full state or incremental updates)
+// Routine save -- every "audit()/notifier()/updateDB()" in the frontend
+// goes through this on every single change. Deliberately non-destructive
+// (purge defaults to false): the frontend's fullState here is just whatever
+// was loaded into this browser tab, possibly hours ago, and must never be
+// allowed to delete records it simply doesn't know about yet.
 app.post('/api/db/sync', authMiddleware, async (req, res) => {
   const fullState = req.body;
   if (!fullState) return res.status(400).json({ error: 'Données invalides' });
@@ -655,14 +659,15 @@ app.post('/api/db/sync', authMiddleware, async (req, res) => {
   }
 });
 
-// Full backup restore — same mechanism as /api/db/sync (a full-state
-// overwrite) but gated behind OTP elevation, since restoring a backup can
-// silently discard everything created since that backup was taken.
+// Full backup restore — a genuine full-state overwrite (purge: true), gated
+// behind OTP elevation, since restoring a backup can legitimately discard
+// everything created since that backup was taken -- that's the intended
+// behavior here, unlike the routine /api/db/sync above.
 app.post('/api/security/restore', authMiddleware, requireElevation, async (req, res) => {
   const fullState = req.body;
   if (!fullState) return res.status(400).json({ error: 'Données invalides' });
   try {
-    await synchroniserEtatComplet(fullState);
+    await synchroniserEtatComplet(fullState, { purge: true });
     const auteur = req.auth.nomComplet || req.auth.identifiant;
     await ecrireJournalSecurite({ action: 'Restauration complète', utilisateur: auteur, module: 'Sécurité', resultat: 'Réussie', ip: req.ip });
     await alerterDirection(`${auteur} a restauré une sauvegarde complète de la base UBOS.`);
