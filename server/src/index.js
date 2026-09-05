@@ -1046,6 +1046,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         modeTransport: modeTransport || undefined,
         cbm: cbm != null ? cbm : undefined, poids: poids != null ? poids : undefined,
         poidsNet: poidsNet != null ? poidsNet : undefined,
+        hsCode: hsCode || undefined,
         etape: etape || undefined, statut: 'Actif',
         remarque: remarque || origineRemarque
       };
