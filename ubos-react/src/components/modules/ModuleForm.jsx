@@ -18,6 +18,25 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
 
   const [formData, setFormData] = useState(() => (!recordCode && initialData) ? { ...initialData } : {});
 
+  // Modules with many fields (dossiers, demandes, demandeLignes, clients...)
+  // can tag each champ with a `groupe` name to split the edit modal into
+  // steps/tabs instead of one long scroll. Purely additive: a module whose
+  // champs have no `groupe` renders exactly as before, as a single
+  // ungrouped list -- no visual change for the ~30 smaller modules that
+  // don't opt in. Group order follows first-appearance order in `champs`.
+  const champsList = M?.champs || [];
+  const groupNames = [...new Set(champsList.map(f => f.groupe || 'Général'))];
+  const hasSteps = groupNames.length > 1;
+  const [activeStep, setActiveStep] = useState(0);
+
+  useEffect(() => {
+    setActiveStep(0);
+  }, [moduleId, recordCode]);
+
+  const visibleChamps = hasSteps
+    ? champsList.filter(f => (f.groupe || 'Général') === groupNames[activeStep])
+    : champsList;
+
   useEffect(() => {
     if (isEdit && M && db[M.coll]) {
       const record = db[M.coll].find(x => x.code === recordCode);
@@ -94,9 +113,10 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
   };
 
   return (
-    <Modal 
-      title={isEdit ? `Modifier ${recordCode}` : `Ajouter ${M.label}`} 
+    <Modal
+      title={isEdit ? `Modifier ${recordCode}` : `Ajouter ${M.label}`}
       onClose={onClose}
+      large={hasSteps}
       footer={
         <>
           <button className="btn doux" onClick={onClose}>Annuler</button>
@@ -104,13 +124,27 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
         </>
       }
     >
+      {hasSteps && (
+        <div className="onglets" style={{ padding: '0 20px', flexWrap: 'wrap' }}>
+          {groupNames.map((g, i) => (
+            <button
+              type="button"
+              key={g}
+              className={`onglet ${activeStep === i ? 'actif' : ''}`}
+              onClick={() => setActiveStep(i)}
+            >
+              {i + 1}. {g}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="corps">
-        {(M.champs || []).map((f, i) => (
-          <FormField 
-            key={i} 
-            fieldConfig={f} 
-            value={formData[f.k]} 
-            onChange={(val) => handleChange(f.k, val)} 
+        {visibleChamps.map((f, i) => (
+          <FormField
+            key={f.k || i}
+            fieldConfig={f}
+            value={formData[f.k]}
+            onChange={(val) => handleChange(f.k, val)}
             db={db}
           />
         ))}
