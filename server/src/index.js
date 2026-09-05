@@ -874,6 +874,30 @@ async function trouverParUltexId(collection, ultexDossierId) {
   });
 }
 
+// Finds an existing client by IDENTITY, not by dossier: a returning client
+// files a new dossier with a new ultexDossierId every time, so matching on
+// that (like every other collection here does) created a brand-new
+// duplicate "C0000xx" client on every repeat dossier instead of updating
+// the one that already existed. codeClientUltex (ULTEX's global per-client
+// code, stable across all of that client's dossiers) is the correct match
+// key; phone number is the fallback for dossiers synced before that field
+// existed, or for a client ULTEX hasn't assigned a code to yet.
+async function trouverClientExistant(codeClientUltex, telephone) {
+  if (codeClientUltex) {
+    const parCode = await prisma.collectionItem.findFirst({
+      where: { collection: 'clients', data: { path: ['codeClientUltex'], equals: codeClientUltex } }
+    });
+    if (parCode) return parCode;
+  }
+  if (telephone) {
+    const parTel = await prisma.collectionItem.findFirst({
+      where: { collection: 'clients', data: { path: ['telephone'], equals: telephone } }
+    });
+    if (parTel) return parTel;
+  }
+  return null;
+}
+
 app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   const {
     ultexDossierId, referenceCode, nom, telephone, email, ville,
@@ -897,10 +921,21 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     const aujourdhui = new Date().toISOString().slice(0, 10);
     const origineRemarque = `Créé automatiquement depuis ULTEX${referenceCode ? ` (réf. ${referenceCode})` : ''}.`;
 
-    // 1. Client — upsert by ultexDossierId. New clients start as "Prospect";
-    // an existing client's segment/pipeline (set manually by sales) is
-    // never overwritten, only contact details and "dernier contact".
-    let client = await trouverParUltexId('clients', ultexDossierId);
+    // 1. Client — upsert by IDENTITY (codeClientUltex, falling back to
+    // phone), not by ultexDossierId -- see trouverClientExistant above for
+    // why. New clients start as "Prospect"; an existing client's
+    // segment/pipeline (set manually by sales) is never overwritten, only
+    // contact details and "dernier contact". ultexDossierId on the record
+    // itself is kept as the FIRST dossier that created this client (never
+    // overwritten later) -- purely informational provenance now, not a
+    // lookup key, since one client can have many dossiers.
+    // New clients use ULTEX's own global client code (e.g. "A201") as their
+    // CRM code directly when available, instead of an internal "C000123"
+    // counter -- that's the actual cross-system identifier, and generating
+    // a second, meaningless one just to display "C000123" in the grid was
+    // exactly the "shit code" complaint. Falls back to the internal counter
+    // only if ULTEX hasn't assigned this client a code yet.
+    let client = await trouverClientExistant(codeClientUltex, telephone);
     if (client) {
       const merged = {
         ...client.data,
@@ -916,7 +951,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         data: { data: merged }
       });
     } else {
-      const code = await genererCodeAtomique('C');
+      let code = codeClientUltex || await genererCodeAtomique('C');
       const data = {
         ultexDossierId, id: code, code, nom,
         telephone: telephone || '', email: email || '', ville: ville || '',
@@ -924,16 +959,40 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         segment: 'Prospect', dernierContact: aujourdhui, nbRelances: 0,
         remarque: origineRemarque
       };
-      client = await prisma.collectionItem.create({
-        data: { collection: 'clients', id: code, code, data }
-      });
+      try {
+        client = await prisma.collectionItem.create({
+          data: { collection: 'clients', id: code, code, data }
+        });
+      } catch (creationError) {
+        // Extremely unlikely id collision (codeClientUltex matches some
+        // unrelated pre-existing record's id) -- fall back to an internal
+        // code rather than fail the whole sync.
+        if (creationError.code === 'P2002') {
+          code = await genererCodeAtomique('C');
+          client = await prisma.collectionItem.create({
+            data: { collection: 'clients', id: code, code, data: { ...data, id: code, code } }
+          });
+        } else {
+          throw creationError;
+        }
+      }
     }
 
-    // 2. Contact — upsert by ultexDossierId, linked to the client above.
-    // codeClientAssocie is only ever set here, never cleared, so a sales
-    // rep manually re-linking a contact elsewhere is never undone by a
-    // later sync.
-    let contact = await trouverParUltexId('contacts', ultexDossierId);
+    // 2. Contact — upsert by CLIENT identity (linked to the client above),
+    // not by ultexDossierId -- same duplication bug as the client lookup:
+    // ULTEX only ever gives us one phone/email per client, so a second
+    // dossier from the same client is the same contact person, not a new
+    // one. codeClientAssocie is only ever set here, never cleared, so a
+    // sales rep manually re-linking a contact elsewhere is never undone by
+    // a later sync.
+    let contact = await prisma.collectionItem.findFirst({
+      where: { collection: 'contacts', data: { path: ['codeClientAssocie'], equals: client.code } }
+    });
+    if (!contact && telephone) {
+      contact = await prisma.collectionItem.findFirst({
+        where: { collection: 'contacts', data: { path: ['telephone'], equals: telephone } }
+      });
+    }
     if (contact) {
       const merged = {
         ...contact.data,
