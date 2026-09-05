@@ -18,6 +18,11 @@ const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'ubos_secret_2026';
 const ELEVATION_SECRET = process.env.ELEVATION_SECRET || 'ubos_elevation_secret_2026';
+// Static shared secret for the ULTEX -> CRM sync endpoint (server-to-server,
+// no human session involved) -- separate from JWT_SECRET so rotating one
+// never affects the other, and simpler than issuing/refreshing a JWT for a
+// backend service that isn't a real CRM user.
+const ULTEX_SYNC_API_KEY = process.env.ULTEX_SYNC_API_KEY || 'ubos_ultex_sync_key_2026';
 const SECURITY_EMAIL = process.env.SECURITY_EMAIL || 'ultexcompany1@gmail.com';
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
@@ -464,7 +469,21 @@ app.get('/api/db', authMiddleware, async (req, res) => {
 // Shared by the routine sync route and the OTP-gated restore route below —
 // same full-state-replacement semantics either way, factored out so
 // "restore a backup" isn't a second, divergent implementation to keep in sync.
-async function synchroniserEtatComplet(fullState) {
+// purge=true deletes, per collection, every record NOT present in fullState
+// (an intentional full-state replace -- correct for /api/security/restore,
+// where "restore this backup" means exactly that). purge=false (the default,
+// used by the routine /api/db/sync every save goes through) only ever
+// creates/updates records present in fullState and never deletes anything --
+// critical because the frontend's fullState is just whatever was loaded into
+// that browser tab at some point in the past (DBContext.jsx loads the whole
+// DB once at login, then every single save -- editing one client, adding one
+// notification -- resends that entire in-memory snapshot). With purge=true
+// unconditional, any other change made anywhere else since that tab's last
+// load (a different tab, a different user, a background job) is invisible
+// to this snapshot and gets silently deleted the moment this tab saves
+// anything at all -- this was UBOS's actual mass-data-loss bug: no error,
+// no audit trail, entire collections of records disappearing.
+async function synchroniserEtatComplet(fullState, { purge = false } = {}) {
     // 1. Sync Sequences
     if (fullState.seq) {
       for (const [key, val] of Object.entries(fullState.seq)) {
@@ -520,23 +539,26 @@ async function synchroniserEtatComplet(fullState) {
       }
     }
 
-    // 3. Sync Collections & Purge Deleted Records from PostgreSQL
+    // 3. Sync Collections (+ purge records not in fullState, restore-only)
     for (const col of COLLS) {
       if (Array.isArray(fullState[col])) {
         const currentIds = fullState[col].map(item => String(item.id || item.code)).filter(Boolean);
-        
-        // Delete items from PostgreSQL that were deleted in frontend
-        if (currentIds.length > 0) {
-          await prisma.collectionItem.deleteMany({
-            where: {
-              collection: col,
-              id: { notIn: currentIds }
-            }
-          });
-        } else {
-          await prisma.collectionItem.deleteMany({
-            where: { collection: col }
-          });
+
+        if (purge) {
+          // Only reached from /api/security/restore, where "make the DB
+          // match this exact snapshot" is the whole point.
+          if (currentIds.length > 0) {
+            await prisma.collectionItem.deleteMany({
+              where: {
+                collection: col,
+                id: { notIn: currentIds }
+              }
+            });
+          } else {
+            await prisma.collectionItem.deleteMany({
+              where: { collection: col }
+            });
+          }
         }
 
         for (const item of fullState[col]) {
@@ -798,6 +820,173 @@ app.post('/api/ocr/pdf', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('PDF parsing error:', error);
     res.status(500).json({ error: 'Erreur lors de la lecture du fichier PDF' });
+  }
+});
+
+// -----------------------------------------------------------------------
+// ULTEX sync — pushes a client contact/request from the ULTEX workflow app
+// into this CRM in real time (contact + client + demande, mirroring the
+// CRM's own manual lifecycle: contact reaches out -> becomes a client ->
+// files a demande). One-way (ULTEX -> CRM); the CRM never writes back.
+// -----------------------------------------------------------------------
+
+function ultexSyncAuth(req, res, next) {
+  const key = req.headers['x-ultex-sync-key'] || '';
+  if (!key || key !== ULTEX_SYNC_API_KEY) {
+    return res.status(401).json({ error: 'Clé de synchronisation ULTEX invalide' });
+  }
+  next();
+}
+
+// Same SequenceCounter mechanism as /api/genCode, but a single atomic
+// upsert (increment) instead of read-then-write -- this endpoint can be
+// called concurrently for different dossiers, and the read-then-write
+// version race-conditions under concurrent calls (two requests could read
+// the same counter value before either writes it back).
+async function genererCodeAtomique(pfx) {
+  const annee = new Date().getFullYear();
+  const avecAnnee = PFX_ANNEE.includes(pfx);
+  const key = avecAnnee ? pfx + annee : pfx;
+  const seqRecord = await prisma.sequenceCounter.upsert({
+    where: { key },
+    update: { val: { increment: 1 } },
+    create: { key, val: 1 }
+  });
+  const n = String(seqRecord.val).padStart(6, '0');
+  return avecAnnee ? `${pfx}${annee}-${n}` : `${pfx}${n}`;
+}
+
+// Finds the CollectionItem in a given collection previously created/updated
+// for this ULTEX dossier, keyed by an "ultexDossierId" field stashed inside
+// its JSON data -- not part of the CRM's own form schema, but CollectionItem
+// data is a free-form JSON blob, so this is a safe, additive way to make
+// repeated syncs for the same dossier update the same records instead of
+// creating duplicates on every call.
+async function trouverParUltexId(collection, ultexDossierId) {
+  return prisma.collectionItem.findFirst({
+    where: { collection, data: { path: ['ultexDossierId'], equals: ultexDossierId } }
+  });
+}
+
+app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
+  const {
+    ultexDossierId, referenceCode, nom, telephone, email, ville,
+    objectifGeneral, typeProjet, urgence, budgetGlobalEstime, remarque
+  } = req.body || {};
+
+  if (!ultexDossierId || !nom) {
+    return res.status(400).json({ error: 'ultexDossierId et nom requis' });
+  }
+
+  try {
+    const aujourdhui = new Date().toISOString().slice(0, 10);
+    const origineRemarque = `Créé automatiquement depuis ULTEX${referenceCode ? ` (réf. ${referenceCode})` : ''}.`;
+
+    // 1. Client — upsert by ultexDossierId. New clients start as "Prospect";
+    // an existing client's segment/pipeline (set manually by sales) is
+    // never overwritten, only contact details and "dernier contact".
+    let client = await trouverParUltexId('clients', ultexDossierId);
+    if (client) {
+      const merged = {
+        ...client.data,
+        nom,
+        telephone: telephone || client.data.telephone,
+        email: email || client.data.email,
+        ville: ville || client.data.ville,
+        dernierContact: aujourdhui
+      };
+      client = await prisma.collectionItem.update({
+        where: { collection_id: { collection: 'clients', id: client.id } },
+        data: { data: merged }
+      });
+    } else {
+      const code = await genererCodeAtomique('C');
+      const data = {
+        ultexDossierId, id: code, code, nom,
+        telephone: telephone || '', email: email || '', ville: ville || '',
+        segment: 'Prospect', dernierContact: aujourdhui, nbRelances: 0,
+        remarque: origineRemarque
+      };
+      client = await prisma.collectionItem.create({
+        data: { collection: 'clients', id: code, code, data }
+      });
+    }
+
+    // 2. Contact — upsert by ultexDossierId, linked to the client above.
+    // codeClientAssocie is only ever set here, never cleared, so a sales
+    // rep manually re-linking a contact elsewhere is never undone by a
+    // later sync.
+    let contact = await trouverParUltexId('contacts', ultexDossierId);
+    if (contact) {
+      const merged = {
+        ...contact.data,
+        nom,
+        telephone: telephone || contact.data.telephone,
+        whatsapp: telephone || contact.data.whatsapp,
+        email: email || contact.data.email,
+        codeClientAssocie: contact.data.codeClientAssocie || client.code
+      };
+      contact = await prisma.collectionItem.update({
+        where: { collection_id: { collection: 'contacts', id: contact.id } },
+        data: { data: merged }
+      });
+    } else {
+      const code = await genererCodeAtomique('CT');
+      const data = {
+        ultexDossierId, id: code, code, nom,
+        telephone: telephone || '', whatsapp: telephone || '', email: email || '',
+        source: 'WhatsApp', statut: 'En échange', codeClientAssocie: client.code,
+        remarque: origineRemarque
+      };
+      contact = await prisma.collectionItem.create({
+        data: { collection: 'contacts', id: code, code, data }
+      });
+    }
+
+    // 3. Demande — upsert by ultexDossierId, referencing the client by nom
+    // (demandes.client is a {t:"ref", coll:"clients", cle:"nom"} reference
+    // in this CRM, resolved by name match, not a real foreign key). statut
+    // is only ever set on first creation ("Nouvelle") -- once sales starts
+    // working it in the CRM, a later sync must never reset their progress.
+    let demande = await trouverParUltexId('demandes', ultexDossierId);
+    if (demande) {
+      const merged = {
+        ...demande.data,
+        client: client.data.nom,
+        objectifGeneral: objectifGeneral || demande.data.objectifGeneral,
+        typeProjet: typeProjet || demande.data.typeProjet,
+        urgence: urgence || demande.data.urgence,
+        budgetGlobalEstime: budgetGlobalEstime != null ? budgetGlobalEstime : demande.data.budgetGlobalEstime,
+        remarqueGenerale: remarque || demande.data.remarqueGenerale
+      };
+      demande = await prisma.collectionItem.update({
+        where: { collection_id: { collection: 'demandes', id: demande.id } },
+        data: { data: merged }
+      });
+    } else {
+      const code = await genererCodeAtomique('DMD');
+      const data = {
+        ultexDossierId, id: code, code, client: client.data.nom,
+        dateDemande: aujourdhui, source: 'WhatsApp', canalReception: 'WhatsApp',
+        objectifGeneral: objectifGeneral || '—', typeProjet: typeProjet || undefined,
+        urgence: urgence || 'Normale',
+        budgetGlobalEstime: budgetGlobalEstime != null ? budgetGlobalEstime : undefined,
+        statut: 'Nouvelle', remarqueGenerale: remarque || origineRemarque
+      };
+      demande = await prisma.collectionItem.create({
+        data: { collection: 'demandes', id: code, code, data }
+      });
+    }
+
+    res.json({
+      status: 'ok',
+      client: { code: client.code },
+      contact: { code: contact.code },
+      demande: { code: demande.code }
+    });
+  } catch (error) {
+    console.error('ULTEX sync error:', error);
+    res.status(500).json({ error: 'Erreur de synchronisation ULTEX' });
   }
 });
 
