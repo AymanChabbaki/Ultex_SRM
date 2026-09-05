@@ -47,9 +47,38 @@ services:
     networks:
       - ubos-net
 
+  # UBOS's first backup mechanism -- previously none existed at all. See
+  # infra/backup/backup.sh. Needs an rclone.conf mounted at the path below
+  # (same shape as ULTEX's own backup service) before this container can
+  # actually upload anywhere -- without it, dumps still run and land in the
+  # container's own /tmp/backups, but the rclone copy/delete steps will
+  # fail every night until that file exists.
+  backup:
+    build:
+      context: ./infra/backup
+    container_name: ubos_backup_prod
+    restart: unless-stopped
+    init: true
+    environment:
+      POSTGRES_HOST: ubos-postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_secure_pass_2026
+      POSTGRES_DB: ubos_db
+      BACKUP_RETENTION_DAYS: "14"
+      RCLONE_REMOTE: "gdrive:ultex-crm-backups"
+      TZ: Africa/Casablanca
+    volumes:
+      - /opt/ultex-secrets/rclone.conf:/root/.config/rclone/rclone.conf:ro
+      - ubos_backup_tmp:/tmp/backups
+    depends_on:
+      - ubos-postgres
+    networks:
+      - ubos-net
+
 networks:
   ubos-net:
     driver: bridge
 
 volumes:
   ubos_postgres_prod_data:
+  ubos_backup_tmp:
