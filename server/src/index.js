@@ -1019,16 +1019,17 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       });
     }
 
-    // 3. Demande — upsert by ultexDossierId, referencing the client by nom
-    // (demandes.client is a {t:"ref", coll:"clients", cle:"nom"} reference
-    // in this CRM, resolved by name match, not a real foreign key). statut
-    // is only ever set on first creation ("Nouvelle") -- once sales starts
-    // working it in the CRM, a later sync must never reset their progress.
+    // 3. Demande — upsert by ultexDossierId. demandes.client is a
+    // {t:"ref", coll:"clients", cle:"nom"} field -- `cle` is only the
+    // display key (see refLabel()/SearchableSelect.jsx), the stored value
+    // is always the referenced record's CODE. statut is only ever set on
+    // first creation ("Nouvelle") -- once sales starts working it in the
+    // CRM, a later sync must never reset their progress.
     let demande = await trouverParUltexId('demandes', ultexDossierId);
     if (demande) {
       const merged = {
         ...demande.data,
-        client: client.data.nom,
+        client: client.code,
         codeClientUltex: codeClientUltex || demande.data.codeClientUltex,
         typeDemande: typeDemande || demande.data.typeDemande,
         sensOperation: sensOperation || demande.data.sensOperation,
@@ -1045,7 +1046,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     } else {
       const code = await genererCodeAtomique('DMD');
       const data = {
-        ultexDossierId, id: code, code, client: client.data.nom,
+        ultexDossierId, id: code, code, client: client.code,
         codeClientUltex: codeClientUltex || '',
         typeDemande: typeDemande || undefined, sensOperation: sensOperation || undefined,
         dateDemande: aujourdhui, source: 'WhatsApp', canalReception: 'WhatsApp',
@@ -1071,7 +1072,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     if (dossierItem) {
       const merged = {
         ...dossierItem.data,
-        client: client.data.nom,
+        client: client.code,
         codeClientUltex: codeClientUltex || dossierItem.data.codeClientUltex,
         typeDemande: typeDemande || dossierItem.data.typeDemande,
         sensOperation: sensOperation || dossierItem.data.sensOperation,
@@ -1094,7 +1095,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     } else {
       const code = await genererCodeAtomique('DOS');
       const data = {
-        ultexDossierId, id: code, code, client: client.data.nom,
+        ultexDossierId, id: code, code, client: client.code,
         demande: demande.code,
         codeClientUltex: codeClientUltex || '',
         typeDemande: typeDemande || undefined, sensOperation: sensOperation || undefined,
@@ -1124,6 +1125,103 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   } catch (error) {
     console.error('ULTEX sync error:', error);
     res.status(500).json({ error: 'Erreur de synchronisation ULTEX' });
+  }
+});
+
+// ULTEX's own document_type values -> the closest CATEGORIES_DOCUMENT
+// option (see constants.js). None of them have an exact "Devis" category,
+// so those fall back to "Autre" -- the real ULTEX type is still kept in
+// the record's commentaire for staff visibility.
+const CATEGORIE_PAR_DOCUMENT_TYPE_ULTEX = {
+  bc_pdf: 'Bon de commande',
+  cps_pdf: 'Contrat',
+};
+
+// mimeType -> the closest TYPES_FICHIER_DOCUMENT option (see constants.js).
+const TYPE_FICHIER_PAR_MIME = {
+  'application/pdf': 'PDF',
+  'image/jpeg': 'JPEG',
+  'image/jpg': 'JPG',
+  'image/png': 'PNG',
+  'image/webp': 'WEBP',
+  'application/msword': 'DOC',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+  'application/vnd.ms-excel': 'XLS',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+  'text/csv': 'CSV',
+  'text/plain': 'TXT',
+  'application/zip': 'ZIP',
+};
+
+async function trouverParUltexDocumentId(ultexDocumentId) {
+  return prisma.collectionItem.findFirst({
+    where: { collection: 'documents', data: { path: ['ultexDocumentId'], equals: ultexDocumentId } }
+  });
+}
+
+// Documents ULTEX actually stores (proforma invoices, photos, generated
+// devis/BC/CPS PDFs...) -- pushed into the CRM's own "documents" collection
+// so a client's "Documents liés" tab reflects what's really in the ULTEX
+// workflow, not just documents someone manually attached in the CRM.
+// One-way, upserted by ultexDocumentId. Resolves the CRM client via
+// codeClientUltex and, if the document is dossier-scoped, the CRM dossier
+// via ultexDossierId -- both already established as the correct match keys
+// by the dossier sync route above.
+app.post('/api/sync/ultex/document', ultexSyncAuth, async (req, res) => {
+  const { ultexDocumentId, codeClientUltex, clientNom, ultexDossierId, nom, documentType, mimeType, url } = req.body || {};
+
+  if (!ultexDocumentId || !url) {
+    return res.status(400).json({ error: 'ultexDocumentId et url requis' });
+  }
+
+  try {
+    const client = codeClientUltex
+      ? await prisma.collectionItem.findFirst({
+          where: { collection: 'clients', data: { path: ['codeClientUltex'], equals: codeClientUltex } }
+        })
+      : null;
+    const dossierItem = ultexDossierId ? await trouverParUltexId('dossiers', ultexDossierId) : null;
+    const categorie = CATEGORIE_PAR_DOCUMENT_TYPE_ULTEX[documentType] || 'Autre';
+    const typeFichier = TYPE_FICHIER_PAR_MIME[mimeType] || 'Lien externe';
+    const commentaire = `Synchronisé automatiquement depuis ULTEX${documentType ? ` (type : ${documentType})` : ''}.`;
+
+    let doc = await trouverParUltexDocumentId(ultexDocumentId);
+    if (doc) {
+      const merged = {
+        ...doc.data,
+        nom: nom || doc.data.nom,
+        type: categorie,
+        typeFichier,
+        url,
+        client: client ? client.code : doc.data.client,
+        dossier: dossierItem ? dossierItem.code : doc.data.dossier,
+      };
+      doc = await prisma.collectionItem.update({
+        where: { collection_id: { collection: 'documents', id: doc.id } },
+        data: { data: merged }
+      });
+    } else {
+      const code = await genererCodeAtomique('DOC');
+      const data = {
+        ultexDocumentId, id: code, code,
+        nom: nom || clientNom || 'Document ULTEX',
+        type: categorie,
+        typeFichier,
+        url,
+        client: client ? client.code : undefined,
+        dossier: dossierItem ? dossierItem.code : undefined,
+        version: 1, statut: 'Reçu',
+        commentaire
+      };
+      doc = await prisma.collectionItem.create({
+        data: { collection: 'documents', id: code, code, data }
+      });
+    }
+
+    res.json({ status: 'ok', document: { code: doc.code } });
+  } catch (error) {
+    console.error('ULTEX document sync error:', error);
+    res.status(500).json({ error: 'Erreur de synchronisation du document ULTEX' });
   }
 });
 

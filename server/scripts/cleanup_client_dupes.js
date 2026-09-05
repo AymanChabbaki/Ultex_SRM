@@ -259,6 +259,54 @@ async function main() {
     }
   }
 
+  // --- demandes/dossiers client refs: fix name -> code ---------------------
+  // demandes.client / dossiers.client are {t:"ref", coll:"clients", cle:"nom"}
+  // fields -- `cle` is only the DISPLAY key (see refLabel()/SearchableSelect
+  // .jsx's onChange(o.code)); the stored value must be the client's CODE.
+  // The sync route stored the client's NAME there until this was caught
+  // (see index.js's /api/sync/ultex/dossier), which silently broke
+  // FicheClient's "Dossiers Import"/"Demandes & Consultations" tabs (they
+  // filter by d.client === code) for every dossier/demande synced before
+  // the fix. This re-fetches clients fresh (after any renames/merges above)
+  // and repairs any record still holding a name instead of a code.
+  console.log('\n=== Demandes/Dossiers client refs (name -> code) ===\n');
+  const freshClients = await prisma.collectionItem.findMany({ where: { collection: 'clients' } });
+  const codeSet = new Set(freshClients.map((c) => c.code));
+  const byNom = new Map(freshClients.map((c) => [c.data.nom, c.code]));
+
+  for (const coll of ['demandes', 'dossiers']) {
+    const records = await prisma.collectionItem.findMany({ where: { collection: coll } });
+    const refPlan = [];
+    for (const r of records) {
+      const current = r.data.client;
+      if (!current || codeSet.has(current)) continue; // already a valid code, or unset
+      const targetCode = r.data.codeClientUltex || byNom.get(current) || null;
+      if (targetCode && codeSet.has(targetCode)) {
+        refPlan.push({ record: r, oldVal: current, newVal: targetCode });
+      }
+    }
+    if (!refPlan.length) {
+      console.log(`${coll}: nothing to fix.`);
+      continue;
+    }
+    console.log(`${coll}: ${refPlan.length} record(s) to fix:`);
+    for (const item of refPlan) {
+      console.log(`  ${item.record.code}   "${item.oldVal}"  ->  ${item.newVal}`);
+    }
+    if (APPLY) {
+      for (const item of refPlan) {
+        await prisma.collectionItem.update({
+          where: { collection_id: { collection: coll, id: item.record.id } },
+          data: { data: { ...item.record.data, client: item.newVal } },
+        });
+      }
+      console.log(`Applied ${refPlan.length} fix(es) in ${coll}.`);
+    }
+  }
+  if (!APPLY) {
+    console.log('\nDry run only for this section too -- re-run with --apply to execute.');
+  }
+
   console.log(`\n${APPLY ? 'Done.' : 'Re-run with --apply to execute the plan(s) above.'}`);
 }
 
