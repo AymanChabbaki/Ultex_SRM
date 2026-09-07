@@ -962,7 +962,12 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     // product/transport fields for the dossiers collection below.
     codeClientUltex, typeDemande, sensOperation, etape, tagsPipeline,
     produit, quantite, incoterm, paysOrigine, paysProvenance,
-    modeTransport, cbm, poids, poidsNet, hsCode, annule
+    modeTransport, cbm, poids, poidsNet, hsCode, annule,
+    // Only ever sent from a VALIDATED devis (see _validated_devis_totals in
+    // crm_sync.py), so null here means "no validated devis right now" --
+    // keep whatever was last known rather than blanking the figures while
+    // a devis is being revised.
+    montantVente, montantAchat
   } = req.body || {};
 
   if (!ultexDossierId || !nom) {
@@ -1148,6 +1153,8 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         poids: poids != null ? poids : dossierItem.data.poids,
         poidsNet: poidsNet != null ? poidsNet : dossierItem.data.poidsNet,
         hsCode: hsCode || dossierItem.data.hsCode,
+        montantVente: montantVente != null ? montantVente : dossierItem.data.montantVente,
+        montantAchat: montantAchat != null ? montantAchat : dossierItem.data.montantAchat,
         // statut stays CRM-owned EXCEPT for cancellation: a dossier ULTEX
         // has cancelled must stop sitting in the pipeline as if it were
         // live. Never flips back on its own -- if sales reopens it here,
@@ -1173,6 +1180,8 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         cbm: cbm != null ? cbm : undefined, poids: poids != null ? poids : undefined,
         poidsNet: poidsNet != null ? poidsNet : undefined,
         hsCode: hsCode || undefined,
+        montantVente: montantVente != null ? montantVente : undefined,
+        montantAchat: montantAchat != null ? montantAchat : undefined,
         etape: etape || undefined, statut: annule ? 'Annulé' : 'Actif',
         remarque: remarque || origineRemarque
       };

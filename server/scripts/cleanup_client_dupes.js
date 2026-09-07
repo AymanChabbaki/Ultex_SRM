@@ -90,6 +90,24 @@ async function loadUltexPhoneCodeMap() {
   }
 }
 
+// ULTEX dossier id -> phone. Lets a CRM demande/dossier whose `client` code
+// is now dangling be traced back to the right client, since every synced
+// record carries the ultexDossierId it came from.
+async function loadUltexDossierPhones() {
+  const url = process.env.ULTEX_DATABASE_URL;
+  if (!url) return new Map();
+  const client = new PgClient({ connectionString: url });
+  await client.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT id, phone FROM dossiers WHERE phone IS NOT NULL`
+    );
+    return new Map(rows.map((r) => [r.id, r.phone]));
+  } finally {
+    await client.end();
+  }
+}
+
 // Exact digit match first, then the unambiguous last-9 fallback.
 function chercherCodeUltex(ultex, phoneDigits) {
   if (!phoneDigits) return null;
@@ -315,21 +333,57 @@ async function main() {
   // filter by d.client === code) for every dossier/demande synced before
   // the fix. This re-fetches clients fresh (after any renames/merges above)
   // and repairs any record still holding a name instead of a code.
-  console.log('\n=== Demandes/Dossiers client refs (name -> code) ===\n');
+  console.log('\n=== Demandes/Dossiers client refs ===\n');
   const freshClients = await prisma.collectionItem.findMany({ where: { collection: 'clients' } });
   const codeSet = new Set(freshClients.map((c) => c.code));
   const byNom = new Map(freshClients.map((c) => [c.data.nom, c.code]));
 
+  // Phone -> current CRM client code, so a demande/dossier still pointing at
+  // a code that no longer exists (its client was renamed or merged away, and
+  // only contacts got repointed at the time) can be traced back through its
+  // own ULTEX dossier's phone number.
+  const clientParTelephone = new Map();
+  const clientParSuffixe = new Map();
+  for (const c of freshClients) {
+    const d = digits(c.data.telephone);
+    if (!d) continue;
+    clientParTelephone.set(d, c.code);
+    if (d.length >= 9) clientParSuffixe.set(d.slice(-9), c.code);
+  }
+  const telephoneParDossierUltex = await loadUltexDossierPhones();
+
+  function resoudreClient(r, current) {
+    if (r.data.codeClientUltex && codeSet.has(r.data.codeClientUltex)) return r.data.codeClientUltex;
+    const parNom = byNom.get(current);
+    if (parNom) return parNom;
+    const d = digits(telephoneParDossierUltex.get(r.data.ultexDossierId));
+    if (!d) return null;
+    return clientParTelephone.get(d)
+      || (d.length >= 9 ? clientParSuffixe.get(d.slice(-9)) : null)
+      || null;
+  }
+
   for (const coll of ['demandes', 'dossiers']) {
     const records = await prisma.collectionItem.findMany({ where: { collection: coll } });
     const refPlan = [];
+    const orphelins = [];
     for (const r of records) {
       const current = r.data.client;
       if (!current || codeSet.has(current)) continue; // already a valid code, or unset
-      const targetCode = r.data.codeClientUltex || byNom.get(current) || null;
+      const targetCode = resoudreClient(r, current);
       if (targetCode && codeSet.has(targetCode)) {
         refPlan.push({ record: r, oldVal: current, newVal: targetCode });
+      } else {
+        orphelins.push({ record: r, oldVal: current });
       }
+    }
+    if (orphelins.length) {
+      console.log(`${coll}: ${orphelins.length} record(s) point at a client that no longer exists and could not be traced back:`);
+      for (const o of orphelins.slice(0, 15)) {
+        console.log(`  ${o.record.code}  ->  "${o.oldVal}"  (produit/objet : ${o.record.data.produit || o.record.data.objectifGeneral || '—'})`);
+      }
+      if (orphelins.length > 15) console.log(`  ... and ${orphelins.length - 15} more`);
+      console.log('');
     }
     if (!refPlan.length) {
       console.log(`${coll}: nothing to fix.`);
