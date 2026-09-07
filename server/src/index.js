@@ -1261,6 +1261,7 @@ app.post('/api/sync/ultex/dossier/supprime', ultexSyncAuth, async (req, res) => 
 const CATEGORIE_PAR_DOCUMENT_TYPE_ULTEX = {
   bc_pdf: 'Bon de commande',
   cps_pdf: 'Contrat',
+  reliquat_pdf: 'Reliquat',
 };
 
 // Every devis flavour (devis_pdf, devis_maritime_pdf, devis_air_pdf,
