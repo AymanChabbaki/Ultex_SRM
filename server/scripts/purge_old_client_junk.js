@@ -82,6 +82,55 @@ async function loadUltexPhoneFacts() {
   }
 }
 
+// ULTEX dossier id -> { isOldClient }, so an orphaned CRM row can be judged
+// on what it actually came from rather than on its looks.
+async function loadUltexDossiers() {
+  const url = process.env.ULTEX_DATABASE_URL;
+  if (!url) return new Map();
+  const client = new PgClient({ connectionString: url });
+  await client.connect();
+  try {
+    const { rows } = await client.query(`SELECT id, is_old_client FROM dossiers`);
+    return new Map(rows.map((r) => [r.id, { isOldClient: r.is_old_client === true }]));
+  } finally {
+    await client.end();
+  }
+}
+
+// demandes/dossiers whose `client` code matches no client at all. They show
+// a dead code in the lists and can never appear on a client fiche. This
+// happens where the client was purged as junk while these rows still stored
+// the client's NAME (the name -> code fix came later), so the purge's
+// code-based match never caught them.
+//
+// Only rows the sync created (they carry an ultexDossierId) are considered,
+// and only when their ULTEX dossier is an old-client stub or is gone
+// entirely. A row still backed by a REAL ULTEX dossier is never deleted --
+// its client simply needs recreating, which the next sync of that dossier
+// does on its own.
+async function collecterOrphelins(codeSet, ultexDossiers) {
+  const aSupprimer = [];
+  const aResyncer = [];
+  for (const collection of ['demandes', 'dossiers']) {
+    const rows = await prisma.collectionItem.findMany({ where: { collection } });
+    for (const r of rows) {
+      const code = r.data.client;
+      if (!code || codeSet.has(code)) continue;
+      const uid = r.data.ultexDossierId;
+      if (!uid) continue; // not ours -- leave manual CRM rows alone
+      const ultex = ultexDossiers.get(uid);
+      if (!ultex) {
+        aSupprimer.push({ collection, record: r, motif: 'dossier supprimé dans ULTEX' });
+      } else if (ultex.isOldClient) {
+        aSupprimer.push({ collection, record: r, motif: 'stub old-client' });
+      } else {
+        aResyncer.push({ collection, record: r });
+      }
+    }
+  }
+  return { aSupprimer, aResyncer };
+}
+
 async function main() {
   const facts = await loadUltexPhoneFacts();
   console.log(`Loaded ULTEX dossier facts for ${facts.size} phone number(s).\n`);
@@ -104,8 +153,40 @@ async function main() {
 
   console.log(`Kept: ${keptActive} with real ULTEX dossiers, ${keptUnknown} not found in ULTEX, ${keptManual} created manually in the CRM.`);
 
+  // Rows left behind by an earlier purge, pointing at a client code that no
+  // longer exists.
+  const codeSetActuel = new Set(clients.map((c) => c.code));
+  const ultexDossiers = await loadUltexDossiers();
+  const { aSupprimer, aResyncer } = await collecterOrphelins(codeSetActuel, ultexDossiers);
+
+  if (aResyncer.length) {
+    console.log(`\n${aResyncer.length} orphan row(s) are still backed by a REAL ULTEX dossier -- NOT deleted.`);
+    console.log('Their client just needs recreating: re-sync those dossiers (backfill_crm_sync.py) and they repair themselves.');
+    for (const o of aResyncer.slice(0, 10)) {
+      console.log(`  ${o.collection} ${o.record.code}  ->  "${o.record.data.client}"`);
+    }
+  }
+
+  if (aSupprimer.length) {
+    console.log(`\n=== Orphan demandes/dossiers to delete (${aSupprimer.length}) ===\n`);
+    for (const o of aSupprimer) {
+      const libelle = o.record.data.produit || o.record.data.objectifGeneral || '—';
+      console.log(`  ${o.collection} ${o.record.code}  ->  "${o.record.data.client}"  (${libelle})  [${o.motif}]`);
+    }
+    if (APPLY) {
+      for (const o of aSupprimer) {
+        await prisma.collectionItem.delete({
+          where: { collection_id: { collection: o.collection, id: o.record.id } }
+        });
+      }
+      console.log(`\nDeleted ${aSupprimer.length} orphan row(s).`);
+    } else {
+      console.log('\nDry run -- re-run with --apply to delete these.');
+    }
+  }
+
   if (!junk.length) {
-    console.log('\nNothing to do -- no legacy-only clients found.');
+    console.log('\nNo legacy-only clients found.');
     return;
   }
 
