@@ -65,14 +65,40 @@ async function loadUltexPhoneCodeMap() {
       `SELECT phone, code FROM clients WHERE code IS NOT NULL AND phone IS NOT NULL`
     );
     const map = new Map();
+    // Secondary index on the last 9 digits (the national number), because
+    // the same person can be stored as 0661146626 here and 212661146626 in
+    // the CRM -- stripping non-digits alone still leaves those unequal.
+    // Only kept where those 9 digits identify exactly ONE ULTEX client, so
+    // an ambiguous suffix never silently renames the wrong record.
+    const parSuffixe = new Map();
+    const suffixesAmbigus = new Set();
     for (const row of rows) {
       const d = digits(row.phone);
-      if (d) map.set(d, row.code);
+      if (!d) continue;
+      map.set(d, row.code);
+      if (d.length >= 9) {
+        const suffixe = d.slice(-9);
+        const connu = parSuffixe.get(suffixe);
+        if (connu && connu !== row.code) suffixesAmbigus.add(suffixe);
+        parSuffixe.set(suffixe, row.code);
+      }
     }
-    return map;
+    for (const s of suffixesAmbigus) parSuffixe.delete(s);
+    return { map, parSuffixe };
   } finally {
     await pg.end();
   }
+}
+
+// Exact digit match first, then the unambiguous last-9 fallback.
+function chercherCodeUltex(ultex, phoneDigits) {
+  if (!phoneDigits) return null;
+  const exact = ultex.map.get(phoneDigits);
+  if (exact) return exact;
+  if (phoneDigits.length >= 9) {
+    return ultex.parSuffixe.get(phoneDigits.slice(-9)) || null;
+  }
+  return null;
 }
 
 function mergeData(records, target) {
@@ -90,8 +116,8 @@ function mergeData(records, target) {
 }
 
 async function main() {
-  const ultexMap = await loadUltexPhoneCodeMap();
-  console.log(`Loaded ${ultexMap.size} ULTEX phone->code pairs.\n`);
+  const ultex = await loadUltexPhoneCodeMap();
+  console.log(`Loaded ${ultex.map.size} ULTEX phone->code pairs (${ultex.parSuffixe.size} usable by national number).\n`);
 
   const clients = await prisma.collectionItem.findMany({
     where: { collection: 'clients' },
@@ -110,7 +136,7 @@ async function main() {
   const plan = []; // { type: 'rename'|'merge', ... }
 
   for (const [phone, records] of groups) {
-    const ultexCode = ultexMap.get(phone) || null;
+    const ultexCode = chercherCodeUltex(ultex, phone);
 
     if (records.length === 1) {
       const r = records[0];
@@ -138,6 +164,26 @@ async function main() {
 
   if (noPhone.length) {
     console.log(`${noPhone.length} client record(s) have no phone number -- skipped (can't match to ULTEX or detect duplicates): ${noPhone.map((r) => r.code).join(', ')}\n`);
+  }
+
+  // Any client still carrying a CRM-generated placeholder ("C000663") that
+  // this run is NOT going to rename is worth explaining -- silently leaving
+  // it looks like the script did nothing, when the real cause is upstream.
+  const placeholders = clients.filter((c) => /^C\d{6}$/.test(c.code || ''));
+  const aRenommer = new Set(plan.filter((p) => p.type === 'rename').map((p) => p.record.id));
+  const inexpliques = placeholders.filter((c) => !aRenommer.has(c.id));
+  if (inexpliques.length) {
+    console.log('=== Codes provisoires non résolus ===\n');
+    for (const c of inexpliques) {
+      const d = digits(c.data.telephone);
+      let raison;
+      if (!d) raison = 'aucun téléphone sur la fiche CRM';
+      else if (chercherCodeUltex(ultex, d)) raison = 'code trouvé mais fusion en cours';
+      else if (d.length >= 9 && ultex.parSuffixe.has(d.slice(-9))) raison = 'numéro ambigu dans ULTEX';
+      else raison = "aucun client ULTEX avec ce numéro n'a de code (Client.code est vide)";
+      console.log(`  ${c.code}  "${c.data.nom}"  ${c.data.telephone || '—'}  ->  ${raison}`);
+    }
+    console.log('');
   }
 
   console.log('=== Clients ===\n');
