@@ -898,6 +898,58 @@ async function trouverClientExistant(codeClientUltex, telephone) {
   return null;
 }
 
+// A code this CRM minted itself via genererCodeAtomique('C') ("C000663"),
+// as opposed to a real ULTEX client code ("A23", "R5951", ...).
+function estCodeInterneGenere(code) {
+  return /^C\d{6}$/.test(code || '');
+}
+
+// Swaps a client record's own code for ULTEX's global one. `code` is the
+// Prisma primary key here, so this is a delete + recreate (createdAt
+// preserved) rather than an update, plus a repoint of everything that
+// referenced the old code. Falls back to a plain data update if the target
+// code is somehow already taken, so a sync is never lost over this.
+async function adopterCodeUltex(client, nouveauCode, mergedData) {
+  const ancienCode = client.code;
+  const data = { ...mergedData, id: nouveauCode, code: nouveauCode, codeClientUltex: nouveauCode };
+  try {
+    return await prisma.$transaction(async (tx) => {
+      await tx.collectionItem.delete({
+        where: { collection_id: { collection: 'clients', id: client.id } }
+      });
+      const cree = await tx.collectionItem.create({
+        data: {
+          collection: 'clients', id: nouveauCode, code: nouveauCode,
+          data, createdAt: client.createdAt
+        }
+      });
+      for (const [collection, champ] of [
+        ['contacts', 'codeClientAssocie'],
+        ['demandes', 'client'],
+        ['dossiers', 'client'],
+        ['documents', 'client'],
+      ]) {
+        const lies = await tx.collectionItem.findMany({
+          where: { collection, data: { path: [champ], equals: ancienCode } }
+        });
+        for (const item of lies) {
+          await tx.collectionItem.update({
+            where: { collection_id: { collection, id: item.id } },
+            data: { data: { ...item.data, [champ]: nouveauCode } }
+          });
+        }
+      }
+      return cree;
+    });
+  } catch (error) {
+    console.error(`Impossible d'adopter le code ULTEX ${nouveauCode} pour ${ancienCode}:`, error);
+    return prisma.collectionItem.update({
+      where: { collection_id: { collection: 'clients', id: client.id } },
+      data: { data: mergedData }
+    });
+  }
+}
+
 app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   const {
     ultexDossierId, referenceCode, nom, telephone, email, ville,
@@ -946,10 +998,19 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         codeClientUltex: codeClientUltex || client.data.codeClientUltex,
         dernierContact: aujourdhui
       };
-      client = await prisma.collectionItem.update({
-        where: { collection_id: { collection: 'clients', id: client.id } },
-        data: { data: merged }
-      });
+      if (codeClientUltex && estCodeInterneGenere(client.code) && client.code !== codeClientUltex) {
+        // ULTEX didn't have this client's global code yet on the first push
+        // (a brand-new WhatsApp dossier gets its code a few steps after
+        // creation), so this record was minted with a throwaway "C000xxx".
+        // Now that the real code has arrived, adopt it as the record's own
+        // code instead of leaving the placeholder visible forever.
+        client = await adopterCodeUltex(client, codeClientUltex, merged);
+      } else {
+        client = await prisma.collectionItem.update({
+          where: { collection_id: { collection: 'clients', id: client.id } },
+          data: { data: merged }
+        });
+      }
     } else {
       let code = codeClientUltex || await genererCodeAtomique('C');
       const data = {
