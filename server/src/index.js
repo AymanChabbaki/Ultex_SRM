@@ -1198,6 +1198,18 @@ const CATEGORIE_PAR_DOCUMENT_TYPE_ULTEX = {
   cps_pdf: 'Contrat',
 };
 
+// Every devis flavour (devis_pdf, devis_maritime_pdf, devis_air_pdf,
+// devis_road_pdf, and the devis_proposition_<id>_<mode> ones) maps to the
+// same "Devis" category rather than being matched exhaustively.
+function categorieDocumentUltex(documentType) {
+  if (!documentType) return 'Autre';
+  if (CATEGORIE_PAR_DOCUMENT_TYPE_ULTEX[documentType]) {
+    return CATEGORIE_PAR_DOCUMENT_TYPE_ULTEX[documentType];
+  }
+  if (documentType.startsWith('devis')) return 'Devis';
+  return 'Autre';
+}
+
 // mimeType -> the closest TYPES_FICHIER_DOCUMENT option (see constants.js).
 const TYPE_FICHIER_PAR_MIME = {
   'application/pdf': 'PDF',
@@ -1242,7 +1254,7 @@ app.post('/api/sync/ultex/document', ultexSyncAuth, async (req, res) => {
         })
       : null;
     const dossierItem = ultexDossierId ? await trouverParUltexId('dossiers', ultexDossierId) : null;
-    const categorie = CATEGORIE_PAR_DOCUMENT_TYPE_ULTEX[documentType] || 'Autre';
+    const categorie = categorieDocumentUltex(documentType);
     const typeFichier = TYPE_FICHIER_PAR_MIME[mimeType] || 'Lien externe';
     const commentaire = `Synchronisé automatiquement depuis ULTEX${documentType ? ` (type : ${documentType})` : ''}.`;
 

@@ -280,7 +280,7 @@ export const AEROPORTS_MONDE = [
   {n:"Djeddah King Abdulaziz", v:"Djeddah", p:"Arabie saoudite", i:"JED"},{n:"Lagos Murtala Muhammed", v:"Lagos", p:"Nigeria", i:"LOS"}
 ];
 
-export const CATEGORIES_DOCUMENT = ["Client","Commande","Contrat","Bon de commande","Proforma Invoice","Commercial Invoice","Packing List","Paiement","SWIFT","Banque","Transport","BL Draft","BL Original","AWB","CMR","Certificat d'origine","EUR.1 / EUR-MED","COC","ONSSA","ANRT","IMANOR","Laboratoire","DUM","BAD","Mainlevée","Magasinage","Surestaries","Livraison","Facture finale","Reliquat","Réclamation","Litige","Photos","Preuves","Autre"];
+export const CATEGORIES_DOCUMENT = ["Client","Commande","Devis","Contrat","Bon de commande","Proforma Invoice","Commercial Invoice","Packing List","Paiement","SWIFT","Banque","Transport","BL Draft","BL Original","AWB","CMR","Certificat d'origine","EUR.1 / EUR-MED","COC","ONSSA","ANRT","IMANOR","Laboratoire","DUM","BAD","Mainlevée","Magasinage","Surestaries","Livraison","Facture finale","Reliquat","Réclamation","Litige","Photos","Preuves","Autre"];
 export const TYPES_FICHIER_DOCUMENT = ["PDF","JPG","JPEG","PNG","WEBP","DOC","DOCX","XLS","XLSX","CSV","TXT","ZIP","Lien Google Drive","Lien OneDrive","Lien Dropbox","Lien externe","Lien fournisseur","Lien vidéo","Lien catalogue","Lien fiche technique"];
 export const STATUTS_DOCUMENT = ["Attendu","Reçu","En vérification","À corriger","Validé","Rejeté","Expiré","Remplacé","Archivé"];
 export const ROLES_VALIDATION_DOCUMENT = ["Agent","Responsable service","LIMEX","Finance","Direction"];
