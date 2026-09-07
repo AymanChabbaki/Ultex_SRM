@@ -962,7 +962,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     // product/transport fields for the dossiers collection below.
     codeClientUltex, typeDemande, sensOperation, etape, tagsPipeline,
     produit, quantite, incoterm, paysOrigine, paysProvenance,
-    modeTransport, cbm, poids, poidsNet, hsCode
+    modeTransport, cbm, poids, poidsNet, hsCode, annule
   } = req.body || {};
 
   if (!ultexDossierId || !nom) {
@@ -1147,7 +1147,12 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         cbm: cbm != null ? cbm : dossierItem.data.cbm,
         poids: poids != null ? poids : dossierItem.data.poids,
         poidsNet: poidsNet != null ? poidsNet : dossierItem.data.poidsNet,
-        hsCode: hsCode || dossierItem.data.hsCode
+        hsCode: hsCode || dossierItem.data.hsCode,
+        // statut stays CRM-owned EXCEPT for cancellation: a dossier ULTEX
+        // has cancelled must stop sitting in the pipeline as if it were
+        // live. Never flips back on its own -- if sales reopens it here,
+        // a later sync won't overwrite them unless ULTEX cancels again.
+        statut: annule ? 'Annulé' : dossierItem.data.statut
       };
       dossierItem = await prisma.collectionItem.update({
         where: { collection_id: { collection: 'dossiers', id: dossierItem.id } },
@@ -1168,7 +1173,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         cbm: cbm != null ? cbm : undefined, poids: poids != null ? poids : undefined,
         poidsNet: poidsNet != null ? poidsNet : undefined,
         hsCode: hsCode || undefined,
-        etape: etape || undefined, statut: 'Actif',
+        etape: etape || undefined, statut: annule ? 'Annulé' : 'Actif',
         remarque: remarque || origineRemarque
       };
       dossierItem = await prisma.collectionItem.create({
@@ -1186,6 +1191,57 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   } catch (error) {
     console.error('ULTEX sync error:', error);
     res.status(500).json({ error: 'Erreur de synchronisation ULTEX' });
+  }
+});
+
+// A dossier deleted in ULTEX. Its CRM copy is marked "Annulé" rather than
+// deleted: sales may have attached documents, written remarks or advanced
+// its étape here, and an ULTEX-side delete must not destroy that silently.
+// The demande is closed off too, so neither keeps showing up as live work.
+app.post('/api/sync/ultex/dossier/supprime', ultexSyncAuth, async (req, res) => {
+  const { ultexDossierId, raison } = req.body || {};
+  if (!ultexDossierId) {
+    return res.status(400).json({ error: 'ultexDossierId requis' });
+  }
+
+  try {
+    const note = raison || 'Dossier supprimé dans ULTEX.';
+    const marques = [];
+
+    const dossierItem = await trouverParUltexId('dossiers', ultexDossierId);
+    if (dossierItem) {
+      await prisma.collectionItem.update({
+        where: { collection_id: { collection: 'dossiers', id: dossierItem.id } },
+        data: {
+          data: {
+            ...dossierItem.data,
+            statut: 'Annulé',
+            remarque: [dossierItem.data.remarque, note].filter(Boolean).join(' — ')
+          }
+        }
+      });
+      marques.push(dossierItem.code);
+    }
+
+    const demande = await trouverParUltexId('demandes', ultexDossierId);
+    if (demande) {
+      await prisma.collectionItem.update({
+        where: { collection_id: { collection: 'demandes', id: demande.id } },
+        data: {
+          data: {
+            ...demande.data,
+            statut: 'Clôturée',
+            remarqueGenerale: [demande.data.remarqueGenerale, note].filter(Boolean).join(' — ')
+          }
+        }
+      });
+      marques.push(demande.code);
+    }
+
+    res.json({ status: 'ok', marques });
+  } catch (error) {
+    console.error('ULTEX deletion sync error:', error);
+    res.status(500).json({ error: 'Erreur de synchronisation de la suppression' });
   }
 });
 
