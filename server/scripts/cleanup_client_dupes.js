@@ -95,14 +95,20 @@ async function loadUltexPhoneCodeMap() {
 // record carries the ultexDossierId it came from.
 async function loadUltexDossierPhones() {
   const url = process.env.ULTEX_DATABASE_URL;
-  if (!url) return new Map();
+  if (!url) return { phones: new Map(), ids: new Set() };
   const client = new PgClient({ connectionString: url });
   await client.connect();
   try {
-    const { rows } = await client.query(
-      `SELECT id, phone FROM dossiers WHERE phone IS NOT NULL`
-    );
-    return new Map(rows.map((r) => [r.id, r.phone]));
+    const { rows } = await client.query(`SELECT id, phone FROM dossiers`);
+    const phones = new Map();
+    const ids = new Set();
+    for (const r of rows) {
+      ids.add(r.id);
+      if (r.phone) phones.set(r.id, r.phone);
+    }
+    // ids covers phone-less dossiers too, so an unresolved record can say
+    // "deleted in ULTEX" instead of being lumped in with "has no phone".
+    return { phones, ids };
   } finally {
     await client.end();
   }
@@ -350,17 +356,29 @@ async function main() {
     clientParTelephone.set(d, c.code);
     if (d.length >= 9) clientParSuffixe.set(d.slice(-9), c.code);
   }
-  const telephoneParDossierUltex = await loadUltexDossierPhones();
+  const ultexDossiers = await loadUltexDossierPhones();
 
   function resoudreClient(r, current) {
     if (r.data.codeClientUltex && codeSet.has(r.data.codeClientUltex)) return r.data.codeClientUltex;
     const parNom = byNom.get(current);
     if (parNom) return parNom;
-    const d = digits(telephoneParDossierUltex.get(r.data.ultexDossierId));
+    const d = digits(ultexDossiers.phones.get(r.data.ultexDossierId));
     if (!d) return null;
     return clientParTelephone.get(d)
       || (d.length >= 9 ? clientParSuffixe.get(d.slice(-9)) : null)
       || null;
+  }
+
+  // Why a record could not be traced back -- printed for anything left
+  // unresolved, so a stuck C000xxx says what's actually missing instead of
+  // just sitting there.
+  function raisonNonResolu(r) {
+    const uid = r.data.ultexDossierId;
+    if (!uid) return 'aucun ultexDossierId sur la fiche CRM';
+    if (!ultexDossiers.ids.has(uid)) return `dossier ${uid.slice(0, 8)} supprimé dans ULTEX`;
+    const tel = ultexDossiers.phones.get(uid);
+    if (!tel) return `dossier ${uid.slice(0, 8)} sans téléphone dans ULTEX`;
+    return `aucun client CRM avec le téléphone ${tel}`;
   }
 
   for (const coll of ['demandes', 'dossiers']) {
@@ -380,7 +398,7 @@ async function main() {
     if (orphelins.length) {
       console.log(`${coll}: ${orphelins.length} record(s) point at a client that no longer exists and could not be traced back:`);
       for (const o of orphelins.slice(0, 15)) {
-        console.log(`  ${o.record.code}  ->  "${o.oldVal}"  (produit/objet : ${o.record.data.produit || o.record.data.objectifGeneral || '—'})`);
+        console.log(`  ${o.record.code}  ->  "${o.oldVal}"  :  ${raisonNonResolu(o.record)}`);
       }
       if (orphelins.length > 15) console.log(`  ... and ${orphelins.length - 15} more`);
       console.log('');
