@@ -421,11 +421,89 @@ async function main() {
       console.log(`Applied ${refPlan.length} fix(es) in ${coll}.`);
     }
   }
+
+  // --- Duplicate synchronized business records ---------------------------
+  // Older sync runs could create several CRM rows for the same stable ULTEX
+  // object. Client-code repair alone cannot remove those rows. Merge only
+  // records that share an explicit immutable ULTEX identity; two distinct
+  // demandes from the same client remain two legitimate demandes.
+  await mergeSyncedDuplicates('demandes', 'ultexDossierId', ['demande', 'source_demande_id']);
+  await mergeSyncedDuplicates('dossiers', 'ultexDossierId', ['dossier', 'dossiers']);
+  await mergeSyncedDuplicates('documents', 'ultexDocumentId', ['document', 'documents']);
+
   if (!APPLY) {
     console.log('\nDry run only for this section too -- re-run with --apply to execute.');
   }
 
   console.log(`\n${APPLY ? 'Done.' : 'Re-run with --apply to execute the plan(s) above.'}`);
+}
+
+async function mergeSyncedDuplicates(collection, identityField, referenceFields) {
+  const records = await prisma.collectionItem.findMany({
+    where: { collection },
+    orderBy: { createdAt: 'asc' },
+  });
+  const groups = new Map();
+  for (const record of records) {
+    const identity = record.data?.[identityField];
+    if (!identity) continue;
+    if (!groups.has(identity)) groups.set(identity, []);
+    groups.get(identity).push(record);
+  }
+  const duplicates = [...groups.entries()].filter(([, rows]) => rows.length > 1);
+  console.log(`\n=== ${collection}: doublons synchronisés par ${identityField} ===\n`);
+  if (!duplicates.length) {
+    console.log('Nothing to merge.');
+    return;
+  }
+  for (const [identity, rows] of duplicates) {
+    const keeper = rows[0];
+    const others = rows.slice(1);
+    console.log(`  MERGE [${rows.map(r => r.code).join(', ')}] -> ${keeper.code}  (${identity})`);
+    if (!APPLY) continue;
+    await prisma.$transaction(async tx => {
+      const mergedData = mergeData(others, keeper.data);
+      await tx.collectionItem.update({
+        where: { collection_id: { collection, id: keeper.id } },
+        data: { data: { ...mergedData, id: keeper.code, code: keeper.code } },
+      });
+      await repointRecordReferences(tx, others.map(r => r.code), keeper.code, referenceFields);
+      for (const duplicate of others) {
+        await tx.collectionItem.delete({
+          where: { collection_id: { collection, id: duplicate.id } },
+        });
+      }
+    });
+  }
+  if (APPLY) console.log(`Applied ${duplicates.length} ${collection} merge(s).`);
+}
+
+async function repointRecordReferences(tx, oldCodes, newCode, fields) {
+  if (!oldCodes.length) return;
+  const allRecords = await tx.collectionItem.findMany();
+  for (const record of allRecords) {
+    let changed = false;
+    const data = { ...record.data };
+    for (const field of fields) {
+      if (oldCodes.includes(data[field])) {
+        data[field] = newCode;
+        changed = true;
+      } else if (Array.isArray(data[field])) {
+        const replaced = data[field].map(value => oldCodes.includes(value) ? newCode : value);
+        const unique = [...new Set(replaced)];
+        if (JSON.stringify(unique) !== JSON.stringify(data[field])) {
+          data[field] = unique;
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      await tx.collectionItem.update({
+        where: { collection_id: { collection: record.collection, id: record.id } },
+        data: { data },
+      });
+    }
+  }
 }
 
 async function repointClientReferences(tx, oldCodes, newCode) {
