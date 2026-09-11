@@ -13,6 +13,7 @@ import {
   calculerEcheanceRoutage, construireMessageRoutage
 } from '../../utils/demandes';
 import { pillStatut, pill } from '../../utils/format';
+import { prochaineReferenceProduit } from '../../utils/workflowArchitecture';
 
 const TABS = [
   { id: 'identification', label: 'Identification', keys: ['nomProduit', 'designationTechnique', 'famille', 'sousFamille', 'usage', 'secteurUtilisation', 'description', 'marqueSouhaitee', 'modeleSouhaite', 'reference', 'etatProduit', 'destinationUsage', 'lienProduit', 'photo'] },
@@ -77,6 +78,15 @@ export default function FicheDemandeLigne({ codeProp, code: codeFromProp }) {
   const suggestionType = useMemo(() => suggererTypeTraitement(formData), [formData]);
   const routesComplementaires = useMemo(() => suggererRoutesComplementaires(formData), [formData]);
   const checklist = useMemo(() => checklistEnvoiCalcul(formData), [formData]);
+  const produitsConnus = useMemo(() => {
+    const normaliser = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const cherche = normaliser(formData.nomProduit || formData.designationTechnique);
+    if (cherche.length < 3) return [];
+    return (db.produits || []).filter(p => {
+      const connu = normaliser(p.designation);
+      return connu && (connu.includes(cherche) || cherche.includes(connu));
+    }).slice(0, 5);
+  }, [db.produits, formData.nomProduit, formData.designationTechnique]);
 
   useEffect(() => {
     if (formData.typeTraitement === 'Traitement combiné' && servicesSelectionnes.length === 0) {
@@ -118,10 +128,36 @@ export default function FicheDemandeLigne({ codeProp, code: codeFromProp }) {
 
   const handleEnregistrer = () => commit(formData);
 
+  const utiliserProduitConnu = (produit) => {
+    setFormData(prev => ({
+      ...prev,
+      produitBanqueId: produit.code,
+      nomProduit: prev.nomProduit || produit.designation,
+      designationTechnique: prev.designationTechnique || produit.designation,
+      hsCodeUltex: prev.hsCodeUltex || produit.hsCode,
+      cbmCarton: prev.cbmCarton || produit.cbm,
+      poidsNetPiece: prev.poidsNetPiece || produit.poids
+    }));
+    setDirty(true);
+    toast(`Produit existant ${produit.code} lié à cette demande.`);
+  };
+
+  const creerProduitBanque = () => {
+    if (!formData.nomProduit) { toast('Saisissez d’abord le nom du produit.'); return; }
+    const produit = {
+      code: genCode('PRD'), designation: formData.nomProduit, hsCode: formData.hsCodeUltex || formData.hsCodeFournisseur || '',
+      cbm: formData.cbmCarton || '', poids: formData.poidsNetPiece || '', remarque: formData.description || '', ts: Date.now()
+    };
+    updateDB({ ...db, produits: [produit, ...(db.produits || [])], demandeLignes: (db.demandeLignes || []).map(l => l.code === code ? { ...formData, produitBanqueId: produit.code } : l) });
+    setFormData(prev => ({ ...prev, produitBanqueId: produit.code }));
+    audit('Produits', 'Création depuis demande', produit.code, 'designation', '—', produit.designation, ligne.demande);
+    toast(`Produit permanent ${produit.code} créé et lié.`);
+  };
+
   const handleEnregistrerEtAjouter = () => {
     commit(formData);
     const newCode = genCode('DL');
-    const brouillon = { code: newCode, demande: ligne.demande, statut: STATUTS_LIGNE_DEMANDE[0], ts: Date.now() };
+    const brouillon = { code: newCode, referenceMetier: prochaineReferenceProduit(db, ligne.demande), demande: ligne.demande, statut: STATUTS_LIGNE_DEMANDE[0], ts: Date.now() };
     updateDB({ ...db, demandeLignes: [...(db.demandeLignes || []).map(l => l.code === code ? formData : l), brouillon] });
     audit('Lignes de demande', 'Création', newCode, '—', '—', 'Nouvelle ligne', ligne.demande);
     window.location.hash = `ficheDemandeLigne:${newCode}`;
@@ -390,6 +426,19 @@ export default function FicheDemandeLigne({ codeProp, code: codeFromProp }) {
             );
           })}
         </div>
+        {ongletActif === 'identification' && (formData.produitBanqueId || produitsConnus.length > 0) && (
+          <div className="bloc-fiche large" style={{ marginTop: '12px', background: 'var(--fond-jaune)' }}>
+            <h4>Produit déjà connu dans UBOS</h4>
+            {formData.produitBanqueId && <p>Produit permanent lié : <b>{formData.produitBanqueId}</b></p>}
+            {produitsConnus.map(p => (
+              <div key={p.code} className="outils" style={{ padding: '6px 0' }}>
+                <span><b>{p.code}</b> · {p.designation}</span><span className="spacer" />
+                <button className="btn mini or" onClick={() => utiliserProduitConnu(p)}>Utiliser produit existant</button>
+              </div>
+            ))}
+            {!formData.produitBanqueId && <button className="btn mini doux" onClick={creerProduitBanque}>Créer nouveau produit</button>}
+          </div>
+        )}
       </div>
 
       <div className="bloc-fiche large">

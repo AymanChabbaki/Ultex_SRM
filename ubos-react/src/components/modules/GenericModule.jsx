@@ -15,8 +15,7 @@ const PERMISSION_REQUISE = {
   qualifierLead: 'valider',
   convertirContactEnClient: 'valider',
   avancerDossier: 'valider',
-  creerFactureDepuisDossier: 'ajouter',
-  creerDossierDepuisCommande: 'ajouter'
+  creerFactureDepuisDossier: 'ajouter'
 };
 
 export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
@@ -165,7 +164,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
                 lignes.map(o => (
                   <tr key={o.code}>
                     <td className="code">
-                      {M.fiche ? <a href={`#${M.fiche}:${o.code}`}>{o.code}</a> : o.code}
+                      {M.fiche ? <a href={`#${M.fiche}:${o.code}`}>{o.referenceMetier || o.code}</a> : (o.referenceMetier || o.code)}
                     </td>
                     {(M.cols || []).map(c => {
                       const val = o[c[0]];

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
 import DataTable from '../common/DataTable';
@@ -10,15 +11,26 @@ import { MODS } from '../../data/modules';
 import { pillStatut } from '../../utils/format';
 import { migrerLignesDemande, calculerIndicateursDemande } from '../../utils/demandes';
 import { STATUTS_LIGNE_DEMANDE } from '../../data/constants';
+import LigneModal from '../common/LigneModal';
+import { prochaineReferenceCommande, lignesCommandeDepuisDemande } from '../../utils/workflowArchitecture';
+
+const CONFIRMATION_COMMANDE = [
+  { k: 'condition', l: 'Condition de confirmation', t: 'select', opts: ['Devis accepté','Bon de commande signé','Contrat signé','Acompte reçu','Preuve de paiement reçue','Validation exceptionnelle de la Direction'], req: 1 },
+  { k: 'paiement', l: 'Paiement / avance confirmé(e)', t: 'ref', coll: 'paiements', cle: 'code', req: 1 },
+  { k: 'dateConfirmation', l: 'Date de confirmation', t: 'date', req: 1 },
+  { k: 'formuleUltex', l: 'Package commercial', t: 'select', opts: ['Sourcing','Accompagnement','Importation clé en main','Transport uniquement','Transit uniquement'], req: 1 }
+];
 
 const FicheDemande = ({ codeProp, code: codeFromProp }) => {
-  const { db, updateDB, genCode, audit } = useDB();
+  const { db, updateDB, genCode, audit, userCourant } = useDB();
   const { peut } = useAuth();
+  const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
   const [showEdit, setShowEdit] = useState(false);
   const [showLierDocument, setShowLierDocument] = useState(false);
   const [onglet, setOnglet] = useState('lignes');
+  const [showConversion, setShowConversion] = useState(false);
 
   useEffect(() => {
     const c = codeProp || codeFromProp;
@@ -83,10 +95,47 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
 
   const handleAjouterProduit = () => {
     const newCode = genCode('DL');
-    const brouillon = { code: newCode, demande: code, statut: STATUTS_LIGNE_DEMANDE[0], ts: Date.now() };
+    const clientCode = demande.client || 'SANS-CLIENT';
+    const n = (db.demandeLignes || []).filter(l => String(l.referenceMetier || '').endsWith(`-${clientCode}`)).length + 1;
+    const brouillon = { code: newCode, referenceMetier: `P${n}-${clientCode}`, demande: code, statut: STATUTS_LIGNE_DEMANDE[0], ts: Date.now() };
     updateDB({ ...db, demandeLignes: [brouillon, ...(db.demandeLignes || [])] });
     audit('Demandes', 'Ajout produit', newCode, '—', '—', 'Nouvelle ligne', code);
     window.location.hash = `ficheDemandeLigne:${newCode}`;
+  };
+
+  const commandesExistantes = (db.commandes || []).filter(c => (c.source_demande_id || c.demande) === code);
+
+  const handleConvertirCommande = (confirmation) => {
+    const paiement = (db.paiements || []).find(p => p.code === confirmation.paiement);
+    if (!confirmation.condition || !paiement || paiement.statut !== 'Payé') {
+      toast('La confirmation client et le paiement/avance sont obligatoires.');
+      return;
+    }
+    const commande = {
+      code: genCode('CMD'),
+      referenceMetier: prochaineReferenceCommande(db, demande.client),
+      client: demande.client,
+      demande: demande.code,
+      source_demande_id: demande.code,
+      condition: confirmation.condition,
+      paiement: confirmation.paiement,
+      dateConfirmation: confirmation.dateConfirmation || new Date().toISOString().slice(0, 10),
+      formuleUltex: confirmation.formuleUltex,
+      statut: 'Confirmée',
+      lignes: lignesCommandeDepuisDemande(db, demande.code),
+      par: userCourant,
+      ts: Date.now()
+    };
+    const nextDb = {
+      ...db,
+      commandes: [commande, ...(db.commandes || [])],
+      demandes: (db.demandes || []).map(d => d.code === code ? { ...d, statut: 'Confirmée' } : d)
+    };
+    updateDB(nextDb);
+    audit('Commandes', 'Conversion depuis demande confirmée', commande.code, 'source_demande_id', '—', demande.code, demande.code);
+    setShowConversion(false);
+    window.location.hash = `ficheCommande:${commande.code}`;
+    toast(`Commande ${commande.referenceMetier} créée. La demande originale reste inchangée.`);
   };
 
   const routagesDemande = (db.demandeRoutages || []).filter(r => r.demande === code).sort((a, b) => (b.dateEnvoi || 0) - (a.dateEnvoi || 0));
@@ -94,12 +143,15 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
 
   return (
     <div>
-      <Topbar titre={`Demande : ${code}`} />
+      <Topbar titre={`Demande : ${demande.referenceMetier || code}`} />
       <div className="panneau">
 
         <div className="outils">
-          <b className="titre-fiche">{code}</b>
+          <b className="titre-fiche">{demande.referenceMetier || code}</b>
           <span className="spacer"></span>
+          {peut('ajouter') && (
+            <button className="btn vert" onClick={() => setShowConversion(true)}>Confirmer + créer commande</button>
+          )}
           {peut('modifier') && <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>}
         </div>
         {showEdit && (
@@ -115,6 +167,17 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
           <h4>Informations Principales</h4>
           <KVDisplay data={demande} fields={mainFields} />
         </div>
+
+        {commandesExistantes.length > 0 && (
+          <div className="bloc-fiche large">
+            <h4>Commandes issues de cette demande</h4>
+            <DataTable columns={[
+              { key: 'referenceMetier', label: 'Commande', render: (v, o) => <a href={`#ficheCommande:${o.code}`}>{v || o.code}</a> },
+              { key: 'dateConfirmation', label: 'Confirmation' },
+              { key: 'statut', label: 'Statut', render: s => pillStatut(s) }
+            ]} data={commandesExistantes} />
+          </div>
+        )}
 
         <div className="bloc-fiche" style={{ background: 'var(--vert-pale)' }}>
           <h4>Client</h4>
@@ -159,7 +222,7 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
             </h4>
             <DataTable
               columns={[
-                { key: 'code', label: 'Ligne', render: (v) => <a href={`#ficheDemandeLigne:${v}`}>{v}</a> },
+                { key: 'referenceMetier', label: 'Produit', render: (v,o) => <a href={`#ficheDemandeLigne:${o.code}`}>{v || o.code}</a> },
                 { key: 'nomProduit', label: 'Produit' },
                 { key: 'typeTraitement', label: 'Circuit', render: (v) => v ? <span className="pill p-bleu">{v}</span> : <span className="pill p-gris">À définir</span> },
                 { key: 'quantite', label: 'Quantité', render: (v, o) => v ? `${v} ${o.unite || ''}` : '—' },
@@ -236,6 +299,16 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
             MODS={MODS}
             initialData={{ demande: code }}
             onClose={() => setShowLierDocument(false)}
+          />
+        )}
+
+        {showConversion && (
+          <LigneModal
+            title="Confirmation client et création de la commande"
+            champs={CONFIRMATION_COMMANDE}
+            initialData={{ dateConfirmation: new Date().toISOString().slice(0, 10) }}
+            onSave={handleConvertirCommande}
+            onClose={() => setShowConversion(false)}
           />
         )}
 

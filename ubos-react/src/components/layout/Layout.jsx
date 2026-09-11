@@ -8,6 +8,7 @@ import { verifierTachesAutomatiques, calculerOccurrencesRecurrentesDues } from '
 import { verifierTachesAutoClosing, suivisDeCoordinateur, construireRapportAutoJour } from '../../utils/closingCoordination';
 import { verifierActionsAutoLimex, verifierEcheancesProduction, suivisLimexDeCoordinateur, construireRapportAutoJourImane } from '../../utils/limexCoordination';
 import { migrerRoleZoubidaClosing, migrerSuivisClosingV2, migrerRoleImaneLimex } from '../../data/permissions';
+import { migrerArchitectureSansDossier } from '../../utils/workflowArchitecture';
 
 const SidebarContext = createContext();
 export const useSidebar = () => useContext(SidebarContext);
@@ -26,7 +27,8 @@ const Layout = ({ children }) => {
     const migrationRoleJouee = migrerRoleZoubidaClosing(db, (...args) => audit(...args));
     const migrationSuivisJouee = migrerSuivisClosingV2(db, (...args) => audit(...args));
     const migrationImaneJouee = migrerRoleImaneLimex(db, (...args) => audit(...args));
-    const migrationJouee = migrationRoleJouee || migrationSuivisJouee || migrationImaneJouee;
+    const migrationArchitectureJouee = migrerArchitectureSansDossier(db);
+    const migrationJouee = migrationRoleJouee || migrationSuivisJouee || migrationImaneJouee || migrationArchitectureJouee;
 
     const ajd = new Date().toISOString().slice(0, 10);
     let toutesNouvelles = [];

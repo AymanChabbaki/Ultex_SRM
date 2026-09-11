@@ -7,6 +7,7 @@ import FormField from '../common/FormField';
 import { MODS as MODS_DATA } from '../../data/modules';
 import { detecterMentions } from '../../data/db';
 import { USERS } from '../../data/constants';
+import { prochaineReferenceDemande, prochaineReferenceProduit, prochaineReferenceCommande, lignesCommandeDepuisDemande } from '../../utils/workflowArchitecture';
 
 export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, initialData, onClose }) {
   const { db, updateDB, genCode, audit, notifier } = useDB();
@@ -104,6 +105,15 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
       propre.code = newCode;
       propre.ts = Date.now();
       propre.par = userCourant;
+      if (moduleId === 'demandes') {
+        propre.referenceMetier = propre.referenceMetier || prochaineReferenceDemande(db, propre.client);
+      } else if (moduleId === 'demandeLignes') {
+        propre.referenceMetier = propre.referenceMetier || prochaineReferenceProduit(db, propre.demande);
+      } else if (moduleId === 'commandes') {
+        propre.referenceMetier = propre.referenceMetier || prochaineReferenceCommande(db, propre.client);
+        propre.source_demande_id = propre.source_demande_id || propre.demande || '';
+        propre.lignes = propre.lignes?.length ? propre.lignes : lignesCommandeDepuisDemande(db, propre.demande);
+      }
 
       const nextCollection = [propre, ...collection];
       const nextDb = { ...db, [M.coll]: nextCollection };

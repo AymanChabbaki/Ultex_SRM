@@ -167,7 +167,7 @@ demandes:{label:"Demandes", ic:ClipboardEdit, grp:"Commercial", coll:"demandes",
  ],
  avantSauve: (DB, o) => { if(!o.dateDemande) o.dateDemande = new Date().toISOString().slice(0,10); if(!o.statut) o.statut = STATUTS_DEMANDE[0]; },
  fiche:"ficheDemande",
- cols:[["client","Client",(v,o,DB)=>esc(refLabel(DB, "clients",v,"nom"))],["dateDemande","Date"],["responsableData","Resp. Data"],["urgence","Urgence",v=>pill(v||"—","p-gris")],["statut","Statut",v=>pillStatut(v)]],
+ cols:[["referenceMetier","Référence"],["client","Client",(v,o,DB)=>esc(refLabel(DB, "clients",v,"nom"))],["dateDemande","Date"],["responsableData","Resp. Data"],["urgence","Urgence",v=>pill(v||"—","p-gris")],["statut","Statut",v=>pillStatut(v)]],
  actions:[{txt:"Fiche", cls:"btn mini or", fn:"ouvrirFicheDemande"}]},
 
 demandeLignes:{label:"Lignes de demande", ic:ClipboardEdit, grp:"Commercial", coll:"demandeLignes", pfx:"DL", statut:"statut",
@@ -284,7 +284,7 @@ demandeLignes:{label:"Lignes de demande", ic:ClipboardEdit, grp:"Commercial", co
    if (!o.statut) o.statut = STATUTS_LIGNE_DEMANDE[0];
  },
  fiche:"ficheDemandeLigne",
- cols:[["nomProduit","Produit"],["quantite","Quantité"],["prixUnitaire","Prix",(v,o)=>v?`${v} ${o.devise||''}`:"—"],["fournisseur","Fournisseur",(v,o,DB)=>v?esc(refLabel(DB,"fournisseurs",v,"nom")):"—"],["statut","Statut",v=>pillStatut(v)]],
+ cols:[["referenceMetier","Référence"],["nomProduit","Produit"],["quantite","Quantité"],["prixUnitaire","Prix",(v,o)=>v?`${v} ${o.devise||''}`:"—"],["fournisseur","Fournisseur",(v,o,DB)=>v?esc(refLabel(DB,"fournisseurs",v,"nom")):"—"],["statut","Statut",v=>pillStatut(v)]],
  actions:[{txt:"Fiche", cls:"btn mini or", fn:"ouvrirFicheDemandeLigne"}]},
 
 objectifsData:{label:"Objectifs Service Data", ic:Gauge, grp:"Pilotage", coll:"objectifsData", pfx:"OBJ", statut:"label",
@@ -341,7 +341,7 @@ commandes:{label:"Commandes", ic:ShoppingCart, grp:"Commercial", coll:"commandes
  champs:[
   {k:"client",l:"Client",t:"ref",coll:"clients",cle:"nom",req:1},
   {
-   k:"demande",l:"Demande d'origine",t:"ref",coll:"demandes",cle:"code",dependsOn:"client",
+   k:"demande",l:"Demande d'origine",t:"ref",coll:"demandes",cle:"code",dependsOn:"client",req:1,
    aide:"Affiche uniquement les demandes du client sélectionné.",
    filterOptions:(demande,form,DB)=>{
     if(!form.client) return false;
@@ -355,11 +355,18 @@ commandes:{label:"Commandes", ic:ShoppingCart, grp:"Commercial", coll:"commandes
   {k:"devisAccepte",l:"Devis accepté (pièce jointe)",t:"file"},
   {k:"calculValide",l:"Calcul validé (référence)",t:"text"},
   {k:"documents",l:"Documents",t:"text"},
-  {k:"paiement",l:"Paiement",t:"text"},
-  {k:"statut",l:"Statut",t:"select",opts:["Confirmée","En traitement","Dossier créé","Annulée"]}
+  {k:"paiement",l:"Paiement confirmé",t:"ref",coll:"paiements",cle:"code"},
+  {k:"statut",l:"Statut",t:"select",opts:["Confirmée","En traitement","En arrivage","Livrée","Annulée"]}
  ],
+ avantSauve:(DB,o)=>{
+  if(o.code) return;
+  const paiement=(DB.paiements||[]).find(p=>p.code===o.paiement);
+  if(!o.demande){ window.alert("Une commande doit obligatoirement provenir d'une demande."); return false; }
+  if(!paiement||paiement.statut!=="Payé"){ window.alert("Un paiement ou une avance au statut « Payé » est obligatoire avant de créer la commande."); return false; }
+  o.source_demande_id=o.source_demande_id||o.demande;
+ },
  fiche:"ficheCommande",
- cols:[["client","Client",(v,o,DB)=>esc(refLabel(DB, "clients",v,"nom"))],["demande","Demande",v=>v?`<span class="pill p-gris">${esc(v)}</span>`:"—"],["formuleUltex","Formule",v=>pill(v||"—","p-or")],["statut","Statut",v=>pillStatut(v)]],
+ cols:[["referenceMetier","Référence"],["client","Client",(v,o,DB)=>esc(refLabel(DB, "clients",v,"nom"))],["demande","Demande",(v,o,DB)=>{const d=(DB.demandes||[]).find(x=>x.code===v);return v?`<span class="pill p-gris">${esc(d?.referenceMetier||v)}</span>`:"—";}],["formuleUltex","Formule",v=>pill(v||"—","p-or")],["statut","Statut",v=>pillStatut(v)]],
  actions:[{txt:"Fiche", cls:"btn mini or", fn:"ouvrirFicheCommande"}]},
 
 dossiers:{label:"Dossiers", ic:FolderKanban, grp:"Commercial", coll:"dossiers", pfx:"DOS", statut:"etape",
@@ -472,6 +479,9 @@ offres:{label:"Closing", ic:FileSignature, grp:"Commercial", coll:"offres", pfx:
 
 paiements:{label:"Paiements", ic:Wallet, grp:"Finance", coll:"paiements", pfx:"PAY", statut:"statut",
  champs:[
+  {k:"client",l:"Client",t:"ref",coll:"clients",cle:"nom"},
+  {k:"demande",l:"Demande",t:"ref",coll:"demandes",cle:"code"},
+  {k:"commande",l:"Commande",t:"ref",coll:"commandes",cle:"code"},
   {k:"dossier",l:"Dossier (si rattaché)",t:"ref",coll:"dossiers",cle:"produit"},
   {k:"codeReference",l:"Code LIMEX (si suivi provisoire)",t:"text"},
   {k:"nature",l:"Nature",t:"select",opts:["Acompte","Avance fournisseur","Solde","Reliquat","Reliquat fournisseur","Paiement fournisseur","Paiement total","Droits de douane","Douane","Fret","Transport international","Transport national","Transitaire","Certification","Laboratoire","Port / magasinage","Assurance","Autre"]},
@@ -758,7 +768,7 @@ stockage:{label:"Stockage société", ic:Warehouse, grp:"Référentiels", coll:"
  ],
  cols:[["categorie","Catégorie",v=>pill(String(v||"—").split(" (")[0],"p-or")],["titre","Titre"],["reference","Référence",v=>v?`<span class="pill p-gris">${esc(v)}</span>`:"—"],["contact","Contact"],["valeur","Valeur / tarif"],["lien","Lien",v=>esc(String(v||"").slice(0,30))]]},
 
-produits:{label:"Produits", ic:Package, grp:"Référentiels", coll:"produits", pfx:"P", statut:"",
+produits:{label:"Produits", ic:Package, grp:"Référentiels", coll:"produits", pfx:"PRD", statut:"",
  champs:[
   {k:"designation",l:"Désignation",t:"text",req:1},
   {k:"hsCode",l:"HS Code",t:"text"},
@@ -995,7 +1005,7 @@ paiementsEcheances:{label:"Paiements & Échéances", ic:Banknote, grp:"Mon espac
 export const ORDRE_NAV = [
  ["Mon espace",["dashboard","tableauBordData","maJourneeClosing","maJourneeImane","suiviLimex","etudesCalcul","paiementsEcheances","monProgramme","mesTaches","mesObjectifs","devisAControler","coordinationMansouri","monPortefeuilleClosing","aQualifierClosing","monRapportJournalier","monAgenda","notifications","monProfil"]],
  ["Pilotage",["pilotageEquipe","quiFaitQuoi","ajouterTache","rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal","journalSecurite","etatClosing","suivisClosing"]],
- ["Commercial",["clients","contacts","demandes","commandes","dossiers","offres","reclamations"]],
+ ["Commercial",["clients","contacts","demandes","commandes","offres","reclamations"]],
  ["Études",["sourcings","etudes"]],
  ["LIMEX",["dashboardLimex","arrivages","rapportLimexDirection","suivisLimex","actionsLimex","instructionsLimex"]],
  ["Opérations",["analyses","transports","transits","certifs","transportsNat"]],

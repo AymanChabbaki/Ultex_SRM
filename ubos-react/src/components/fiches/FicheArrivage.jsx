@@ -24,8 +24,8 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
   const [showEdit, setShowEdit] = useState(false);
-  const [showAjouterDossier, setShowAjouterDossier] = useState(false);
-  const [dossierChoisi, setDossierChoisi] = useState('');
+  const [showAjouterCommande, setShowAjouterCommande] = useState(false);
+  const [commandeChoisie, setCommandeChoisie] = useState('');
   const [showAjouterFrais, setShowAjouterFrais] = useState(false);
   const [showLierDocument, setShowLierDocument] = useState(false);
 
@@ -65,8 +65,8 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
     {k: 'statut', l: 'Statut Logistique'}
   ];
 
-  const dossiers = db.dossiers?.filter(d => arrivage.dossiers?.includes(d.code)) || [];
-  const dossiersDisponibles = db.dossiers?.filter(d => !arrivage.dossiers?.includes(d.code)) || [];
+  const commandes = db.commandes?.filter(c => arrivage.commandes?.includes(c.code)) || [];
+  const commandesDisponibles = db.commandes?.filter(c => !arrivage.commandes?.includes(c.code) && c.statut !== 'Annulée') || [];
   const documents = db.documents?.filter(d => d.arrivage === code) || [];
 
   const sauverArrivage = (patch, message) => {
@@ -76,21 +76,30 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
     if (message) toast(message);
   };
 
-  const handleAjouterDossier = () => {
-    if (!dossierChoisi) { toast('Sélectionnez un dossier.'); return; }
-    const avant = arrivage.dossiers || [];
-    sauverArrivage({ dossiers: [...avant, dossierChoisi] }, `Dossier ${dossierChoisi} ajouté au groupage.`);
-    audit('Arrivages', 'Dossier ajouté au groupage', code, 'dossiers', avant.join(','), [...avant, dossierChoisi].join(','));
-    setShowAjouterDossier(false);
-    setDossierChoisi('');
+  const handleAjouterCommande = () => {
+    if (!commandeChoisie) { toast('Sélectionnez une commande.'); return; }
+    const avant = arrivage.commandes || [];
+    updateDB({
+      ...db,
+      arrivages: (db.arrivages || []).map(a => a.code === code ? { ...a, commandes: [...avant, commandeChoisie] } : a),
+      commandes: (db.commandes || []).map(c => c.code === commandeChoisie ? { ...c, statut: 'En arrivage' } : c)
+    });
+    audit('Arrivages', 'Commande ajoutée', code, 'commandes', avant.join(','), [...avant, commandeChoisie].join(','));
+    setShowAjouterCommande(false);
+    setCommandeChoisie('');
   };
 
-  const handleRetirerDossier = (dCode) => {
-    if (!window.confirm(`Retirer ${dCode} du groupage de cet arrivage ?`)) return;
-    const avant = arrivage.dossiers || [];
-    const apres = avant.filter(c => c !== dCode);
-    sauverArrivage({ dossiers: apres }, `Dossier ${dCode} retiré du groupage.`);
-    audit('Arrivages', 'Dossier retiré du groupage', code, 'dossiers', avant.join(','), apres.join(','));
+  const handleRetirerCommande = (commandeCode) => {
+    if (!window.confirm(`Retirer ${commandeCode} de cet arrivage ?`)) return;
+    const avant = arrivage.commandes || [];
+    const apres = avant.filter(c => c !== commandeCode);
+    updateDB({
+      ...db,
+      arrivages: (db.arrivages || []).map(a => a.code === code ? { ...a, commandes: apres } : a),
+      commandes: (db.commandes || []).map(c => c.code === commandeCode ? { ...c, statut: 'En traitement' } : c)
+    });
+    audit('Arrivages', 'Commande retirée', code, 'commandes', avant.join(','), apres.join(','));
+    toast(`Commande ${commandeCode} retirée de l'arrivage.`);
   };
 
   const handleAjouterFrais = (ligne) => {
@@ -131,42 +140,48 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
 
         <div className="bloc-fiche large">
           <h4>
-            Dossiers de l'arrivage (Groupage)
+            Commandes de l'arrivage
             {peut('modifier') && (
-              <button className="btn mini vert" style={{float:'right'}} onClick={() => setShowAjouterDossier(true)}>+ Ajouter Dossier</button>
+              <button className="btn mini vert" style={{float:'right'}} onClick={() => setShowAjouterCommande(true)}>+ Ajouter Commande</button>
             )}
           </h4>
           <DataTable
             columns={[
-              {key: 'code', label: 'Code Dossier', render: (val) => <a href={`#ficheDossier:${val}`}>{val}</a>},
-              {key: 'client', label: 'Client'},
-              {key: 'produit', label: 'Produit'},
+              {key: 'referenceMetier', label: 'Commande', render: (val,row) => <a href={`#ficheCommande:${row.code}`}>{val || row.code}</a>},
+              {key: 'client', label: 'Client', render: v => { const c=(db.clients||[]).find(x=>x.code===v); return c?.nom || v || '—'; }},
+              {key: 'lignes', label: 'Produits', render: lignes => (lignes||[]).map(l=>l.nomProduit).filter(Boolean).join(', ') || '—'},
+              {key: 'lignes', label: 'Quantités', render: lignes => (lignes||[]).map(l=>`${l.quantite||0} ${l.unite||''}`).join(', ') || '—'},
+              {key: 'lignes', label: 'Poids / volume', render: lignes => { const poids=(lignes||[]).reduce((s,l)=>s+(+l.poidsBrutTotal||0),0); const cbm=(lignes||[]).reduce((s,l)=>s+(+l.cbmTotal||0),0); return `${poids} kg · ${cbm} CBM`; }},
+              {key: 'lignes', label: 'Fournisseurs', render: lignes => [...new Set((lignes||[]).map(l=>{const f=(db.fournisseurs||[]).find(x=>x.code===l.fournisseur);return f?.nom||l.fournisseur;}).filter(Boolean))].join(', ') || '—'},
+              {key: 'code', label: 'Documents', render: commandeCode => (db.documents||[]).filter(d=>d.commande===commandeCode).length},
+              {key: 'code', label: 'Paiements', render: commandeCode => (db.paiements||[]).filter(p=>p.commande===commandeCode).length},
+              {key: 'lignes', label: 'Certifications', render: lignes => [...new Set((lignes||[]).map(l=>l.organismesConcernes).filter(Boolean))].join(', ') || '—'},
               {key: 'actions', label: 'Actions', render: (val, row) => (
-                <button className="btn mini rouge" onClick={() => handleRetirerDossier(row.code)}>Retirer</button>
+                <button className="btn mini rouge" onClick={() => handleRetirerCommande(row.code)}>Retirer</button>
               )}
             ]}
-            data={dossiers}
+            data={commandes}
           />
         </div>
 
-        {showAjouterDossier && (
+        {showAjouterCommande && (
           <Modal
-            title="Ajouter un dossier au groupage"
-            onClose={() => setShowAjouterDossier(false)}
+            title="Ajouter une commande à l'arrivage"
+            onClose={() => setShowAjouterCommande(false)}
             footer={
               <>
-                <button className="btn doux" onClick={() => setShowAjouterDossier(false)}>Annuler</button>
-                <button className="btn" onClick={handleAjouterDossier}>Ajouter</button>
+                <button className="btn doux" onClick={() => setShowAjouterCommande(false)}>Annuler</button>
+                <button className="btn" onClick={handleAjouterCommande}>Ajouter</button>
               </>
             }
           >
             <div className="corps">
               <div className="champ large">
-                <label>Dossier</label>
-                <select value={dossierChoisi} onChange={e => setDossierChoisi(e.target.value)}>
+                <label>Commande</label>
+                <select value={commandeChoisie} onChange={e => setCommandeChoisie(e.target.value)}>
                   <option value="">—</option>
-                  {dossiersDisponibles.map(d => (
-                    <option key={d.code} value={d.code}>{d.code} · {d.produit || '—'}</option>
+                  {commandesDisponibles.map(c => (
+                    <option key={c.code} value={c.code}>{c.referenceMetier || c.code} · {(db.clients||[]).find(x=>x.code===c.client)?.nom || c.client || '—'}</option>
                   ))}
                 </select>
               </div>
@@ -186,7 +201,7 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
               {key: 'typeFrais', label: 'Type de frais'},
               {key: 'montant', label: 'Montant (MAD)'},
               {key: 'fournisseur', label: 'Prestataire'},
-              {key: 'repartition', label: 'Répartition (Dossiers)'}
+              {key: 'repartition', label: 'Répartition (Commandes)'}
             ]}
             data={arrivage.frais || []}
           />
