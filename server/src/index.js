@@ -853,13 +853,25 @@ async function genererCodeAtomique(pfx) {
   const annee = new Date().getFullYear();
   const avecAnnee = PFX_ANNEE.includes(pfx);
   const key = avecAnnee ? pfx + annee : pfx;
-  const seqRecord = await prisma.sequenceCounter.upsert({
-    where: { key },
-    update: { val: { increment: 1 } },
-    create: { key, val: 1 }
-  });
-  const n = String(seqRecord.val).padStart(6, '0');
-  return avecAnnee ? `${pfx}${annee}-${n}` : `${pfx}${n}`;
+  // Imported/restored CRM data can contain IDs ahead of SequenceCounter.
+  // Since CollectionItem.id is globally unique (not only per collection),
+  // advance atomically until an actually free ID is found instead of
+  // letting the following create() fail with Prisma P2002.
+  for (let tentative = 0; tentative < 10000; tentative += 1) {
+    const seqRecord = await prisma.sequenceCounter.upsert({
+      where: { key },
+      update: { val: { increment: 1 } },
+      create: { key, val: 1 }
+    });
+    const n = String(seqRecord.val).padStart(6, '0');
+    const code = avecAnnee ? `${pfx}${annee}-${n}` : `${pfx}${n}`;
+    const existe = await prisma.collectionItem.findUnique({
+      where: { id: code },
+      select: { id: true }
+    });
+    if (!existe) return code;
+  }
+  throw new Error(`Impossible de générer un code ${pfx} libre après 10000 tentatives`);
 }
 
 // Finds the CollectionItem in a given collection previously created/updated
