@@ -898,12 +898,6 @@ async function trouverClientExistant(codeClientUltex, telephone) {
   return null;
 }
 
-// A code this CRM minted itself via genererCodeAtomique('C') ("C000663"),
-// as opposed to a real ULTEX client code ("A23", "R5951", ...).
-function estCodeInterneGenere(code) {
-  return /^C\d{6}$/.test(code || '');
-}
-
 // Swaps a client record's own code for ULTEX's global one. `code` is the
 // Prisma primary key here, so this is a delete + recreate (createdAt
 // preserved) rather than an update, plus a repoint of everything that
@@ -1003,12 +997,11 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         codeClientUltex: codeClientUltex || client.data.codeClientUltex,
         dernierContact: aujourdhui
       };
-      if (codeClientUltex && estCodeInterneGenere(client.code) && client.code !== codeClientUltex) {
-        // ULTEX didn't have this client's global code yet on the first push
-        // (a brand-new WhatsApp dossier gets its code a few steps after
-        // creation), so this record was minted with a throwaway "C000xxx".
-        // Now that the real code has arrived, adopt it as the record's own
-        // code instead of leaving the placeholder visible forever.
+      if (codeClientUltex && client.code !== codeClientUltex) {
+        // ULTEX is authoritative for the cross-system client code. This also
+        // repairs legacy cases where the CRM kept an obsolete A-code (not
+        // only temporary C000xxx codes) while Workflow had restored the
+        // client's original L/R/numeric code.
         client = await adopterCodeUltex(client, codeClientUltex, merged);
       } else {
         client = await prisma.collectionItem.update({
