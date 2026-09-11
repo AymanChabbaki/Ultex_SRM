@@ -238,7 +238,7 @@ async function main() {
                 createdAt: r.createdAt,
               },
             });
-            await repointContacts(tx, [r.code], item.newCode);
+            await repointClientReferences(tx, [r.code], item.newCode);
           } else {
             const { keeper, others, targetCode, mergedData } = item;
             for (const o of others) {
@@ -260,7 +260,7 @@ async function main() {
               });
             }
             const oldCodes = [keeper.code, ...others.map((r) => r.code)].filter((c) => c !== targetCode);
-            await repointContacts(tx, oldCodes, targetCode);
+            await repointClientReferences(tx, oldCodes, targetCode);
           }
         });
         console.log(`Applied: ${item.type === 'rename' ? `${item.record.code} -> ${item.newCode}` : `merge -> ${item.targetCode}`}`);
@@ -428,17 +428,19 @@ async function main() {
   console.log(`\n${APPLY ? 'Done.' : 'Re-run with --apply to execute the plan(s) above.'}`);
 }
 
-async function repointContacts(tx, oldCodes, newCode) {
+async function repointClientReferences(tx, oldCodes, newCode) {
   if (!oldCodes.length) return;
-  const contacts = await tx.collectionItem.findMany({
-    where: { collection: 'contacts', data: { path: ['codeClientAssocie'], not: null } },
-  });
-  for (const c of contacts) {
-    if (oldCodes.includes(c.data.codeClientAssocie)) {
-      await tx.collectionItem.update({
-        where: { collection_id: { collection: 'contacts', id: c.id } },
-        data: { data: { ...c.data, codeClientAssocie: newCode } },
+  for (const field of ['client', 'codeClientAssocie']) {
+    for (const oldCode of oldCodes) {
+      const records = await tx.collectionItem.findMany({
+        where: { data: { path: [field], equals: oldCode } },
       });
+      for (const record of records) {
+        await tx.collectionItem.update({
+          where: { collection_id: { collection: record.collection, id: record.id } },
+          data: { data: { ...record.data, [field]: newCode } },
+        });
+      }
     }
   }
 }

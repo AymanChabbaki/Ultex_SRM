@@ -920,6 +920,34 @@ async function adopterCodeUltex(client, nouveauCode, mergedData) {
   const data = { ...mergedData, id: nouveauCode, code: nouveauCode, codeClientUltex: nouveauCode };
   try {
     return await prisma.$transaction(async (tx) => {
+      const cible = await tx.collectionItem.findUnique({
+        where: { collection_id: { collection: 'clients', id: nouveauCode } }
+      });
+
+      // If the canonical code already exists, merge the obsolete row into
+      // it and repoint every CRM record before removing the duplicate.
+      if (cible && cible.id !== client.id) {
+        const valeursUtiles = Object.fromEntries(
+          Object.entries(data).filter(([, value]) => value !== '' && value != null)
+        );
+        const donneesFusionnees = {
+          ...cible.data,
+          ...valeursUtiles,
+          id: nouveauCode,
+          code: nouveauCode,
+          codeClientUltex: nouveauCode
+        };
+        await tx.collectionItem.update({
+          where: { collection_id: { collection: 'clients', id: cible.id } },
+          data: { data: donneesFusionnees }
+        });
+        await repointerReferencesClient(tx, [ancienCode], nouveauCode);
+        await tx.collectionItem.delete({
+          where: { collection_id: { collection: 'clients', id: client.id } }
+        });
+        return { ...cible, data: donneesFusionnees };
+      }
+
       await tx.collectionItem.delete({
         where: { collection_id: { collection: 'clients', id: client.id } }
       });
@@ -929,22 +957,7 @@ async function adopterCodeUltex(client, nouveauCode, mergedData) {
           data, createdAt: client.createdAt
         }
       });
-      for (const [collection, champ] of [
-        ['contacts', 'codeClientAssocie'],
-        ['demandes', 'client'],
-        ['dossiers', 'client'],
-        ['documents', 'client'],
-      ]) {
-        const lies = await tx.collectionItem.findMany({
-          where: { collection, data: { path: [champ], equals: ancienCode } }
-        });
-        for (const item of lies) {
-          await tx.collectionItem.update({
-            where: { collection_id: { collection, id: item.id } },
-            data: { data: { ...item.data, [champ]: nouveauCode } }
-          });
-        }
-      }
+      await repointerReferencesClient(tx, [ancienCode], nouveauCode);
       return cree;
     });
   } catch (error) {
@@ -953,6 +966,23 @@ async function adopterCodeUltex(client, nouveauCode, mergedData) {
       where: { collection_id: { collection: 'clients', id: client.id } },
       data: { data: mergedData }
     });
+  }
+}
+
+async function repointerReferencesClient(tx, anciensCodes, nouveauCode) {
+  if (!anciensCodes.length) return;
+  for (const champ of ['client', 'codeClientAssocie']) {
+    for (const ancienCode of anciensCodes) {
+      const lies = await tx.collectionItem.findMany({
+        where: { data: { path: [champ], equals: ancienCode } }
+      });
+      for (const item of lies) {
+        await tx.collectionItem.update({
+          where: { collection_id: { collection: item.collection, id: item.id } },
+          data: { data: { ...item.data, [champ]: nouveauCode } }
+        });
+      }
+    }
   }
 }
 
