@@ -12,7 +12,7 @@ const BulleAide = ({ texte }) => {
   );
 };
 
-const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, options }) => {
+const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, options, formData = {} }) => {
   const { db } = useDB();
 
   // Normalize field definition object
@@ -91,7 +91,10 @@ const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, opt
       </>
     );
   } else if (fieldType === "ref") {
-    const options = db && fieldDef.coll && db[fieldDef.coll] ? db[fieldDef.coll] : [];
+    const allOptions = db && fieldDef.coll && db[fieldDef.coll] ? db[fieldDef.coll] : [];
+    const options = typeof fieldDef.filterOptions === 'function'
+      ? allOptions.filter(item => fieldDef.filterOptions(item, formData, db))
+      : allOptions;
     inputEl = (
       <SearchableSelect
         id={`f_${fieldDef.k}`}

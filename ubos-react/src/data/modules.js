@@ -340,7 +340,16 @@ rapportsJournaliers:{label:"Rapports journaliers (par utilisateur)", ic:FileBarC
 commandes:{label:"Commandes", ic:ShoppingCart, grp:"Commercial", coll:"commandes", pfx:"CMD", statut:"statut",
  champs:[
   {k:"client",l:"Client",t:"ref",coll:"clients",cle:"nom",req:1},
-  {k:"demande",l:"Demande d'origine",t:"ref",coll:"demandes",cle:"code"},
+  {
+   k:"demande",l:"Demande d'origine",t:"ref",coll:"demandes",cle:"code",dependsOn:"client",
+   aide:"Affiche uniquement les demandes du client sélectionné.",
+   filterOptions:(demande,form,DB)=>{
+    if(!form.client) return false;
+    const client=(DB.clients||[]).find(c=>c.code===form.client);
+    const codes=new Set([form.client,client?.codeClientUltex].filter(Boolean));
+    return codes.has(demande.client)||codes.has(demande.codeClientUltex);
+   }
+  },
   {k:"condition",l:"Condition de confirmation",t:"select",opts:CONDITIONS_COMMANDE},
   {k:"formuleUltex",l:"Package commercial (raccourci)",t:"select",opts:FORMULES_ULTEX,req:1},
   {k:"devisAccepte",l:"Devis accepté (pièce jointe)",t:"file"},

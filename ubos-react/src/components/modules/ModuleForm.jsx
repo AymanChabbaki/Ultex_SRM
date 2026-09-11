@@ -51,7 +51,22 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
   if (!M) return null;
 
   const handleChange = (k, v) => {
-    setFormData(prev => ({ ...prev, [k]: v }));
+    setFormData(prev => {
+      const next = { ...prev, [k]: v };
+
+      // Clear dependent references when their parent changes and the current
+      // selection no longer belongs to the newly selected parent.
+      champsList.forEach(field => {
+        if (field.dependsOn !== k || !next[field.k]) return;
+        const candidates = db[field.coll] || [];
+        const selected = candidates.find(item => item.code === next[field.k]);
+        if (!selected || (field.filterOptions && !field.filterOptions(selected, next, db))) {
+          next[field.k] = '';
+        }
+      });
+
+      return next;
+    });
   };
 
   const handleSave = () => {
@@ -146,6 +161,7 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
             value={formData[f.k]}
             onChange={(val) => handleChange(f.k, val)}
             db={db}
+            formData={formData}
           />
         ))}
       </div>
