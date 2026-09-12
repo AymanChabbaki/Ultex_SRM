@@ -772,11 +772,12 @@ produits:{label:"Produits", ic:Package, grp:"Référentiels", coll:"produits", p
  champs:[
   {k:"designation",l:"Désignation",t:"text",req:1},
   {k:"hsCode",l:"HS Code",t:"text"},
+  {k:"groupeHs",l:"Groupe HS",t:"text",aide:"Regroupement automatique des produits synchronisés depuis Workflow."},
   {k:"cbm",l:"CBM unitaire",t:"number"},
   {k:"poids",l:"Poids unitaire (kg)",t:"number"},
   {k:"remarque",l:"Exigences réglementaires",t:"textarea",large:1}
  ],
- cols:[["designation","Désignation"],["hsCode","HS Code",v=>v?`<span class="pill p-or">${esc(v)}</span>`:"—"],["cbm","CBM"],["poids","Poids (kg)"]]},
+ cols:[["designation","Désignation"],["hsCode","HS Code",v=>v?`<span class="pill p-or">${esc(v)}</span>`:"—"],["groupeHs","Groupe HS"],["cbm","CBM unitaire"],["poids","Poids unitaire (kg)"]]},
 
 documents:{label:"Documents", ic:FolderOpen, grp:"Transverse", coll:"documents", pfx:"DOC", statut:"statut",
  champs:[

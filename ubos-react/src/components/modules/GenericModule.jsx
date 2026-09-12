@@ -34,7 +34,14 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
   const { lignes, optsStatut } = useMemo(() => {
     if (!M) return { lignes: [], optsStatut: [] };
     
-    let l = (db[M.coll] || []).slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    let l = (db[M.coll] || []).slice().sort((a, b) => {
+      if (moduleId === 'produits') {
+        const hsOrder = String(a.hsCode || 'ZZZZZZ').localeCompare(String(b.hsCode || 'ZZZZZZ'), 'fr', { numeric: true });
+        if (hsOrder !== 0) return hsOrder;
+        return String(a.designation || '').localeCompare(String(b.designation || ''), 'fr');
+      }
+      return (b.ts || 0) - (a.ts || 0);
+    });
     
     if (recherche) {
       const q = recherche.toLowerCase();
@@ -161,8 +168,16 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
                   </td>
                 </tr>
               ) : (
-                lignes.map(o => (
-                  <tr key={o.code}>
+                lignes.map((o, rowIndex) => (
+                  <React.Fragment key={o.code}>
+                  {moduleId === 'produits' && (rowIndex === 0 || (lignes[rowIndex - 1].hsCode || '') !== (o.hsCode || '')) && (
+                    <tr className="groupe-hs">
+                      <td colSpan={(M.cols || []).length + 2} style={{ fontWeight: 700, background: 'var(--fond-jaune)' }}>
+                        Groupe HS : {o.hsCode || 'Sans HS Code'}
+                      </td>
+                    </tr>
+                  )}
+                  <tr>
                     <td className="code">
                       {M.fiche ? <a href={`#${M.fiche}:${o.code}`}>{o.referenceMetier || o.code}</a> : (o.referenceMetier || o.code)}
                     </td>
@@ -203,6 +218,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
                       </div>
                     </td>
                   </tr>
+                  </React.Fragment>
                 ))
               )}
             </tbody>

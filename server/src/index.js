@@ -1179,6 +1179,67 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     for (const [index, productData] of products.entries()) {
       if (!productData || !productData.ultexProductId) continue;
       incomingProductIds.add(productData.ultexProductId);
+
+      // Permanent product bank: one entry per HS code + normalized product
+      // designation. The same tariff family stays visibly grouped without
+      // collapsing distinct products that legitimately share an HS code.
+      const normalizedHs = String(productData.hsCodeUltex || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+      const normalizedName = String(productData.nomProduit || '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      const bankKey = normalizedHs
+        ? `${normalizedHs}|${normalizedName || productData.ultexProductId}`
+        : `SANS_HS|${productData.ultexProductId}`;
+      let bankProduct = await prisma.collectionItem.findFirst({
+        where: { collection: 'produits', data: { path: ['bankKey'], equals: bankKey } }
+      });
+      if (!bankProduct && normalizedHs) {
+        const sameHsProducts = await prisma.collectionItem.findMany({
+          where: { collection: 'produits', data: { path: ['hsCode'], equals: normalizedHs } }
+        });
+        bankProduct = sameHsProducts.find(item => String(item.data?.designation || '')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === normalizedName);
+      }
+
+      const quantityNumber = Number(productData.quantite) || 0;
+      const unitCbm = quantityNumber > 0 && Number(productData.cbmTotal) > 0
+        ? Number(productData.cbmTotal) / quantityNumber : undefined;
+      const unitWeight = quantityNumber > 0 && Number(productData.poidsBrutTotal) > 0
+        ? Number(productData.poidsBrutTotal) / quantityNumber : undefined;
+      const bankFields = {
+        bankKey,
+        designation: productData.nomProduit || 'Produit sans désignation',
+        hsCode: normalizedHs || '',
+        groupeHs: normalizedHs || 'Sans HS Code',
+        cbm: unitCbm,
+        poids: unitWeight,
+        remarque: productData.description || productData.designationTechnique || '',
+      };
+      if (bankProduct) {
+        const previousDemandes = Array.isArray(bankProduct.data.sourceDemandes) ? bankProduct.data.sourceDemandes : [];
+        const previousProductIds = Array.isArray(bankProduct.data.ultexProductIds) ? bankProduct.data.ultexProductIds : [];
+        const sourceDemandes = Array.from(new Set([...previousDemandes, demande.code]));
+        const ultexProductIds = Array.from(new Set([...previousProductIds, productData.ultexProductId]));
+        bankProduct = await prisma.collectionItem.update({
+          where: { collection_id: { collection: 'produits', id: bankProduct.id } },
+          data: { data: { ...bankProduct.data, ...bankFields, sourceDemandes, ultexProductIds } }
+        });
+      } else {
+        const bankCode = await genererCodeAtomique('PRD');
+        const data = {
+          ...bankFields,
+          id: bankCode,
+          code: bankCode,
+          sourceDemandes: [demande.code],
+          ultexProductIds: [productData.ultexProductId],
+          ts: Date.now(),
+        };
+        bankProduct = await prisma.collectionItem.create({
+          data: { collection: 'produits', id: bankCode, code: bankCode, data }
+        });
+      }
+
       let line = await prisma.collectionItem.findFirst({
         where: {
           collection: 'demandeLignes',
@@ -1188,6 +1249,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       const syncedFields = Object.fromEntries(
         Object.entries(productData).filter(([, value]) => value !== undefined && value !== null && value !== '')
       );
+      syncedFields.produitBanqueId = bankProduct.code;
       if (line) {
         line = await prisma.collectionItem.update({
           where: { collection_id: { collection: 'demandeLignes', id: line.id } },
