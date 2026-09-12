@@ -9,6 +9,7 @@ import Pill from '../common/Pill';
 import LigneModal from '../common/LigneModal';
 import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
+import { downloadStoredDocument } from '../../services/api';
 
 const VERSION_CHAMPS = [
   {k: 'version', l: 'Numéro de version', t: 'number', req: 1},
@@ -79,7 +80,12 @@ const FicheDocument = ({ codeProp, code: codeFromProp }) => {
           <b className="titre-fiche">{code}</b>
           <span className="spacer"></span>
           <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
-          {document.url ? (
+          {document.storagePath ? (
+            <button className="btn bleu" onClick={async () => {
+              try { await downloadStoredDocument(document.code, document.nom); }
+              catch (error) { toast(error.message || 'Téléchargement impossible.'); }
+            }}>Télécharger</button>
+          ) : document.url ? (
             <a href={document.url} target="_blank" rel="noreferrer" className="btn bleu">Aperçu / Télécharger</a>
           ) : (
             <button className="btn bleu" disabled title="Aucun fichier ni lien attaché — cliquez sur « Modifier » pour en ajouter un">

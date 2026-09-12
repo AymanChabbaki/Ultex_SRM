@@ -5,6 +5,9 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 import { createRequire } from 'module';
 
@@ -16,6 +19,8 @@ dotenv.config();
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5000;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads'));
 const JWT_SECRET = process.env.JWT_SECRET || 'ubos_secret_2026';
 const ELEVATION_SECRET = process.env.ELEVATION_SECRET || 'ubos_elevation_secret_2026';
 // Static shared secret for the ULTEX -> CRM sync endpoint (server-to-server,
@@ -657,6 +662,31 @@ app.post('/api/db/sync', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Batch sync error:', error);
     res.status(500).json({ error: 'Erreur lors de la synchronisation avec PostgreSQL' });
+  }
+});
+
+// Imported arrival documents are kept outside PostgreSQL. Access always
+// passes through JWT authentication and a path-containment check.
+app.get('/api/documents/:code/download', authMiddleware, async (req, res) => {
+  try {
+    const item = await prisma.collectionItem.findFirst({
+      where: { collection: 'documents', code: req.params.code }
+    });
+    const relativePath = item?.data?.storagePath;
+    if (!relativePath) return res.status(404).json({ error: 'Fichier introuvable' });
+
+    const absolutePath = path.resolve(UPLOADS_DIR, relativePath);
+    const relativeCheck = path.relative(UPLOADS_DIR, absolutePath);
+    if (relativeCheck.startsWith('..') || path.isAbsolute(relativeCheck)) {
+      return res.status(400).json({ error: 'Chemin de fichier invalide' });
+    }
+    if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
+      return res.status(404).json({ error: 'Fichier introuvable' });
+    }
+    res.download(absolutePath, item.data.nom || path.basename(absolutePath));
+  } catch (error) {
+    console.error('Document download error:', error);
+    res.status(500).json({ error: 'Erreur lors du téléchargement du document' });
   }
 });
 

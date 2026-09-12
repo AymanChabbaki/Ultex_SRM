@@ -110,3 +110,20 @@ export async function parsePdfBackend(base64) {
   }
   return null;
 }
+
+export async function downloadStoredDocument(code, filename) {
+  const res = await fetch(`${API_URL}/documents/${encodeURIComponent(code)}/download`, {
+    headers: { ...authHeaders() }
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  if (!res.ok) throw new Error('Téléchargement impossible');
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = window.document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename || code;
+  window.document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}

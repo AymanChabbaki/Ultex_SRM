@@ -55,11 +55,33 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   }
 
   const mainFields = [
+    {k: 'ancienNumero', l: 'Ancien N° arrivage'},
+    {k: 'codeClientSource', l: 'Code client'},
+    {k: 'nomClientSource', l: 'Nom du client'},
+    {k: 'produitSource', l: 'Produit'},
+    {k: 'incotermSource', l: 'Incoterm'},
+    {k: 'serviceSource', l: 'Service'},
+    {k: 'dateConfirmationSource', l: 'Confirmation client'},
+    {k: 'totalImporteSource', l: 'Total importé'},
+    {k: 'dateEngagementSource', l: "Date d'engagement"},
+    {k: 'datePaiementSource', l: 'Date de paiement'},
+    {k: 'modePaiementSource', l: 'Mode de paiement'},
+    {k: 'numeroProformaSource', l: 'N° proforma'},
+    {k: 'volumePoidsSource', l: 'CBM / poids'},
+    {k: 'offreTransportSource', l: 'Offre transport'},
+    {k: 'trackingSource', l: 'N° suivi'},
+    {k: 'modeTransport', l: 'Mode de transport'},
+    {k: 'compagnieSource', l: 'Compagnie source'},
     {k: 'transporteur', l: 'Transporteur'},
-    {k: 'moyenTransport', l: 'Moyen de Transport'},
-    {k: 'numVoyage', l: 'N° Voyage / Vol / Immatriculation'},
-    {k: 'dateDepartPrev', l: 'Départ Prévu'},
-    {k: 'dateArriveePrev', l: 'Arrivée Prévue'},
+    {k: 'numReservation', l: 'N° réservation'},
+    {k: 'numBLMaitre', l: 'N° BL maître'},
+    {k: 'numBLHouse', l: 'N° BL house'},
+    {k: 'numAWB', l: 'N° AWB'},
+    {k: 'dateDepartPrevue', l: 'Départ prévu'},
+    {k: 'dateDepartReelle', l: 'Départ réel'},
+    {k: 'etaPrevue', l: 'Arrivée prévue'},
+    {k: 'dateArriveeReelle', l: 'Arrivée réelle'},
+    {k: 'dateSortieSource', l: 'Date de sortie'},
     {k: 'portDepart', l: 'Port de Départ'},
     {k: 'portArrivee', l: 'Port d\'Arrivée'},
     {k: 'statut', l: 'Statut Logistique'}
@@ -227,7 +249,7 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
             columns={[
               {key: 'code', label: 'Code', render: (val) => <a href={`#ficheDocument:${val}`}>{val}</a>},
               {key: 'nom', label: 'Nom'},
-              {key: 'categorie', label: 'Catégorie'}
+              {key: 'type', label: 'Catégorie'}
             ]}
             data={documents}
           />
