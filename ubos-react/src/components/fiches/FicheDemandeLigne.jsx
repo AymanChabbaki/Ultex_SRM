@@ -350,7 +350,7 @@ export default function FicheDemandeLigne({ codeProp, code: codeFromProp }) {
 
   return (
     <div>
-      <Topbar titre={`Produit : ${formData.nomProduit || code}`} />
+      <Topbar titre={`Produit : ${formData.nomProduit || 'Nouveau produit'}`} />
 
       <div className="outils">
         <button className="btn doux" onClick={handleRetour}>← Retour à la demande</button>
@@ -359,22 +359,8 @@ export default function FicheDemandeLigne({ codeProp, code: codeFromProp }) {
       </div>
 
       <div className="panneau mb-lg">
-        <div className="outils" style={{ padding: 0 }}>
-          <b className="titre-fiche">{code}</b>
-          {pillStatut(formData.statut)}
-          <span className="spacer"></span>
-          {dirty && <span className="p-ambre pill">Modifications non enregistrées</span>}
-        </div>
-        <div className="champ" style={{ maxWidth: '320px' }}>
-          <label>Statut de la ligne</label>
-          <select value={formData.statut || ''} disabled={disabled} onChange={e => handleChange('statut', e.target.value)}>
-            {STATUTS_LIGNE_DEMANDE.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-      </div>
-
-      <div className="panneau mb-lg">
         <h4>Circuit de traitement</h4>
+        {dirty && <span className="p-ambre pill" style={{ float: 'right' }}>Modifications non enregistrées</span>}
         {!formData.typeTraitement && (
           <p className="vide" style={{ textAlign: 'left' }}>
             Circuit suggéré par UBOS : <b>{suggestionType}</b>.{' '}

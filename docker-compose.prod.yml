@@ -27,6 +27,7 @@ services:
       DATABASE_URL: "postgresql://postgres:postgres_secure_pass_2026@ubos-postgres:5432/ubos_db?schema=public"
       JWT_SECRET: "ubos_prod_jwt_secret_98765"
       ULTEX_SYNC_API_KEY: "a1fdd91e9a1c867ee14423c8140fa5cb228e6d7b0d0abbaf"
+      ULTEX_WORKFLOW_PAYMENT_SYNC_URL: "${ULTEX_WORKFLOW_PAYMENT_SYNC_URL:-https://workflow.ultex.ma/api/v1/crm-sync/payment}"
     ports:
       - '5050:5000'
     depends_on:

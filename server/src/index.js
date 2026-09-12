@@ -23,6 +23,7 @@ const ELEVATION_SECRET = process.env.ELEVATION_SECRET || 'ubos_elevation_secret_
 // never affects the other, and simpler than issuing/refreshing a JWT for a
 // backend service that isn't a real CRM user.
 const ULTEX_SYNC_API_KEY = process.env.ULTEX_SYNC_API_KEY || 'ubos_ultex_sync_key_2026';
+const ULTEX_WORKFLOW_PAYMENT_SYNC_URL = process.env.ULTEX_WORKFLOW_PAYMENT_SYNC_URL || '';
 const SECURITY_EMAIL = process.env.SECURITY_EMAIL || 'ultexcompany1@gmail.com';
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
@@ -1359,6 +1360,30 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   } catch (error) {
     console.error('ULTEX sync error:', error);
     res.status(500).json({ error: 'Erreur de synchronisation ULTEX' });
+  }
+});
+
+// Authenticated CRM user -> server-to-server Workflow Reliquat synchronization.
+// The browser never receives the shared synchronization secret.
+app.post('/api/workflow/payment', authMiddleware, async (req, res) => {
+  if (!ULTEX_WORKFLOW_PAYMENT_SYNC_URL) {
+    return res.status(503).json({ error: 'ULTEX_WORKFLOW_PAYMENT_SYNC_URL non configurée' });
+  }
+  try {
+    const response = await fetch(ULTEX_WORKFLOW_PAYMENT_SYNC_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-ULTEX-SYNC-KEY': ULTEX_SYNC_API_KEY,
+      },
+      body: JSON.stringify(req.body || {}),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) return res.status(response.status).json({ error: body.detail || body.error || 'Synchronisation Workflow refusée' });
+    return res.json(body);
+  } catch (error) {
+    console.error('Workflow payment sync error:', error);
+    return res.status(502).json({ error: 'Workflow inaccessible pour la synchronisation du paiement' });
   }
 });
 

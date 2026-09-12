@@ -59,6 +59,18 @@ export async function saveDBSync(dbState) {
   return await res.json();
 }
 
+export async function syncPaymentToWorkflow(payload) {
+  const res = await fetch(`${API_URL}/workflow/payment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'Échec de la synchronisation du paiement avec Workflow');
+  return body;
+}
+
 export async function genCodeBackend(pfx) {
   try {
     const res = await fetch(`${API_URL}/genCode`, {

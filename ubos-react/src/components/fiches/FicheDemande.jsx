@@ -13,12 +13,19 @@ import { migrerLignesDemande, calculerIndicateursDemande } from '../../utils/dem
 import { STATUTS_LIGNE_DEMANDE } from '../../data/constants';
 import LigneModal from '../common/LigneModal';
 import { prochaineReferenceCommande, lignesCommandeDepuisDemande } from '../../utils/workflowArchitecture';
+import { syncPaymentToWorkflow } from '../../services/api';
 
 const CONFIRMATION_COMMANDE = [
   { k: 'condition', l: 'Condition de confirmation', t: 'select', opts: ['Devis accepté','Bon de commande signé','Contrat signé','Acompte reçu','Preuve de paiement reçue','Validation exceptionnelle de la Direction'], req: 1 },
-  { k: 'paiement', l: 'Paiement / avance confirmé(e)', t: 'ref', coll: 'paiements', cle: 'code', req: 1 },
   { k: 'dateConfirmation', l: 'Date de confirmation', t: 'date', req: 1 },
-  { k: 'formuleUltex', l: 'Package commercial', t: 'select', opts: ['Sourcing','Accompagnement','Importation clé en main','Transport uniquement','Transit uniquement'], req: 1 }
+  { k: 'formuleUltex', l: 'Package commercial', t: 'select', opts: ['Sourcing','Accompagnement','Importation clé en main','Transport uniquement','Transit uniquement'], req: 1 },
+  { k: 'datePaiement', l: 'Date du paiement', t: 'date', req: 1 },
+  { k: 'montantPaiement', l: 'Montant payé — MAD', t: 'number', req: 1 },
+  { k: 'modePaiement', l: 'Mode de paiement', t: 'select', opts: ['Virement','Espèces','Chèque','Effet','Carte','Autre'], req: 1 },
+  { k: 'statutPaiement', l: 'Statut du paiement', t: 'select', opts: ['À vérifier','Confirmé'], req: 1 },
+  { k: 'referencePaiement', l: 'Référence', t: 'text' },
+  { k: 'observationPaiement', l: 'Détails / observation', t: 'textarea', large: 1 },
+  { k: 'pieceJointePaiement', l: 'Facture / justificatif', t: 'file' },
 ];
 
 const FicheDemande = ({ codeProp, code: codeFromProp }) => {
@@ -125,12 +132,31 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
 
   const commandesExistantes = (db.commandes || []).filter(c => (c.source_demande_id || c.demande) === code);
 
-  const handleConvertirCommande = (confirmation) => {
-    const paiement = (db.paiements || []).find(p => p.code === confirmation.paiement);
-    if (!confirmation.condition || !paiement || paiement.statut !== 'Payé') {
-      toast('La confirmation client et le paiement/avance sont obligatoires.');
+  const handleConvertirCommande = async (confirmation) => {
+    if (!confirmation.condition || confirmation.statutPaiement !== 'Confirmé' || !(Number(confirmation.montantPaiement) > 0)) {
+      toast('La confirmation client et un paiement confirmé avec un montant valide sont obligatoires.');
       return;
     }
+    if (!demande.ultexDossierId) {
+      toast("Cette demande n'est pas liée à un dossier Workflow — synchronisation du paiement impossible.");
+      return;
+    }
+    const paiement = {
+      code: genCode('PAY'),
+      client: demande.client,
+      demande: demande.code,
+      nature: 'Paiement commande',
+      montant: Number(confirmation.montantPaiement),
+      devise: 'MAD',
+      modePaiement: confirmation.modePaiement,
+      statut: 'Payé',
+      datePaiementEffectif: confirmation.datePaiement,
+      remarque: confirmation.referencePaiement || confirmation.observationPaiement || '',
+      reference: confirmation.referencePaiement || '',
+      pieceJointe: confirmation.pieceJointePaiement || '',
+      par: userCourant,
+      ts: Date.now(),
+    };
     const commande = {
       code: genCode('CMD'),
       referenceMetier: prochaineReferenceCommande(db, demande.client),
@@ -138,7 +164,7 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
       demande: demande.code,
       source_demande_id: demande.code,
       condition: confirmation.condition,
-      paiement: confirmation.paiement,
+      paiement: paiement.code,
       dateConfirmation: confirmation.dateConfirmation || new Date().toISOString().slice(0, 10),
       formuleUltex: confirmation.formuleUltex,
       statut: 'Confirmée',
@@ -148,14 +174,33 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
     };
     const nextDb = {
       ...db,
+      paiements: [paiement, ...(db.paiements || [])],
       commandes: [commande, ...(db.commandes || [])],
       demandes: (db.demandes || []).map(d => d.code === code ? { ...d, statut: 'Confirmée' } : d)
     };
-    updateDB(nextDb);
+    await updateDB(nextDb);
+    let workflowSynced = true;
+    try {
+      await syncPaymentToWorkflow({
+        ultex_dossier_id: demande.ultexDossierId,
+        crm_payment_id: paiement.code,
+        date: paiement.datePaiementEffectif,
+        montant: paiement.montant,
+        mode: paiement.modePaiement,
+        statut: 'confirme',
+        reference: paiement.reference,
+        observation: confirmation.observationPaiement || '',
+        justificatif: paiement.pieceJointe,
+      });
+    } catch (error) {
+      workflowSynced = false;
+      toast(`${error.message}. Le paiement reste enregistré dans le CRM.`);
+    }
     audit('Commandes', 'Conversion depuis demande confirmée', commande.code, 'source_demande_id', '—', demande.code, demande.code);
+    audit('Paiements', 'Paiement de confirmation créé', paiement.code, 'montant', '—', `${paiement.montant} MAD`, demande.code);
     setShowConversion(false);
     window.location.hash = `ficheCommande:${commande.code}`;
-    toast(`Commande ${commande.referenceMetier} créée. La demande originale reste inchangée.`);
+    toast(`Commande ${commande.referenceMetier} créée.${workflowSynced ? ' Paiement synchronisé avec le Reliquat Workflow.' : ' Paiement à resynchroniser avec Workflow.'}`);
   };
 
   const routagesDemande = (db.demandeRoutages || []).filter(r => r.demande === code).sort((a, b) => (b.dateEnvoi || 0) - (a.dateEnvoi || 0));
@@ -334,7 +379,12 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
           <LigneModal
             title="Confirmation client et création de la commande"
             champs={CONFIRMATION_COMMANDE}
-            initialData={{ dateConfirmation: new Date().toISOString().slice(0, 10) }}
+            initialData={{
+              dateConfirmation: new Date().toISOString().slice(0, 10),
+              datePaiement: new Date().toISOString().slice(0, 10),
+              modePaiement: 'Virement',
+              statutPaiement: 'Confirmé',
+            }}
             onSave={handleConvertirCommande}
             onClose={() => setShowConversion(false)}
           />
