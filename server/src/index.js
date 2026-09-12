@@ -998,7 +998,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     // product/transport fields for the dossiers collection below.
     codeClientUltex, typeDemande, sensOperation, etape, tagsPipeline,
     produit, quantite, incoterm, paysOrigine, paysProvenance,
-    modeTransport, cbm, poids, poidsNet, hsCode, annule,
+    modeTransport, cbm, poids, poidsNet, hsCode, annule, products = [],
     // Only ever sent from a VALIDATED devis (see _validated_devis_totals in
     // crm_sync.py), so null here means "no validated devis right now" --
     // keep whatever was last known rather than blanking the figures while
@@ -1134,6 +1134,11 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         codeClientUltex: codeClientUltex || demande.data.codeClientUltex,
         typeDemande: typeDemande || demande.data.typeDemande,
         sensOperation: sensOperation || demande.data.sensOperation,
+        etapeUltex: etape || demande.data.etapeUltex,
+        tagsPipeline: tagsPipeline || demande.data.tagsPipeline,
+        modeTransport: modeTransport || demande.data.modeTransport,
+        montantVente: montantVente != null ? montantVente : demande.data.montantVente,
+        montantAchat: montantAchat != null ? montantAchat : demande.data.montantAchat,
         objectifGeneral: objectifGeneral || demande.data.objectifGeneral,
         typeProjet: typeProjet || demande.data.typeProjet,
         urgence: urgence || demande.data.urgence,
@@ -1150,6 +1155,10 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         ultexDossierId, id: code, code, client: client.code,
         codeClientUltex: codeClientUltex || '',
         typeDemande: typeDemande || undefined, sensOperation: sensOperation || undefined,
+        etapeUltex: etape || undefined, tagsPipeline: tagsPipeline || undefined,
+        modeTransport: modeTransport || undefined,
+        montantVente: montantVente != null ? montantVente : undefined,
+        montantAchat: montantAchat != null ? montantAchat : undefined,
         dateDemande: aujourdhui, source: 'WhatsApp', canalReception: 'WhatsApp',
         objectifGeneral: objectifGeneral || '—', typeProjet: typeProjet || undefined,
         urgence: urgence || 'Normale',
@@ -1161,68 +1170,71 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       });
     }
 
-    // 4. Dossier — upsert by ultexDossierId, mirroring the "dossiers"
-    // collection's own fields (produit/quantité/transport/etc., which this
-    // integration didn't seed at all before). `etape` and `statut` are
-    // CRM-owned once set (advanced manually via the "Étape suivante"
-    // button/statut dropdown, like demandes.statut above) -- only seeded on
-    // first creation, never overwritten by a later sync. Everything else
-    // (product/transport info, the tags/type/sens fields) is descriptive
-    // and safe to keep refreshed on every sync.
-    let dossierItem = await trouverParUltexId('dossiers', ultexDossierId);
-    if (dossierItem) {
-      const merged = {
-        ...dossierItem.data,
-        client: client.code,
-        codeClientUltex: codeClientUltex || dossierItem.data.codeClientUltex,
-        typeDemande: typeDemande || dossierItem.data.typeDemande,
-        sensOperation: sensOperation || dossierItem.data.sensOperation,
-        tagsPipeline: tagsPipeline || dossierItem.data.tagsPipeline,
-        produit: produit || dossierItem.data.produit,
-        quantite: quantite || dossierItem.data.quantite,
-        incoterm: incoterm || dossierItem.data.incoterm,
-        paysOrigine: paysOrigine || dossierItem.data.paysOrigine,
-        paysProvenance: paysProvenance || dossierItem.data.paysProvenance,
-        modeTransport: modeTransport || dossierItem.data.modeTransport,
-        cbm: cbm != null ? cbm : dossierItem.data.cbm,
-        poids: poids != null ? poids : dossierItem.data.poids,
-        poidsNet: poidsNet != null ? poidsNet : dossierItem.data.poidsNet,
-        hsCode: hsCode || dossierItem.data.hsCode,
-        montantVente: montantVente != null ? montantVente : dossierItem.data.montantVente,
-        montantAchat: montantAchat != null ? montantAchat : dossierItem.data.montantAchat,
-        // statut stays CRM-owned EXCEPT for cancellation: a dossier ULTEX
-        // has cancelled must stop sitting in the pipeline as if it were
-        // live. Never flips back on its own -- if sales reopens it here,
-        // a later sync won't overwrite them unless ULTEX cancels again.
-        statut: annule ? 'Annulé' : dossierItem.data.statut
-      };
-      dossierItem = await prisma.collectionItem.update({
-        where: { collection_id: { collection: 'dossiers', id: dossierItem.id } },
-        data: { data: merged }
+    // 4. Product lines — CRM dossiers were retired: the Workflow lead's
+    // product information belongs directly under its demande. Each line is
+    // keyed by the immutable Workflow Product.id, so later syncs update the
+    // same row without duplicating products or resetting CRM-owned progress.
+    const syncedLines = [];
+    const incomingProductIds = new Set();
+    for (const [index, productData] of products.entries()) {
+      if (!productData || !productData.ultexProductId) continue;
+      incomingProductIds.add(productData.ultexProductId);
+      let line = await prisma.collectionItem.findFirst({
+        where: {
+          collection: 'demandeLignes',
+          data: { path: ['ultexProductId'], equals: productData.ultexProductId }
+        }
       });
-    } else {
-      const code = await genererCodeAtomique('DOS');
-      const data = {
-        ultexDossierId, id: code, code, client: client.code,
-        demande: demande.code,
-        codeClientUltex: codeClientUltex || '',
-        typeDemande: typeDemande || undefined, sensOperation: sensOperation || undefined,
-        tagsPipeline: tagsPipeline || undefined,
-        produit: produit || '', quantite: quantite || undefined,
-        incoterm: incoterm || undefined,
-        paysOrigine: paysOrigine || undefined, paysProvenance: paysProvenance || undefined,
-        modeTransport: modeTransport || undefined,
-        cbm: cbm != null ? cbm : undefined, poids: poids != null ? poids : undefined,
-        poidsNet: poidsNet != null ? poidsNet : undefined,
-        hsCode: hsCode || undefined,
-        montantVente: montantVente != null ? montantVente : undefined,
-        montantAchat: montantAchat != null ? montantAchat : undefined,
-        etape: etape || undefined, statut: annule ? 'Annulé' : 'Actif',
-        remarque: remarque || origineRemarque
-      };
-      dossierItem = await prisma.collectionItem.create({
-        data: { collection: 'dossiers', id: code, code, data }
-      });
+      const syncedFields = Object.fromEntries(
+        Object.entries(productData).filter(([, value]) => value !== undefined && value !== null && value !== '')
+      );
+      if (line) {
+        line = await prisma.collectionItem.update({
+          where: { collection_id: { collection: 'demandeLignes', id: line.id } },
+          data: {
+            data: {
+              ...line.data,
+              ...syncedFields,
+              demande: demande.code,
+              ultexDossierId,
+              referenceMetier: line.data.referenceMetier || `P${index + 1}-${client.code}`,
+            }
+          }
+        });
+      } else {
+        const code = await genererCodeAtomique('DL');
+        const data = {
+          ...syncedFields,
+          ultexDossierId,
+          id: code,
+          code,
+          demande: demande.code,
+          referenceMetier: `P${index + 1}-${client.code}`,
+          statut: 'Brouillon',
+          ts: Date.now(),
+        };
+        line = await prisma.collectionItem.create({
+          data: { collection: 'demandeLignes', id: code, code, data }
+        });
+      }
+      syncedLines.push(line.code);
+    }
+
+    // Remove only stale lines previously created by Workflow. CRM-only lines
+    // added manually have no ultexProductId and are deliberately preserved.
+    const previousSyncedLines = await prisma.collectionItem.findMany({
+      where: {
+        collection: 'demandeLignes',
+        data: { path: ['ultexDossierId'], equals: ultexDossierId }
+      }
+    });
+    for (const line of previousSyncedLines) {
+      const productId = line.data?.ultexProductId;
+      if (productId && !incomingProductIds.has(productId)) {
+        await prisma.collectionItem.delete({
+          where: { collection_id: { collection: 'demandeLignes', id: line.id } }
+        });
+      }
     }
 
     res.json({
@@ -1230,7 +1242,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       client: { code: client.code },
       contact: { code: contact.code },
       demande: { code: demande.code },
-      dossier: { code: dossierItem.code }
+      lignes: syncedLines.map(code => ({ code }))
     });
   } catch (error) {
     console.error('ULTEX sync error:', error);
