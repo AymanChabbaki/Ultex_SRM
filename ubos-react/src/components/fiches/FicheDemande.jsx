@@ -103,6 +103,21 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
     window.location.hash = `ficheDemandeLigne:${newCode}`;
   };
 
+  const handleSupprimerProduit = (ligne) => {
+    const libelle = ligne.nomProduit || ligne.referenceMetier || ligne.code;
+    const routagesLies = (db.demandeRoutages || []).filter(r => r.ligne === ligne.code).length;
+    const precision = routagesLies > 0 ? `\n${routagesLies} routage(s) lié(s) seront également supprimé(s).` : '';
+    if (!window.confirm(`Supprimer le produit « ${libelle} » de cette demande ?${precision}`)) return;
+
+    updateDB({
+      ...db,
+      demandeLignes: (db.demandeLignes || []).filter(l => l.code !== ligne.code),
+      demandeRoutages: (db.demandeRoutages || []).filter(r => r.ligne !== ligne.code),
+    });
+    audit('Demandes', 'Suppression produit', ligne.code, 'demandeLignes', libelle, 'Supprimé', code);
+    toast(`Produit ${libelle} supprimé de la demande.`);
+  };
+
   const commandesExistantes = (db.commandes || []).filter(c => (c.source_demande_id || c.demande) === code);
 
   const handleConvertirCommande = (confirmation) => {
@@ -231,7 +246,15 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
                 { key: 'poidsBrutTotal', label: 'Poids (kg)' },
                 { key: 'cbmTotal', label: 'CBM' },
                 { key: 'statut', label: 'Statut', render: (s) => pillStatut(s) },
-                { key: 'actions', label: 'Actions', render: (v, row) => <a className="btn mini doux" href={`#ficheDemandeLigne:${row.code}`}>Ouvrir</a> }
+                { key: 'actions', label: 'Actions', render: (v, row) => (
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <a className="btn mini doux" href={`#ficheDemandeLigne:${row.code}`}>Ouvrir</a>
+                    {peut('modifier') && <a className="btn mini" href={`#ficheDemandeLigne:${row.code}`}>Modifier</a>}
+                    {peut('supprimer') && (
+                      <button className="btn mini rouge" type="button" onClick={() => handleSupprimerProduit(row)}>Supprimer</button>
+                    )}
+                  </div>
+                ) }
               ]}
               data={lignes}
             />
