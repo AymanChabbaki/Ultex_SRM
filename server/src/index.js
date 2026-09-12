@@ -986,6 +986,51 @@ async function repointerReferencesClient(tx, anciensCodes, nouveauCode) {
   }
 }
 
+function telephoneIdentite(value) {
+  const valueDigits = String(value || '').replace(/\D/g, '');
+  return valueDigits.length >= 9 ? valueDigits.slice(-9) : valueDigits;
+}
+
+async function fusionnerDoublonsClientParTelephone(canonicalClient, telephone) {
+  const phoneKey = telephoneIdentite(telephone);
+  if (!phoneKey) return canonicalClient;
+
+  const allClients = await prisma.collectionItem.findMany({ where: { collection: 'clients' } });
+  const duplicates = allClients.filter(item =>
+    item.id !== canonicalClient.id && telephoneIdentite(item.data?.telephone) === phoneKey
+  );
+  if (!duplicates.length) return canonicalClient;
+
+  return prisma.$transaction(async tx => {
+    // Canonical non-empty values win; duplicates only fill information that
+    // is genuinely missing before their references are repointed.
+    const mergedData = { ...canonicalClient.data };
+    for (const duplicate of duplicates) {
+      for (const [key, value] of Object.entries(duplicate.data || {})) {
+        if ((mergedData[key] === undefined || mergedData[key] === null || mergedData[key] === '') && value != null && value !== '') {
+          mergedData[key] = value;
+        }
+      }
+    }
+    mergedData.id = canonicalClient.code;
+    mergedData.code = canonicalClient.code;
+    mergedData.codeClientUltex = canonicalClient.code;
+
+    const updated = await tx.collectionItem.update({
+      where: { collection_id: { collection: 'clients', id: canonicalClient.id } },
+      data: { data: mergedData }
+    });
+    await repointerReferencesClient(tx, duplicates.map(item => item.code), canonicalClient.code);
+    for (const duplicate of duplicates) {
+      await tx.collectionItem.delete({
+        where: { collection_id: { collection: 'clients', id: duplicate.id } }
+      });
+    }
+    console.log(`Doublons client fusionnés automatiquement vers ${canonicalClient.code}: ${duplicates.map(item => item.code).join(', ')}`);
+    return updated;
+  });
+}
+
 app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   const {
     ultexDossierId, referenceCode, nom, telephone, email, ville,
@@ -1078,6 +1123,11 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         }
       }
     }
+
+    // A code match alone is not enough: legacy rows may still carry another
+    // code for the exact same phone. Merge them during every live sync so a
+    // stale A/C-code cannot survive beside the canonical L/R/client code.
+    client = await fusionnerDoublonsClientParTelephone(client, telephone);
 
     // 2. Contact — upsert by CLIENT identity (linked to the client above),
     // not by ultexDossierId -- same duplication bug as the client lookup:
