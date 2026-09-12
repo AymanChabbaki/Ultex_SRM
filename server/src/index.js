@@ -1487,9 +1487,9 @@ async function trouverParUltexDocumentId(ultexDocumentId) {
 // so a client's "Documents liés" tab reflects what's really in the ULTEX
 // workflow, not just documents someone manually attached in the CRM.
 // One-way, upserted by ultexDocumentId. Resolves the CRM client via
-// codeClientUltex and, if the document is dossier-scoped, the CRM dossier
-// via ultexDossierId -- both already established as the correct match keys
-// by the dossier sync route above.
+// codeClientUltex and, if the document is scoped to a Workflow dossier, the
+// CRM demande created for that same ultexDossierId. CRM dossiers are legacy
+// and must never be recreated or exposed by new synchronization data.
 app.post('/api/sync/ultex/document', ultexSyncAuth, async (req, res) => {
   const { ultexDocumentId, codeClientUltex, clientNom, ultexDossierId, nom, documentType, mimeType, url } = req.body || {};
 
@@ -1503,21 +1503,22 @@ app.post('/api/sync/ultex/document', ultexSyncAuth, async (req, res) => {
           where: { collection: 'clients', data: { path: ['codeClientUltex'], equals: codeClientUltex } }
         })
       : null;
-    const dossierItem = ultexDossierId ? await trouverParUltexId('dossiers', ultexDossierId) : null;
+    const demande = ultexDossierId ? await trouverParUltexId('demandes', ultexDossierId) : null;
     const categorie = categorieDocumentUltex(documentType);
     const typeFichier = TYPE_FICHIER_PAR_MIME[mimeType] || 'Lien externe';
     const commentaire = `Synchronisé automatiquement depuis ULTEX${documentType ? ` (type : ${documentType})` : ''}.`;
 
     let doc = await trouverParUltexDocumentId(ultexDocumentId);
     if (doc) {
+      const { dossier: _legacyDossier, ...existingData } = doc.data || {};
       const merged = {
-        ...doc.data,
+        ...existingData,
         nom: nom || doc.data.nom,
         type: categorie,
         typeFichier,
         url,
-        client: client ? client.code : doc.data.client,
-        dossier: dossierItem ? dossierItem.code : doc.data.dossier,
+        client: client ? client.code : existingData.client,
+        demande: demande ? demande.code : existingData.demande,
       };
       doc = await prisma.collectionItem.update({
         where: { collection_id: { collection: 'documents', id: doc.id } },
@@ -1532,7 +1533,7 @@ app.post('/api/sync/ultex/document', ultexSyncAuth, async (req, res) => {
         typeFichier,
         url,
         client: client ? client.code : undefined,
-        dossier: dossierItem ? dossierItem.code : undefined,
+        demande: demande ? demande.code : undefined,
         version: 1, statut: 'Reçu',
         commentaire
       };

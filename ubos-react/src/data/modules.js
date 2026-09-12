@@ -482,7 +482,6 @@ paiements:{label:"Paiements", ic:Wallet, grp:"Finance", coll:"paiements", pfx:"P
   {k:"client",l:"Client",t:"ref",coll:"clients",cle:"nom"},
   {k:"demande",l:"Demande",t:"ref",coll:"demandes",cle:"code"},
   {k:"commande",l:"Commande",t:"ref",coll:"commandes",cle:"code"},
-  {k:"dossier",l:"Dossier (si rattaché)",t:"ref",coll:"dossiers",cle:"produit"},
   {k:"codeReference",l:"Code LIMEX (si suivi provisoire)",t:"text"},
   {k:"nature",l:"Nature",t:"select",opts:["Acompte","Avance fournisseur","Solde","Reliquat","Reliquat fournisseur","Paiement fournisseur","Paiement total","Droits de douane","Douane","Fret","Transport international","Transport national","Transitaire","Certification","Laboratoire","Port / magasinage","Assurance","Autre"]},
   {k:"beneficiaire",l:"Bénéficiaire",t:"text"},
@@ -508,7 +507,7 @@ paiements:{label:"Paiements", ic:Wallet, grp:"Finance", coll:"paiements", pfx:"P
  apresSauve: (DB, o, ancien, ctx) => {
    if(o.statut==="Payé" && (!ancien || ancien.statut!=="Payé")){
      if(!o.datePaiementEffectif) o.datePaiementEffectif = new Date().toISOString().slice(0,10);
-     ctx.notifier("Closing", `Paiement ${o.code} (${o.nature}) confirmé — ${fmtMAD(o.montant)} sur ${o.dossier||o.codeReference||"dossier"}`, "Paiements");
+    ctx.notifier("Closing", `Paiement ${o.code} (${o.nature}) confirmé — ${fmtMAD(o.montant)} sur ${o.demande||o.codeReference||"demande"}`, "Paiements");
      if(o.nature==="Acompte"){
        ctx.notifier("Analyse Dossiers", `Acompte encaissé sur ${o.dossier||"un dossier"} : dossier transféré aux Opérations.`, "Paiements");
        const d = DB.dossiers.find(x=>x.code===o.dossier);
@@ -664,7 +663,6 @@ erreurs:{label:"Registre des erreurs", ic:AlertTriangle, grp:"Pilotage", coll:"e
  champs:[
   {k:"service",l:"Service concerné",t:"select",opts:USERS,req:1},
   {k:"typeErreur",l:"Type d'erreur",t:"text",req:1},
-  {k:"dossier",l:"Dossier lié",t:"ref",coll:"dossiers",cle:"produit"},
   {k:"cause",l:"Cause racine",t:"textarea",large:1},
   {k:"actionCorrective",l:"Action corrective",t:"textarea",large:1},
   {k:"responsable",l:"Responsable de la correction",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB)},
@@ -789,7 +787,6 @@ documents:{label:"Documents", ic:FolderOpen, grp:"Transverse", coll:"documents",
   {k:"demande",l:"Demande liée",t:"ref",coll:"demandes",cle:"code"},
   {k:"ligneDemande",l:"Ligne de demande liée (code)",t:"text"},
   {k:"commande",l:"Commande liée",t:"ref",coll:"commandes",cle:"code"},
-  {k:"dossier",l:"Dossier lié",t:"ref",coll:"dossiers",cle:"produit"},
   {k:"arrivage",l:"Arrivage lié",t:"ref",coll:"arrivages",cle:"nomInterne"},
   {k:"fournisseur",l:"Fournisseur lié",t:"ref",coll:"fournisseurs",cle:"nom"},
   {k:"tache",l:"Tâche liée (code)",t:"text"},
@@ -802,7 +799,7 @@ documents:{label:"Documents", ic:FolderOpen, grp:"Transverse", coll:"documents",
  ],
  avantSauve: (DB, o) => { if(!o.version) o.version = 1; if(!o.statut) o.statut = "Reçu"; },
  fiche:"ficheDocument",
- cols:[["nom","Document"],["type","Catégorie",v=>v?pill(v,"p-gris"):"—"],["dossier","Dossier",v=>v?`<span class="pill p-gris">${esc(v)}</span>`:"—"],["arrivage","Arrivage",v=>v?`<span class="pill p-gris">${esc(v)}</span>`:"—"],["version","V.",v=>"v"+(v||1)],["statut","Statut",v=>pillStatut(v)]],
+ cols:[["nom","Document"],["type","Catégorie",v=>v?pill(v,"p-gris"):"—"],["demande","Demande",v=>v?`<span class="pill p-gris">${esc(v)}</span>`:"—"],["arrivage","Arrivage",v=>v?`<span class="pill p-gris">${esc(v)}</span>`:"—"],["version","V.",v=>"v"+(v||1)],["statut","Statut",v=>pillStatut(v)]],
  actions:[{txt:"Fiche", cls:"btn mini or", fn:"ouvrirFicheDocument"}]},
 
 rapports:{label:"Rapport journalier", ic:ClipboardList, grp:"Pilotage", coll:"rapports", pfx:"RJ", statut:"service",

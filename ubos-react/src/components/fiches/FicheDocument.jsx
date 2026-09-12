@@ -54,7 +54,7 @@ const FicheDocument = ({ codeProp, code: codeFromProp }) => {
   const mainFields = [
     {k: 'nom', l: 'Nom du fichier'},
     {k: 'type', l: 'Catégorie'},
-    {k: 'dossier', l: 'Dossier lié', render: (val) => val ? <a href={`#ficheDossier:${val}`}>{val}</a> : '—'},
+    {k: 'demande', l: 'Demande liée', render: (val) => val ? <a href={`#ficheDemande:${val}`}>{val}</a> : '—'},
     {k: 'typeFichier', l: 'Format'},
     {k: 'url', l: 'URL / Lien'},
     {k: 'statut', l: 'Statut', render: (s) => <Pill type={s} texte={s} />},
