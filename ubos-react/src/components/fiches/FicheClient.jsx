@@ -29,8 +29,10 @@ const ONGLETS_360 = [
 ];
 
 const CHAMPS_SUIVI_DATA = [
-  {k:"responsableCommercial",l:"Responsable commercial"}, {k:"etapePipeline",l:"Étape du pipeline"},
-  {k:"dernierContact",l:"Dernier contact"}, {k:"actionSuivante",l:"Action suivante"},
+  {k:"responsableCommercial",l:"Responsable commercial"}, {k:"dataTag",l:"Data Tag (Workflow)"},
+  {k:"etapePipeline",l:"Étape du pipeline"}, {k:"dernierContact",l:"Dernier contact"},
+  {k:"dernierSuiviData",l:"Dernier suivi Data"}, {k:"echeanceCode",l:"Échéance de traitement du code"},
+  {k:"actionSuivante",l:"Action suivante"},
   {k:"respActionSuivante",l:"Responsable de l'action"}, {k:"echeanceActionSuivante",l:"Prochaine relance"},
   {k:"nbRelances",l:"Nombre de relances effectuées"}
 ];
@@ -125,7 +127,13 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
     const ajd = new Date().toISOString().slice(0, 10);
     const prochaine = calculerRelanceSuivante(client.nbRelances || 0);
     const nbRelances = (client.nbRelances || 0) + 1;
-    const nextClients = (db.clients || []).map(c => c.code === code ? { ...c, dernierContact: ajd, nbRelances, echeanceActionSuivante: prochaine } : c);
+    const nextClients = (db.clients || []).map(c => c.code === code ? {
+      ...c,
+      dernierContact: ajd,
+      dernierSuiviData: ajd,
+      nbRelances,
+      echeanceActionSuivante: prochaine,
+    } : c);
     updateDB({ ...db, clients: nextClients });
     audit('Clients', 'Contact effectué', code, 'dernierContact', client.dernierContact, ajd);
     toast(`Contact enregistré. Prochaine relance : ${prochaine}.`);
@@ -308,7 +316,10 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
           <div className="bloc-fiche large">
             <h4>
               Suivi Data
-              <span style={{float:'right'}}>{pill(calculerPrioriteClient(client).tag, 'p-or')}</span>
+              <span style={{float:'right', display:'flex', gap:'6px'}}>
+                {client.dataTag ? pill(client.dataTag, 'p-bleu') : null}
+                {pill(calculerPrioriteClient(client).tag, 'p-or')}
+              </span>
             </h4>
             <KVDisplay data={client} fields={CHAMPS_SUIVI_DATA} />
             <div style={{display:'flex', gap:'10px', alignItems:'flex-end', marginTop:'14px', flexWrap:'wrap'}}>

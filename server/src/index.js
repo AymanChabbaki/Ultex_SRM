@@ -875,6 +875,31 @@ function ultexSyncAuth(req, res, next) {
   next();
 }
 
+const LIBELLE_DATA_TAG = {
+  pas_pret: 'Pas prêt',
+  faible_qualite: 'Faible qualité',
+  pas_interesse: 'Pas intéressé',
+  pas_reponse: 'Pas réponse',
+  test: 'Test',
+  traite: 'Traité',
+  en_cours_de_traitement: 'En cours de traitement',
+  double_codage: 'Double codage',
+  num_ironne: 'Num ironné',
+  reclamation: 'Réclamation',
+  Autre: 'Autre',
+};
+
+function normaliserDataTag(value) {
+  const brut = String(value || '').trim();
+  if (!brut) return '';
+  return LIBELLE_DATA_TAG[brut] || brut;
+}
+
+function dateIsoJour(value, fallback = new Date()) {
+  const date = value ? new Date(value) : fallback;
+  return Number.isNaN(date.getTime()) ? fallback.toISOString().slice(0, 10) : date.toISOString().slice(0, 10);
+}
+
 // Same SequenceCounter mechanism as /api/genCode, but a single atomic
 // upsert (increment) instead of read-then-write -- this endpoint can be
 // called concurrently for different dossiers, and the read-then-write
@@ -1064,7 +1089,7 @@ async function fusionnerDoublonsClientParTelephone(canonicalClient, telephone) {
 
 app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   const {
-    ultexDossierId, referenceCode, nom, telephone, email, ville,
+    ultexDossierId, referenceCode, nom, telephone, email, ville, dateReception, dataTag,
     objectifGeneral, typeProjet, urgence, budgetGlobalEstime, remarque,
     // Global ULTEX client code (e.g. "A201"), shared across all of that
     // client's dossiers -- visible cross-system identifier, not just an
@@ -1087,7 +1112,9 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   }
 
   try {
-    const aujourdhui = new Date().toISOString().slice(0, 10);
+    const dateDemandeSource = dateIsoJour(dateReception);
+    const dataTagRecu = Object.prototype.hasOwnProperty.call(req.body || {}, 'dataTag');
+    const dataTagLisible = normaliserDataTag(dataTag);
     const origineRemarque = `Créé automatiquement depuis ULTEX${referenceCode ? ` (réf. ${referenceCode})` : ''}.`;
 
     // 1. Client — upsert by IDENTITY (codeClientUltex, falling back to
@@ -1113,7 +1140,9 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         email: email || client.data.email,
         ville: ville || client.data.ville,
         codeClientUltex: codeClientUltex || client.data.codeClientUltex,
-        dernierContact: aujourdhui
+        sourceDonnees: 'Workflow',
+        dateDerniereDemande: dateDemandeSource,
+        ...(dataTagRecu ? { dataTag: dataTagLisible } : {})
       };
       if (codeClientUltex && client.code !== codeClientUltex) {
         // ULTEX is authoritative for the cross-system client code. This also
@@ -1133,7 +1162,9 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         ultexDossierId, id: code, code, nom,
         telephone: telephone || '', email: email || '', ville: ville || '',
         codeClientUltex: codeClientUltex || '',
-        segment: 'Prospect', dernierContact: aujourdhui, nbRelances: 0,
+        segment: 'Prospect', nbRelances: 0,
+        sourceDonnees: 'Workflow', datePremierContact: dateDemandeSource,
+        dateDerniereDemande: dateDemandeSource, dataTag: dataTagLisible,
         remarque: origineRemarque
       };
       try {
@@ -1216,7 +1247,15 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         typeDemande: typeDemande || demande.data.typeDemande,
         sensOperation: sensOperation || demande.data.sensOperation,
         etapeUltex: etape || demande.data.etapeUltex,
+        ...(dataTagRecu ? { dataTag: dataTagLisible } : {}),
         tagsPipeline: tagsPipeline || demande.data.tagsPipeline,
+        // Workflow is authoritative for when this lead really arrived.
+        // This repairs historical backfills that were previously stamped
+        // with the day the reconciliation command happened to run.
+        dateDemande: dateDemandeSource,
+        dateHeureReception: dateReception || demande.data.dateHeureReception || dateDemandeSource,
+        responsableData: demande.data.responsableData || 'Data',
+        sourceSynchronisation: 'Workflow',
         modeTransport: modeTransport || demande.data.modeTransport,
         montantVente: montantVente != null ? montantVente : demande.data.montantVente,
         montantAchat: montantAchat != null ? montantAchat : demande.data.montantAchat,
@@ -1240,7 +1279,9 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         modeTransport: modeTransport || undefined,
         montantVente: montantVente != null ? montantVente : undefined,
         montantAchat: montantAchat != null ? montantAchat : undefined,
-        dateDemande: aujourdhui, source: 'WhatsApp', canalReception: 'WhatsApp',
+        dateDemande: dateDemandeSource, dateHeureReception: dateReception || dateDemandeSource,
+        source: 'WhatsApp', canalReception: 'WhatsApp', sourceSynchronisation: 'Workflow',
+        responsableData: 'Data', dataTag: dataTagLisible,
         objectifGeneral: objectifGeneral || '—', typeProjet: typeProjet || undefined,
         urgence: urgence || 'Normale',
         budgetGlobalEstime: budgetGlobalEstime != null ? budgetGlobalEstime : undefined,
@@ -1390,6 +1431,154 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   } catch (error) {
     console.error('ULTEX sync error:', error);
     res.status(500).json({ error: 'Erreur de synchronisation ULTEX' });
+  }
+});
+
+// Google Sheets -> CRM lead intake. The companion Apps Script assigns a
+// permanent CRM_SYNC_ID to each row, so sorting or moving rows never creates
+// duplicate clients/demandes. It uses the same server-to-server key as the
+// Workflow sync and feeds the exact same Data dashboard.
+app.post('/api/sync/sheets/lead', ultexSyncAuth, async (req, res) => {
+  const {
+    sheetLeadId, codeClientUltex, nom, telephone, email, ville,
+    dateReception, objectifGeneral, typeDemande, sensOperation,
+    urgence, budgetGlobalEstime, remarque, responsableData,
+    dataTag, echeanceCode, actionSuivante, source,
+  } = req.body || {};
+
+  if (!sheetLeadId || !nom) {
+    return res.status(400).json({ error: 'sheetLeadId et nom requis' });
+  }
+
+  try {
+    const dateDemandeSource = dateIsoJour(dateReception);
+    const dataTagLisible = normaliserDataTag(dataTag);
+    const origineRemarque = `Créé automatiquement depuis Google Sheets (${sheetLeadId}).`;
+
+    let client = await trouverClientExistant(codeClientUltex, telephone);
+    if (client) {
+      const merged = {
+        ...client.data,
+        nom,
+        telephone: telephone || client.data.telephone,
+        email: email || client.data.email,
+        ville: ville || client.data.ville,
+        codeClientUltex: codeClientUltex || client.data.codeClientUltex,
+        sourceDonnees: 'Google Sheets',
+        dateDerniereDemande: dateDemandeSource,
+        ...(dataTag !== undefined ? { dataTag: dataTagLisible } : {}),
+        ...(echeanceCode ? { echeanceCode: dateIsoJour(echeanceCode) } : {}),
+        ...(actionSuivante ? { actionSuivante } : {}),
+      };
+      if (codeClientUltex && client.code !== codeClientUltex) {
+        client = await adopterCodeUltex(client, codeClientUltex, merged);
+      } else {
+        client = await prisma.collectionItem.update({
+          where: { collection_id: { collection: 'clients', id: client.id } },
+          data: { data: merged },
+        });
+      }
+    } else {
+      let code = codeClientUltex || await genererCodeAtomique('C');
+      const data = {
+        id: code, code, nom, telephone: telephone || '', email: email || '', ville: ville || '',
+        codeClientUltex: codeClientUltex || '', segment: 'Prospect', nbRelances: 0,
+        sourceDonnees: 'Google Sheets', datePremierContact: dateDemandeSource,
+        dateDerniereDemande: dateDemandeSource, dataTag: dataTagLisible,
+        echeanceCode: echeanceCode ? dateIsoJour(echeanceCode) : '',
+        actionSuivante: actionSuivante || '', remarque: remarque || origineRemarque,
+      };
+      try {
+        client = await prisma.collectionItem.create({ data: { collection: 'clients', id: code, code, data } });
+      } catch (creationError) {
+        if (creationError.code !== 'P2002') throw creationError;
+        code = await genererCodeAtomique('C');
+        client = await prisma.collectionItem.create({
+          data: { collection: 'clients', id: code, code, data: { ...data, id: code, code } },
+        });
+      }
+    }
+    client = await fusionnerDoublonsClientParTelephone(client, telephone);
+
+    let contact = await prisma.collectionItem.findFirst({
+      where: { collection: 'contacts', data: { path: ['codeClientAssocie'], equals: client.code } },
+    });
+    if (!contact && telephone) {
+      contact = await prisma.collectionItem.findFirst({
+        where: { collection: 'contacts', data: { path: ['telephone'], equals: telephone } },
+      });
+    }
+    if (contact) {
+      contact = await prisma.collectionItem.update({
+        where: { collection_id: { collection: 'contacts', id: contact.id } },
+        data: { data: {
+          ...contact.data, nom,
+          telephone: telephone || contact.data.telephone,
+          whatsapp: telephone || contact.data.whatsapp,
+          email: email || contact.data.email,
+          codeClientAssocie: client.code,
+          source: source || contact.data.source || 'Google',
+        } },
+      });
+    } else {
+      const code = await genererCodeAtomique('CT');
+      contact = await prisma.collectionItem.create({
+        data: { collection: 'contacts', id: code, code, data: {
+          id: code, code, nom, telephone: telephone || '', whatsapp: telephone || '', email: email || '',
+          source: source || 'Google', statut: 'En échange', codeClientAssocie: client.code,
+          remarque: remarque || origineRemarque,
+        } },
+      });
+    }
+
+    let demande = await prisma.collectionItem.findFirst({
+      where: { collection: 'demandes', data: { path: ['sheetLeadId'], equals: sheetLeadId } },
+    });
+    if (demande) {
+      demande = await prisma.collectionItem.update({
+        where: { collection_id: { collection: 'demandes', id: demande.id } },
+        data: { data: {
+          ...demande.data,
+          client: client.code,
+          codeClientUltex: codeClientUltex || demande.data.codeClientUltex,
+          dateDemande: demande.data.dateDemande || dateDemandeSource,
+          dateHeureReception: demande.data.dateHeureReception || dateReception || dateDemandeSource,
+          source: source || demande.data.source || 'Google',
+          sourceSynchronisation: 'Google Sheets',
+          responsableData: responsableData || demande.data.responsableData || 'Data',
+          objectifGeneral: objectifGeneral || demande.data.objectifGeneral,
+          typeDemande: typeDemande || demande.data.typeDemande,
+          sensOperation: sensOperation || demande.data.sensOperation,
+          urgence: urgence || demande.data.urgence,
+          budgetGlobalEstime: budgetGlobalEstime != null ? Number(budgetGlobalEstime) : demande.data.budgetGlobalEstime,
+          remarqueGenerale: remarque || demande.data.remarqueGenerale,
+          dataTag: dataTag !== undefined ? dataTagLisible : demande.data.dataTag,
+          echeanceActionSuivante: echeanceCode ? dateIsoJour(echeanceCode) : demande.data.echeanceActionSuivante,
+          actionSuivante: actionSuivante || demande.data.actionSuivante,
+        } },
+      });
+    } else {
+      const code = await genererCodeAtomique('DMD');
+      const data = {
+        sheetLeadId, id: code, code, client: client.code,
+        codeClientUltex: codeClientUltex || '', dateDemande: dateDemandeSource,
+        dateHeureReception: dateReception || dateDemandeSource,
+        source: source || 'Google', canalReception: source || 'Google',
+        sourceSynchronisation: 'Google Sheets', responsableData: responsableData || 'Data',
+        objectifGeneral: objectifGeneral || '—', typeDemande: typeDemande || undefined,
+        sensOperation: sensOperation || undefined, urgence: urgence || 'Normale',
+        budgetGlobalEstime: budgetGlobalEstime != null && budgetGlobalEstime !== '' ? Number(budgetGlobalEstime) : undefined,
+        remarqueGenerale: remarque || origineRemarque, statut: 'Nouvelle', dataTag: dataTagLisible,
+        echeanceActionSuivante: echeanceCode ? dateIsoJour(echeanceCode) : '',
+        actionSuivante: actionSuivante || '',
+      };
+      demande = await prisma.collectionItem.create({ data: { collection: 'demandes', id: code, code, data } });
+    }
+
+    res.json({ status: 'ok', client: { code: client.code }, contact: { code: contact.code }, demande: { code: demande.code } });
+  } catch (error) {
+    console.error('Google Sheets lead sync error:', error);
+    res.status(500).json({ error: 'Erreur de synchronisation Google Sheets' });
   }
 });
 

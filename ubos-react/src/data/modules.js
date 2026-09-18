@@ -10,7 +10,7 @@ import {
     RECURRENCES_TACHE, STATUTS_PIPELINE_CLOSING, PRIORITES_CLOSING,
     ETATS_GLOBAUX_LIMEX, STATUTS_ACTION_LIMEX, ATTENTE_TYPES_LIMEX,
     SOURCES_INSTRUCTION_LIMEX, PRIORITES_LIMEX, TYPES_DOC_COMPTABLE_CASA, STATUTS_DOC_COMPTABLE_CASA,
-    DEVISES_PAIEMENT, PRIORITES_PAIEMENT, STATUTS_PAIEMENT_IMANE
+    DEVISES_PAIEMENT, PRIORITES_PAIEMENT, STATUTS_PAIEMENT_IMANE, DATA_TAGS_WORKFLOW
 } from './constants';
 import { pill, pillStatut, esc, refLabel, fmtMAD } from '../utils/format';
 import { PERS_ET_SERVICES } from './permissions';
@@ -117,8 +117,11 @@ clients:{label:"Clients", ic:Building2, grp:"Commercial", coll:"clients", pfx:"C
   {k:"pourquoiRefus",l:"Pourquoi il refuse",t:"textarea",groupe:"Comportemental"},
   // Suivi Data -- "11. Suivi Data"
   {k:"segment",l:"Segment",t:"select",opts:["Prospect","Client","Client récurrent","Client VIP","Inactif"],groupe:"Suivi Data"},
+  {k:"dataTag",l:"Data Tag (Workflow)",t:"select",opts:DATA_TAGS_WORKFLOW,groupe:"Suivi Data"},
   {k:"etapePipeline",l:"Étape du pipeline",t:"select",opts:PIPELINE_ETAPES_CLIENT,groupe:"Suivi Data"},
   {k:"dernierContact",l:"Dernier contact",t:"date",groupe:"Suivi Data"},
+  {k:"dernierSuiviData",l:"Dernier suivi Data",t:"date",groupe:"Suivi Data"},
+  {k:"echeanceCode",l:"Échéance de traitement du code",t:"date",aide:"Date demandée par le client ou fixée par Data pour traiter ce code.",groupe:"Suivi Data"},
   {k:"actionSuivante",l:"Action suivante",t:"text",groupe:"Suivi Data"},
   {k:"respActionSuivante",l:"Responsable de l'action suivante",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB),groupe:"Suivi Data"},
   {k:"echeanceActionSuivante",l:"Échéance / prochaine relance",t:"date",groupe:"Suivi Data"},
@@ -160,6 +163,7 @@ demandes:{label:"Demandes", ic:ClipboardEdit, grp:"Commercial", coll:"demandes",
   {k:"villeDestination",l:"Ville ou destination finale",t:"text",groupe:"Projet & besoin"},
   {k:"typeUsage",l:"Importation pour",t:"select",opts:TYPES_USAGE_DEMANDE,groupe:"Projet & besoin"},
   {k:"statut",l:"Statut global",t:"select",opts:STATUTS_DEMANDE,groupe:"Suivi & statut"},
+  {k:"dataTag",l:"Data Tag (Workflow)",t:"select",opts:DATA_TAGS_WORKFLOW,groupe:"Suivi & statut"},
   {k:"remarqueGenerale",l:"Remarques générales",t:"textarea",large:1,groupe:"Suivi & statut"},
   {k:"actionSuivante",l:"Action suivante",t:"text",groupe:"Suivi & statut"},
   {k:"respActionSuivante",l:"Responsable de l'action suivante",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB),groupe:"Suivi & statut"},

@@ -2,6 +2,14 @@ export const ETAPES = ["Sourcing","Études & Chiffrage","Closing","Paiement","An
 export const SERVICE_ETAPE = {"Sourcing":"Sourcing","Études & Chiffrage":"Études & Chiffrage","Closing":"Closing","Paiement":"Finance","Analyse Dossier":"Analyse Dossiers","Transport":"Transport","Transit & Douane":"Transit & Douane","Certification":"Analyse Dossiers","Livraison":"Transport","Suivi Client":"Suivi Client","Clôturé":"Direction"};
 export const USERS = ["Direction","Data","Sourcing","Études & Chiffrage","Closing","Finance","Analyse Dossiers","Transport","Transit & Douane","Suivi Client","Digital"];
 
+// Same Data disposition tags as ULTEX Workflow. CRM stores the readable
+// labels; the sync endpoint translates Workflow's internal keys.
+export const DATA_TAGS_WORKFLOW = [
+  "Pas prêt", "Faible qualité", "Pas intéressé", "Pas réponse", "Test",
+  "Traité", "En cours de traitement", "Double codage", "Num ironné",
+  "Réclamation", "Autre"
+];
+
 export const PAYS_MONDE = [
   {n:"Afghanistan",c:"AF"}, {n:"Afrique du Sud",c:"ZA"}, {n:"Albanie",c:"AL"}, {n:"Algérie",c:"DZ"},
   {n:"Allemagne",c:"DE"}, {n:"Andorre",c:"AD"}, {n:"Angola",c:"AO"}, {n:"Arabie saoudite",c:"SA"},

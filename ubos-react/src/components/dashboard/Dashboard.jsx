@@ -7,6 +7,7 @@ import StatCard from '../common/StatCard';
 import CheminDossier from '../common/CheminDossier';
 import DataTable from '../common/DataTable';
 import PersonalDashboard from './PersonalDashboard';
+import TableauBordData from '../custom/TableauBordData';
 import { FileBarChart } from 'lucide-react';
 
 const ETAPES = ["Sourcing","Études & Chiffrage","Closing","Paiement","Analyse Dossier","Transport","Transit & Douane","Certification","Livraison","Suivi Client","Clôturé"];
@@ -52,6 +53,10 @@ export default function Dashboard() {
   const { session, estDirection } = useAuth();
 
   const alertes = useMemo(() => calculerAlertes(db), [db]);
+
+  if (!estDirection() && (session?.services || []).includes('Data')) {
+    return <TableauBordData user={session} />;
+  }
 
   if (!estDirection()) {
     return <PersonalDashboard user={session} />;

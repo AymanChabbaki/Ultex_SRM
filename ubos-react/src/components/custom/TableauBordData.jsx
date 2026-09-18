@@ -3,14 +3,16 @@ import { useDB } from '../../context/DBContext';
 import Topbar from '../layout/Topbar';
 import DataTable from '../common/DataTable';
 import BarreProgression from '../common/BarreProgression';
+import StatCard from '../common/StatCard';
 import { pill } from '../../utils/format';
 import {
   genererFileDeTravail, genererAlertesData, calculerObjectifActif, calculerProgressionJour,
-  calculerSourcingsObtenus, genererResumeJournalier, clientsDeAgent, calculerPrioriteClient
+  calculerSourcingsObtenus, genererResumeJournalier, clientsDeAgent, calculerPrioriteClient,
+  leadsDuJour, codesSansSuiviDepuis
 } from '../../utils/dataPipeline';
 import { PIPELINE_ETAPES_CLIENT } from '../../data/constants';
 
-const TAG_PILL_CLASS = { Urgent: 'p-rouge', 'Très chaud': 'p-or', Chaud: 'p-ambre', Normal: 'p-gris', Froid: 'p-bleu', Dormant: 'p-gris', VIP: 'p-vert' };
+const TAG_PILL_CLASS = { Urgent: 'p-rouge', "Aujourd'hui": 'p-or', Nouveau: 'p-vert', 'Très chaud': 'p-or', Chaud: 'p-ambre', Normal: 'p-gris', Froid: 'p-bleu', Dormant: 'p-gris', VIP: 'p-vert' };
 
 export default function TableauBordData({ user, isAdminView }) {
   const { db } = useDB();
@@ -22,6 +24,12 @@ export default function TableauBordData({ user, isAdminView }) {
   const progression = useMemo(() => calculerProgressionJour(db, user), [db, user]);
   const sourcings = useMemo(() => calculerSourcingsObtenus(db, user), [db, user]);
   const clientsAgent = useMemo(() => clientsDeAgent(db, user), [db, user]);
+  const nouveauxLeads = useMemo(() => leadsDuJour(db, user), [db, user]);
+  const sansSuiviUnMois = useMemo(() => codesSansSuiviDepuis(db, user, 30), [db, user]);
+  const echeancesCodes = useMemo(() => {
+    const jour = new Date().toISOString().slice(0, 10);
+    return clientsAgent.filter(c => c.echeanceCode && String(c.echeanceCode).slice(0, 10) <= jour);
+  }, [clientsAgent]);
 
   const parEtape = useMemo(() => {
     const map = Object.fromEntries(PIPELINE_ETAPES_CLIENT.map(e => [e, []]));
@@ -43,6 +51,28 @@ export default function TableauBordData({ user, isAdminView }) {
         <div className="vide" style={{ textAlign: 'left', marginBottom: '14px' }}>{objectif.label}</div>
       )}
 
+      <div className="stats">
+        <StatCard val={nouveauxLeads.length} label="Leads reçus aujourd'hui" />
+        <StatCard val={file.length} label="Actions Data à traiter" alerte={file.some(item => item.retard)} />
+        <StatCard val={echeancesCodes.length} label="Échéances code arrivées" alerte={echeancesCodes.length > 0} />
+        <StatCard val={sansSuiviUnMois.length} label="Codes sans suivi depuis 1 mois" alerte={sansSuiviUnMois.length > 0} />
+      </div>
+
+      <h3 className="titre-sec mt-lg">Leads reçus aujourd'hui</h3>
+      <div className="panneau mb-lg">
+        <DataTable
+          columns={[
+            { key: 'codeClientUltex', label: 'Code client', render: (v, o) => <a href={`#ficheClient:${o.client}`}>{v || o.client || '—'}</a> },
+            { key: 'objectifGeneral', label: 'Besoin / produit' },
+            { key: 'dateHeureReception', label: 'Reçu le', render: (v, o) => v || o.dateDemande || '—' },
+            { key: 'sourceSynchronisation', label: 'Source', render: (v, o) => pill(v || o.source || '—', 'p-gris') },
+            { key: 'dataTag', label: 'Data Tag', render: (v) => v ? pill(v, 'p-bleu') : '—' },
+            { key: 'statut', label: 'État', render: (v) => pill(v || 'Nouvelle', 'p-gris') },
+          ]}
+          data={nouveauxLeads}
+        />
+      </div>
+
       <div className="panneau mb-lg" style={{ padding: '18px 22px' }}>
         <h4 style={{ marginTop: 0 }}>Objectifs du jour {!objectif.parDefaut ? `— ${objectif.label}` : ''}</h4>
         <BarreProgression val={progression.demandesCreees} obj={objectif.demandesParJour} label="Demandes créées aujourd'hui" />
@@ -63,8 +93,8 @@ export default function TableauBordData({ user, isAdminView }) {
 
       <h3 className="titre-sec mt-lg">Mon travail aujourd'hui</h3>
       <div className="panneau liste-notif mb-lg">
-        {file.length ? file.map(item => (
-          <div key={item.type + item.code} className="notif nonlu">
+          {file.length ? file.map(item => (
+          <div key={`${item.type}-${item.code}-${item.motif || ''}`} className="notif nonlu">
             <div className="pt-n" style={{ background: item.retard ? 'var(--rouge)' : 'var(--or)' }}></div>
             <div className="spacer">
               <div><a href={item.lien}><b>{item.libelle}</b></a></div>
@@ -106,7 +136,9 @@ export default function TableauBordData({ user, isAdminView }) {
           { key: 'code', label: 'Code', render: (v) => <a href={`#ficheClient:${v}`}>{v}</a> },
           { key: 'nom', label: 'Nom' },
           { key: 'etapePipeline', label: 'Étape', render: (v) => v ? pill(v, 'p-gris') : '—' },
+          { key: 'dataTag', label: 'Data Tag', render: (v) => v ? pill(v, 'p-bleu') : '—' },
           { key: 'dernierContact', label: 'Dernier contact', render: (v) => v || '—' },
+          { key: 'echeanceCode', label: 'Échéance code', render: (v) => v || '—' },
           { key: 'echeanceActionSuivante', label: 'Prochaine relance', render: (v) => v || '—' },
           { key: 'priorite', label: 'Priorité', render: (_, o) => { const p = calculerPrioriteClient(o); return pill(p.tag, TAG_PILL_CLASS[p.tag] || 'p-gris'); } }
         ]}
