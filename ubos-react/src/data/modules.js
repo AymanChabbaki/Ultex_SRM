@@ -130,7 +130,10 @@ clients:{label:"Clients", ic:Building2, grp:"Commercial", coll:"clients", pfx:"C
  avantSauve: (DB, o) => { if(o.nbRelances===undefined) o.nbRelances = 0; },
  fiche:"ficheClient",
  cols:[["nom","Nom"],["telephone","Téléphone"],["ville","Ville"],["segment","Segment",v=>pillStatut(v)]],
- actions:[{txt:"Fiche", cls:"btn mini or", fn:"ouvrirFicheClient"}]},
+ actions:[
+  {txt:"Fiche", cls:"btn mini or", fn:"ouvrirFicheClient"},
+  {txt:"Darf / Fichiers", cls:"btn mini doux", fn:(code)=>{ window.location.hash = `#ficheClient:${code}:docs`; }}
+ ]},
 
 leads:{label:"Leads / Data (archive historique)", ic:Archive, grp:"Archives", coll:"leads", pfx:"L", statut:"statut",
  champs:[
@@ -1018,12 +1021,15 @@ maJourneeImane:{label:"Ma journée", ic:ListChecks, grp:"Mon espace"},
 suiviLimex:{label:"Suivi LIMEX", ic:ListChecks, grp:"Mon espace"},
 etudesCalcul:{label:"Études & Calcul", ic:Calculator, grp:"Mon espace"},
 paiementsEcheances:{label:"Paiements & Échéances", ic:Banknote, grp:"Mon espace"}
+,
+facturationRecus:{label:"Facturation & reçus", ic:Receipt, grp:"Commercial"},
+documentsPartages:{label:"Documents partagés", ic:FolderOpen, grp:"Commercial"}
 };
 
 export const ORDRE_NAV = [
  ["Mon espace",["dashboard","tableauBordData","maJourneeClosing","maJourneeImane","suiviLimex","etudesCalcul","paiementsEcheances","monProgramme","mesTaches","mesObjectifs","devisAControler","coordinationMansouri","monPortefeuilleClosing","aQualifierClosing","monRapportJournalier","monAgenda","notifications","monProfil"]],
  ["Pilotage",["pilotageEquipe","quiFaitQuoi","ajouterTache","rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal","journalSecurite","etatClosing","suivisClosing"]],
- ["Commercial",["clients","contacts","demandes","commandes","offres","reclamations"]],
+ ["Commercial",["clients","contacts","demandes","commandes","offres","reclamations","facturationRecus","documentsPartages"]],
  ["Études",["sourcings","etudes"]],
  ["LIMEX",["dashboardLimex","arrivages","rapportLimexDirection","suivisLimex","actionsLimex","instructionsLimex"]],
  ["Opérations",["analyses","transports","transits","certifs","transportsNat"]],

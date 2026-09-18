@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   codesSansSuiviDepuis,
+  genererAlertesData,
   genererFileDeTravail,
   leadsDuJour,
 } from '../src/utils/dataPipeline.js';
@@ -38,3 +39,12 @@ test('code deadlines and one-month follow-up gaps become daily work', () => {
   assert.ok(work.some(item => item.code === 'L300' && item.motif === 'sans-suivi-30j'));
 });
 
+test('historical clients do not flood new missing-action alerts or first-contact work', () => {
+  const db = database();
+  const work = genererFileDeTravail(db, user);
+  assert.ok(work.some(item => item.code === 'L200' && item.motif === 'relance'));
+  assert.ok(!work.some(item => item.code === 'L300' && item.motif === 'relance'));
+
+  const alert = genererAlertesData(db, user).find(item => item.titre === 'Clients sans prochaine action définie');
+  assert.deepEqual(alert.clients.map(client => client.code).sort(), ['L100', 'L200']);
+});

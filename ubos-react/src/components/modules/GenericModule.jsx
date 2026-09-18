@@ -10,6 +10,7 @@ import { exporterExcel } from '../../utils/export';
 import { DownloadIcon } from '../common/Icons';
 import * as Actions from '../../utils/businessActions';
 import { supprimerEnregistrementSecurise } from '../../services/security';
+import { codeClientAffiche, groupeCodeClient, GROUPES_CODES_CLIENT } from '../../utils/clientCodeGroups';
 
 const PERMISSION_REQUISE = {
   qualifierLead: 'valider',
@@ -28,6 +29,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
   const [filtreStatut, setFiltreStatut] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editCode, setEditCode] = useState(null);
+  const [groupeClients, setGroupeClients] = useState('L');
 
   const M = MODS[moduleId];
 
@@ -51,12 +53,22 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
     if (filtreStatut && M.statut) {
       l = l.filter(o => o[M.statut] === filtreStatut);
     }
+
+    if (moduleId === 'clients') {
+      l = l.filter(o => groupeCodeClient(o) === groupeClients);
+    }
     
     let opts = M.statut ? (M.champs?.find(f => f.k === M.statut)?.opts || []) : [];
     if (typeof opts === "function") opts = opts(db);
     
     return { lignes: l, optsStatut: opts };
-  }, [db, M, recherche, filtreStatut]);
+  }, [db, M, recherche, filtreStatut, moduleId, groupeClients]);
+
+  const compteGroupesClients = useMemo(() => {
+    const compte = { L: 0, A: 0, R: 0, '#': 0 };
+    (db.clients || []).forEach(client => { compte[groupeCodeClient(client)] += 1; });
+    return compte;
+  }, [db.clients]);
 
   if (!M) return <div>Module introuvable</div>;
 
@@ -147,6 +159,21 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
         )}
       </div>
 
+      {moduleId === 'clients' && (
+        <div className="onglets" style={{marginBottom:'14px', flexWrap:'wrap'}}>
+          {GROUPES_CODES_CLIENT.map(groupe => (
+            <button
+              key={groupe.id}
+              type="button"
+              className={`onglet ${groupeClients === groupe.id ? 'actif' : ''}`}
+              onClick={() => setGroupeClients(groupe.id)}
+            >
+              {groupe.label} ({compteGroupesClients[groupe.id]})
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="panneau">
         <div className="defile">
           <table>
@@ -179,7 +206,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
                   )}
                   <tr>
                     <td className="code">
-                      {M.fiche ? <a href={`#${M.fiche}:${o.code}`}>{o.referenceMetier || o.code}</a> : (o.referenceMetier || o.code)}
+                      {M.fiche ? <a href={`#${M.fiche}:${o.code}`}>{moduleId === 'clients' ? codeClientAffiche(o) : (o.referenceMetier || o.code)}</a> : (o.referenceMetier || o.code)}
                     </td>
                     {(M.cols || []).map(c => {
                       const val = o[c[0]];

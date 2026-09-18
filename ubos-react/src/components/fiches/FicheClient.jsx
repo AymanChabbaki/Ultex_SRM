@@ -9,10 +9,11 @@ import ModuleForm from '../modules/ModuleForm';
 import Modal from '../common/Modal';
 import { MODS } from '../../data/modules';
 import { PrinterIcon } from '../common/Icons';
-import { PIPELINE_ETAPES_CLIENT } from '../../data/constants';
+import { DATA_TAGS_WORKFLOW, PIPELINE_ETAPES_CLIENT } from '../../data/constants';
 import { calculerRelanceSuivante, calculerPrioriteClient } from '../../utils/dataPipeline';
 import { estSuiviOuvert } from '../../utils/closingCoordination';
 import { pill } from '../../utils/format';
+import { categorieDepuisFichier, lireFichierDataUrl } from '../../utils/fileData';
 
 const ONGLETS_360 = [
   ["identite", "1. Identité"],
@@ -29,9 +30,9 @@ const ONGLETS_360 = [
 ];
 
 const CHAMPS_SUIVI_DATA = [
-  {k:"responsableCommercial",l:"Responsable commercial"}, {k:"dataTag",l:"Data Tag (Workflow)"},
+  {k:"responsableCommercial",l:"Responsable commercial"},
   {k:"etapePipeline",l:"Étape du pipeline"}, {k:"dernierContact",l:"Dernier contact"},
-  {k:"dernierSuiviData",l:"Dernier suivi Data"}, {k:"echeanceCode",l:"Échéance de traitement du code"},
+  {k:"dernierSuiviData",l:"Dernier suivi Data"},
   {k:"actionSuivante",l:"Action suivante"},
   {k:"respActionSuivante",l:"Responsable de l'action"}, {k:"echeanceActionSuivante",l:"Prochaine relance"},
   {k:"nbRelances",l:"Nombre de relances effectuées"}
@@ -81,12 +82,13 @@ const CHAMPS_COMPORTEMENTAL = [
   {k:"pourquoiAchat",l:"Pourquoi il achète"}, {k:"pourquoiRefus",l:"Pourquoi il refuse"}
 ];
 
-const FicheClient = ({ codeProp, code: codeFromProp }) => {
-  const { db, updateDB, audit } = useDB();
+const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
+  const { db, updateDB, audit, genCode, userCourant } = useDB();
   const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
-  const [onglet, setOnglet] = useState('identite');
+  const [onglet, setOnglet] = useState(ongletInitial || 'identite');
+  const [uploadEnCours, setUploadEnCours] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showRattacher, setShowRattacher] = useState(false);
   const [codeSuiviRecherche, setCodeSuiviRecherche] = useState('');
@@ -98,10 +100,13 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
     } else {
       const hash = window.location.hash;
       if (hash.startsWith('#ficheClient:')) {
-        setCode(hash.split(':')[1]);
+      const parts = hash.split(':');
+      setCode(parts[1]);
+      if (parts[2]) setOnglet(parts[2]);
       }
     }
-  }, [codeProp, codeFromProp, window.location.hash]);
+    if (ongletInitial) setOnglet(ongletInitial);
+  }, [codeProp, codeFromProp, ongletInitial, window.location.hash]);
 
   const client = (db?.clients || []).find(c => c.code === code);
   
@@ -155,6 +160,45 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
     audit('Clients', 'Étape pipeline modifiée', code, 'etapePipeline', client.etapePipeline, etape);
   };
 
+  const handleChangeSuiviData = (field, value, label) => {
+    const oldValue = client[field] || '';
+    if (oldValue === value) return;
+    const nextClients = (db.clients || []).map(c => c.code === code ? { ...c, [field]: value } : c);
+    updateDB({ ...db, clients: nextClients });
+    audit('Clients', `${label} modifié(e)`, code, field, oldValue || '—', value || '—');
+    toast(`${label} enregistré${value ? ` : ${value}` : ''}.`);
+  };
+
+  const handleAjoutFichiersClient = async (event) => {
+    const fichiers = [...(event.target.files || [])];
+    event.target.value = '';
+    if (!fichiers.length) return;
+    setUploadEnCours(true);
+    try {
+      const nouveaux = await Promise.all(fichiers.map(async fichier => ({
+        code: genCode('DOC'),
+        nom: fichier.name,
+        type: categorieDepuisFichier(fichier),
+        typeFichier: fichier.type || 'Fichier',
+        fichier: await lireFichierDataUrl(fichier),
+        taille: fichier.size,
+        client: code,
+        statut: 'Reçu',
+        version: 1,
+        par: userCourant,
+        dateAjout: new Date().toISOString(),
+        ts: Date.now(),
+      })));
+      updateDB({ ...db, documents: [...nouveaux, ...(db.documents || [])] });
+      nouveaux.forEach(document => audit('Documents client', 'Ajout', document.code, 'client', '—', `${code} · ${document.nom}`));
+      toast(`${nouveaux.length} fichier(s) ajouté(s) au Darf de ${client.nom}.`);
+    } catch (error) {
+      toast(error.message || "Impossible d'ajouter les fichiers.");
+    } finally {
+      setUploadEnCours(false);
+    }
+  };
+
   return (
     <div>
       <Topbar titre="Profil Client 360°" />
@@ -164,6 +208,7 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
           <b className="titre-fiche">{client.nom}</b>
           <Pill type={client.segment} texte={client.segment} />
           <span className="spacer"></span>
+          <button className="btn or" onClick={() => setOnglet('docs')}>Darf / Fichiers</button>
           <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
           <button className="btn doux" onClick={() => setShowRattacher(true)}>Rattacher un suivi Closing</button>
           <button className="btn or" onClick={() => window.print()}><PrinterIcon size={14} /> Imprimer / PDF</button>
@@ -240,13 +285,22 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
 
         {onglet === "docs" && (
           <div className="bloc-fiche large">
-            <h4>Documents liés</h4>
+            <h4>Darf — Tous les fichiers du client</h4>
+            <div className="panneau" style={{padding:'14px', marginBottom:'14px'}}>
+              <label className="btn or" style={{display:'inline-flex', cursor: uploadEnCours ? 'wait' : 'pointer'}}>
+                {uploadEnCours ? 'Ajout en cours…' : '+ Ajouter des fichiers'}
+                <input type="file" multiple onChange={handleAjoutFichiersClient} disabled={uploadEnCours} style={{display:'none'}} />
+              </label>
+              <small style={{display:'block', marginTop:'8px', opacity:0.72}}>
+                Tous les formats sont acceptés : documents, PDF, images, audio, vidéo et archives.
+              </small>
+            </div>
             <DataTable
               columns={[
                 {key: 'code', label: 'Code', render: (val) => <a href={`#ficheDocument:${val}`}>{val}</a>},
                 {key: 'nom', label: 'Nom'},
                 {key: 'type', label: 'Catégorie', render: (v) => v ? pill(v, 'p-gris') : '—'},
-                {key: 'url', label: 'Lien', render: (v) => v ? <a href={v} target="_blank" rel="noreferrer">Ouvrir</a> : '—'},
+                {key: 'url', label: 'Fichier', render: (v, row) => (row.fichier || v) ? <a href={row.fichier || v} target="_blank" rel="noreferrer" download={row.nom}>Ouvrir / télécharger</a> : '—'},
                 {key: 'statut', label: 'Statut', render: (v) => <Pill type={v} texte={v} />}
               ]}
               data={docs}
@@ -321,6 +375,31 @@ const FicheClient = ({ codeProp, code: codeFromProp }) => {
                 {pill(calculerPrioriteClient(client).tag, 'p-or')}
               </span>
             </h4>
+            <div className="panneau" style={{padding:'14px', marginBottom:'14px'}}>
+              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:'12px'}}>
+                <div className="champ">
+                  <label>Data Tag</label>
+                  <select
+                    value={client.dataTag || ''}
+                    onChange={e => handleChangeSuiviData('dataTag', e.target.value, 'Data Tag')}
+                  >
+                    <option value="">— Aucun tag —</option>
+                    {DATA_TAGS_WORKFLOW.map(tag => <option key={tag} value={tag}>{tag}</option>)}
+                  </select>
+                </div>
+                <div className="champ">
+                  <label>Échéance de traitement du code</label>
+                  <input
+                    type="date"
+                    value={client.echeanceCode || ''}
+                    onChange={e => handleChangeSuiviData('echeanceCode', e.target.value, 'Échéance du code')}
+                  />
+                </div>
+              </div>
+              <small style={{display:'block', marginTop:'8px', opacity:0.72}}>
+                Enregistrement immédiat dans la fiche client.
+              </small>
+            </div>
             <KVDisplay data={client} fields={CHAMPS_SUIVI_DATA} />
             <div style={{display:'flex', gap:'10px', alignItems:'flex-end', marginTop:'14px', flexWrap:'wrap'}}>
               <div className="champ" style={{maxWidth:'320px'}}>

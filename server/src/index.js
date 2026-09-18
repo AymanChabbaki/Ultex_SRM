@@ -1133,6 +1133,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     // only if ULTEX hasn't assigned this client a code yet.
     let client = await trouverClientExistant(codeClientUltex, telephone);
     if (client) {
+      const sourceEstLaPlusRecente = !client.data.dateDerniereDemande || dateDemandeSource >= client.data.dateDerniereDemande;
       const merged = {
         ...client.data,
         nom,
@@ -1141,8 +1142,8 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         ville: ville || client.data.ville,
         codeClientUltex: codeClientUltex || client.data.codeClientUltex,
         sourceDonnees: 'Workflow',
-        dateDerniereDemande: dateDemandeSource,
-        ...(dataTagRecu ? { dataTag: dataTagLisible } : {})
+        dateDerniereDemande: sourceEstLaPlusRecente ? dateDemandeSource : client.data.dateDerniereDemande,
+        ...(dataTagRecu && sourceEstLaPlusRecente ? { dataTag: dataTagLisible } : {})
       };
       if (codeClientUltex && client.code !== codeClientUltex) {
         // ULTEX is authoritative for the cross-system client code. This also
@@ -1457,6 +1458,7 @@ app.post('/api/sync/sheets/lead', ultexSyncAuth, async (req, res) => {
 
     let client = await trouverClientExistant(codeClientUltex, telephone);
     if (client) {
+      const sourceEstLaPlusRecente = !client.data.dateDerniereDemande || dateDemandeSource >= client.data.dateDerniereDemande;
       const merged = {
         ...client.data,
         nom,
@@ -1465,8 +1467,8 @@ app.post('/api/sync/sheets/lead', ultexSyncAuth, async (req, res) => {
         ville: ville || client.data.ville,
         codeClientUltex: codeClientUltex || client.data.codeClientUltex,
         sourceDonnees: 'Google Sheets',
-        dateDerniereDemande: dateDemandeSource,
-        ...(dataTag !== undefined ? { dataTag: dataTagLisible } : {}),
+        dateDerniereDemande: sourceEstLaPlusRecente ? dateDemandeSource : client.data.dateDerniereDemande,
+        ...(dataTag !== undefined && sourceEstLaPlusRecente ? { dataTag: dataTagLisible } : {}),
         ...(echeanceCode ? { echeanceCode: dateIsoJour(echeanceCode) } : {}),
         ...(actionSuivante ? { actionSuivante } : {}),
       };

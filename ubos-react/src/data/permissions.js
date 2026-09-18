@@ -30,6 +30,7 @@ export function peut(session, action) {
 
 const MODULES_LIBRES = ["dashboard", "monAgenda", "notifications", "rapports", "monProgramme", "mesTaches", "mesObjectifs", "monRapportJournalier", "monProfil"];
 const MODULES_DIRECTION = ["auditGlobal", "utilisateurs", "rapportDirection", "performance", "importCentre", "risquesClients", "objectifsData", "pilotageEquipe", "quiFaitQuoi", "ajouterTache", "journalSecurite", "etatClosing"];
+const MODULES_COMMERCIAL = ["facturationRecus", "documentsPartages"];
 
 // Un coordinateur Closing travaille dans 4 espaces seulement (Ma journée,
 // Mon portefeuille Closing, Devis à contrôler, Coordination Mansouri) —
@@ -57,6 +58,9 @@ export function estCoordinateurLimex(session) {
 export function moduleVisible(session, id) {
     if (!session) return false;
     if (MODULES_DIRECTION.includes(id)) return estDirection(session);
+    if (MODULES_COMMERCIAL.includes(id)) {
+        return estDirection(session) || session.departement === 'Commercial' || (session.services || []).includes('Commercial');
+    }
     if (estCoordinateurClosing(session) && MODULES_FUSIONNES_CLOSING.includes(id)) return false;
     if (estCoordinateurLimex(session) && MODULES_FUSIONNES_LIMEX.includes(id)) return false;
     if (MODULES_LIBRES.includes(id)) return true;

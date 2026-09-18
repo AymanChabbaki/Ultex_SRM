@@ -57,6 +57,8 @@ import MaJourneeImane from './components/custom/MaJourneeImane';
 import SuiviLimex from './components/custom/SuiviLimex';
 import EtudesCalcul from './components/custom/EtudesCalcul';
 import PaiementsEcheances from './components/custom/PaiementsEcheances';
+import FacturationRecus from './components/custom/FacturationRecus';
+import DocumentsPartages from './components/custom/DocumentsPartages';
 
 // Generic
 import GenericModule from './components/modules/GenericModule';
@@ -160,6 +162,7 @@ const Router = () => {
     const parts = currentHash.split(':');
     const route = parts[0];
     const params = parts[1];
+    const sousPage = parts[2];
 
     switch (route) {
       case 'dashboard': return <Dashboard />;
@@ -188,7 +191,7 @@ const Router = () => {
       case 'ficheSuiviLimex': return <FicheSuiviLimex codeProp={params} code={params} />;
       case 'ajouterTache': return <AjouterTache />;
       case 'ficheTache': return <FicheTache codeProp={params} code={params} />;
-      case 'ficheClient': return <FicheClient codeProp={params} code={params} />;
+      case 'ficheClient': return <FicheClient codeProp={params} code={params} ongletInitial={sousPage} />;
       case 'ficheDossier': return <FicheDossier codeProp={params} code={params} />;
       case 'ficheDemande': return <FicheDemande codeProp={params} code={params} />;
       case 'ficheDemandeLigne': return <FicheDemandeLigne codeProp={params} code={params} />;
@@ -210,6 +213,8 @@ const Router = () => {
       case 'risquesClients': return <RisquesClients />;
       case 'dashboardLimex': return <DashboardLimex />;
       case 'rapportLimexDirection': return <RapportLimexDirection />;
+      case 'facturationRecus': return <FacturationRecus />;
+      case 'documentsPartages': return <DocumentsPartages />;
 
       default:
         // Check if it's a generic module (clients, contacts, demandes, dossiers, documents, etc.)

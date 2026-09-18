@@ -29,6 +29,21 @@ function jourIso(value) {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
 }
 
+// Date de mise en service du nouveau tableau Data. Les clients historiques ne
+// doivent pas devenir rétroactivement des alertes simplement parce qu'ils
+// n'avaient pas encore les nouveaux champs de suivi.
+export const DEBUT_SUIVI_DATA = '2026-09-18';
+
+export function estEntreDansSuiviData(client, debut = DEBUT_SUIVI_DATA) {
+  const dates = [
+    client.dateCreation,
+    client.datePremierContact,
+    client.dateDerniereDemande,
+    client.dernierSuiviData,
+  ].map(jourIso).filter(Boolean);
+  return dates.some(date => date >= debut);
+}
+
 export function leadsDuJour(db, user, date = new Date()) {
   const jour = date.toISOString().slice(0, 10);
   return demandesDeAgent(db, user)
@@ -111,7 +126,7 @@ export function genererFileDeTravail(db, user) {
   clientsDeAgent(db, user).forEach(c => {
     const echeanceJour = jourIso(c.echeanceActionSuivante);
     const due = echeanceJour && echeanceJour <= ajd;
-    const jamaisContacte = !c.dernierContact;
+    const jamaisContacte = !c.dernierContact && estEntreDansSuiviData(c);
     if (due || jamaisContacte) {
       const { tag, score } = calculerPrioriteClient(c);
       ajouter({
@@ -209,7 +224,9 @@ export function genererAlertesData(db, user) {
     c.echeanceCode && jourIso(c.echeanceCode) <= new Date().toISOString().slice(0, 10) && c.segment !== 'Inactif'
   ));
 
-  push('Clients sans prochaine action définie', clientsAgent.filter(c => !c.echeanceActionSuivante && c.segment !== 'Inactif'));
+  push('Clients sans prochaine action définie', clientsAgent.filter(c =>
+    estEntreDansSuiviData(c) && !c.echeanceActionSuivante && c.segment !== 'Inactif'
+  ));
 
   push("Clients en attente d'informations", clientsAgent.filter(c =>
     ['Attente photos', 'Attente fournisseur', 'Attente HS Code', 'Attente quantité'].includes(c.etapePipeline)
@@ -219,7 +236,9 @@ export function genererAlertesData(db, user) {
 
   push('Relances dépassées', clientsAgent.filter(c => c.echeanceActionSuivante && jourIso(c.echeanceActionSuivante) < new Date().toISOString().slice(0, 10)));
 
-  push('Clients jamais contactés', clientsAgent.filter(c => !c.dernierContact && c.segment !== 'Inactif'));
+  push('Clients jamais contactés', clientsAgent.filter(c =>
+    estEntreDansSuiviData(c) && !c.dernierContact && c.segment !== 'Inactif'
+  ));
 
   const nom = user?.nomComplet || user?.identifiant;
   const lignesIncompletes = (db.demandeLignes || []).filter(l => {
