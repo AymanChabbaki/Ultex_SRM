@@ -163,7 +163,11 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
   const handleChangeSuiviData = (field, value, label) => {
     const oldValue = client[field] || '';
     if (oldValue === value) return;
-    const nextClients = (db.clients || []).map(c => c.code === code ? { ...c, [field]: value } : c);
+    const nextClients = (db.clients || []).map(c => c.code === code ? {
+      ...c,
+      [field]: value,
+      dateEntreeData: c.dateEntreeData || new Date().toISOString().slice(0, 10),
+    } : c);
     updateDB({ ...db, clients: nextClients });
     audit('Clients', `${label} modifié(e)`, code, field, oldValue || '—', value || '—');
     toast(`${label} enregistré${value ? ` : ${value}` : ''}.`);

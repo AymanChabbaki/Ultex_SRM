@@ -105,6 +105,10 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
       propre.code = newCode;
       propre.ts = Date.now();
       propre.par = userCourant;
+      if (moduleId === 'clients') {
+        propre.dateEntreeData = propre.dateEntreeData || new Date().toISOString().slice(0, 10);
+        propre.dateCreation = propre.dateCreation || propre.dateEntreeData;
+      }
       if (moduleId === 'demandes') {
         propre.referenceMetier = propre.referenceMetier || prochaineReferenceDemande(db, propre.client);
       } else if (moduleId === 'demandeLignes') {

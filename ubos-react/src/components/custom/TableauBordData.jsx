@@ -7,8 +7,8 @@ import StatCard from '../common/StatCard';
 import { pill } from '../../utils/format';
 import {
   genererFileDeTravail, genererAlertesData, calculerObjectifActif, calculerProgressionJour,
-  calculerSourcingsObtenus, genererResumeJournalier, clientsDeAgent, calculerPrioriteClient,
-  leadsDuJour, codesSansSuiviDepuis
+  calculerSourcingsObtenus, genererResumeJournalier, calculerPrioriteClient,
+  leadsDuJour, codesSansSuiviDepuis, clientsActifsData
 } from '../../utils/dataPipeline';
 import { PIPELINE_ETAPES_CLIENT } from '../../data/constants';
 
@@ -23,7 +23,7 @@ export default function TableauBordData({ user, isAdminView }) {
   const objectif = useMemo(() => calculerObjectifActif(db, user), [db, user]);
   const progression = useMemo(() => calculerProgressionJour(db, user), [db, user]);
   const sourcings = useMemo(() => calculerSourcingsObtenus(db, user), [db, user]);
-  const clientsAgent = useMemo(() => clientsDeAgent(db, user), [db, user]);
+  const clientsAgent = useMemo(() => clientsActifsData(db, user), [db, user]);
   const nouveauxLeads = useMemo(() => leadsDuJour(db, user), [db, user]);
   const sansSuiviUnMois = useMemo(() => codesSansSuiviDepuis(db, user, 30), [db, user]);
   const echeancesCodes = useMemo(() => {
@@ -130,7 +130,7 @@ export default function TableauBordData({ user, isAdminView }) {
         </div>
       </div>
 
-      <h3 className="titre-sec mt-lg">Mes clients ({clientsAgent.length})</h3>
+      <h3 className="titre-sec mt-lg">Mes clients actifs depuis le 18/09/2026 ({clientsAgent.length})</h3>
       <DataTable
         columns={[
           { key: 'code', label: 'Code', render: (v) => <a href={`#ficheClient:${v}`}>{v}</a> },
@@ -144,6 +144,9 @@ export default function TableauBordData({ user, isAdminView }) {
         ]}
         data={clientsAgent}
       />
+      <div className="panneau" style={{padding:'12px 16px', marginTop:'10px', fontSize:'13px'}}>
+        <b>Priorités :</b> Très chaud = jamais contacté · Chaud = contact dans les 3 derniers jours · Normal = 4 à 15 jours · Froid = 16 à 30 jours · Dormant = plus de 30 jours · Urgent = échéance dépassée ou urgence déclarée.
+      </div>
     </div>
   );
 }

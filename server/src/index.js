@@ -1165,6 +1165,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         codeClientUltex: codeClientUltex || '',
         segment: 'Prospect', nbRelances: 0,
         sourceDonnees: 'Workflow', datePremierContact: dateDemandeSource,
+        dateEntreeData: new Date().toISOString().slice(0, 10),
         dateDerniereDemande: dateDemandeSource, dataTag: dataTagLisible,
         remarque: origineRemarque
       };
@@ -1486,6 +1487,7 @@ app.post('/api/sync/sheets/lead', ultexSyncAuth, async (req, res) => {
         id: code, code, nom, telephone: telephone || '', email: email || '', ville: ville || '',
         codeClientUltex: codeClientUltex || '', segment: 'Prospect', nbRelances: 0,
         sourceDonnees: 'Google Sheets', datePremierContact: dateDemandeSource,
+        dateEntreeData: new Date().toISOString().slice(0, 10),
         dateDerniereDemande: dateDemandeSource, dataTag: dataTagLisible,
         echeanceCode: echeanceCode ? dateIsoJour(echeanceCode) : '',
         actionSuivante: actionSuivante || '', remarque: remarque || origineRemarque,

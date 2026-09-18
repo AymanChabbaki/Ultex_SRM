@@ -36,12 +36,23 @@ export const DEBUT_SUIVI_DATA = '2026-09-18';
 
 export function estEntreDansSuiviData(client, debut = DEBUT_SUIVI_DATA) {
   const dates = [
+    client.dateEntreeData,
     client.dateCreation,
     client.datePremierContact,
-    client.dateDerniereDemande,
-    client.dernierSuiviData,
   ].map(jourIso).filter(Boolean);
   return dates.some(date => date >= debut);
+}
+
+export function estDemandeDansSuiviData(demande, debut = DEBUT_SUIVI_DATA) {
+  const date = jourIso(demande.dateDemande || demande.dateHeureReception || demande.dateEntreeData);
+  return !!date && date >= debut;
+}
+
+export function clientsActifsData(db, user) {
+  const nom = user?.nomComplet || user?.identifiant;
+  return clientsDeAgent(db, user).filter(client =>
+    client.responsableCommercial === nom || estEntreDansSuiviData(client)
+  );
 }
 
 export function leadsDuJour(db, user, date = new Date()) {
@@ -123,7 +134,7 @@ export function genererFileDeTravail(db, user) {
     if (!cles.has(cle)) { cles.add(cle); items.push(item); }
   };
 
-  clientsDeAgent(db, user).forEach(c => {
+  clientsActifsData(db, user).forEach(c => {
     const echeanceJour = jourIso(c.echeanceActionSuivante);
     const due = echeanceJour && echeanceJour <= ajd;
     const jamaisContacte = !c.dernierContact && estEntreDansSuiviData(c);
@@ -176,7 +187,7 @@ export function genererFileDeTravail(db, user) {
         motif: 'echeance-demande',
       });
     }
-    const actionTag = ACTION_PAR_DATA_TAG[d.dataTag];
+    const actionTag = estDemandeDansSuiviData(d) ? ACTION_PAR_DATA_TAG[d.dataTag] : null;
     if (actionTag && !(echeance && echeance <= ajd)) {
       ajouter({
         type: 'demande', code: d.code, libelle: `${d.codeClientUltex || d.client || d.code} — ${d.objectifGeneral || 'Demande'}`,
@@ -213,7 +224,7 @@ const SEUIL_JOURS_SANS_RELANCE = 30;
 /** The 7 alerts that are actually derivable from real fields — no fabricated "blocked" state. */
 export function genererAlertesData(db, user) {
   const auj = new Date(new Date().toDateString());
-  const clientsAgent = clientsDeAgent(db, user);
+  const clientsAgent = clientsActifsData(db, user);
   const alertes = [];
 
   const push = (titre, clients) => { if (clients.length) alertes.push({ titre, clients }); };
