@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 import { createRequire } from 'module';
+import { lLeadHandler } from './sheetsLLeads.js';
 
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
@@ -1462,6 +1463,16 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
 // permanent CRM_SYNC_ID to each row, so sorting or moving rows never creates
 // duplicate clients/demandes. It uses the same server-to-server key as the
 // Workflow sync and feeds the exact same Data dashboard.
+//
+// lead-l is the L-code intake used by the two Google Forms/landing-page
+// sheets (see sheetsLLeads.js): a new lead becomes a CRM client identified
+// by its own L-code (L6910, L6911, ...), continuing the legacy L-series
+// from the old tracking sheet (last issued: L6909). A Postgres advisory
+// lock serializes allocation across BOTH sheets so they can never race for
+// the same number, and the sync is idempotent on sheetLeadId so an Apps
+// Script retry never creates a duplicate lead.
+app.post('/api/sync/sheets/lead-l', ultexSyncAuth, lLeadHandler(prisma));
+
 app.post('/api/sync/sheets/lead', ultexSyncAuth, async (req, res) => {
   const {
     sheetLeadId, codeClientUltex, nom, telephone, email, ville,
