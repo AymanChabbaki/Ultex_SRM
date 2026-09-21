@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -49,7 +50,7 @@ export default function Rapports() {
 
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead>
               <tr>
                 <th>Code</th>
@@ -78,7 +79,7 @@ export default function Rapports() {
                 ))
               )}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
     </>

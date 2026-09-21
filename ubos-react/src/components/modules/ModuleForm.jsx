@@ -7,6 +7,7 @@ import FormField from '../common/FormField';
 import { MODS as MODS_DATA } from '../../data/modules';
 import { detecterMentions } from '../../data/db';
 import { USERS } from '../../data/constants';
+import { recordFollowup } from '../../utils/dataFollowup';
 import { prochaineReferenceDemande, prochaineReferenceProduit, prochaineReferenceCommande, lignesCommandeDepuisDemande } from '../../utils/workflowArchitecture';
 
 export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, initialData, onClose }) {
@@ -90,7 +91,7 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
           }
         });
 
-        collection[idx] = obj;
+        collection[idx] = moduleId === 'clients' ? recordFollowup(ancien, obj, { actor: userCourant, notes: propre.remarque || '', action: 'Modification de la fiche' }) : obj;
         const nextDb = { ...db, [M.coll]: collection };
 
         if (M.apresSauve) {

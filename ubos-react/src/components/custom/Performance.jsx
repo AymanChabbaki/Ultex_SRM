@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -53,7 +54,7 @@ export default function Performance() {
 
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead>
               <tr>
                 <th>Utilisateur</th>
@@ -119,7 +120,7 @@ export default function Performance() {
                 );
               })}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
       <p style={{ color: "var(--gris)", fontSize: "12px", marginTop: "10px" }}>

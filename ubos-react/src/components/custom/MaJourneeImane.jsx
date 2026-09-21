@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useToast } from '../../context/ToastContext';
@@ -111,7 +112,7 @@ export default function MaJourneeImane({ user }) {
             <button className="btn mini doux" onClick={() => setFiltreActif(null)}>✕ Retirer le filtre</button>
           </div>
           <div className="defile">
-            <table>
+            <FilterTable>
               <thead><tr><th>Code</th><th>Action</th><th>Responsable</th><th>Échéance</th><th>Priorité</th><th></th></tr></thead>
               <tbody>
                 {carteActive.liste.length ? carteActive.liste.map(item => (
@@ -130,7 +131,7 @@ export default function MaJourneeImane({ user }) {
                   <tr><td colSpan="6"><div className="vide">Rien dans cette catégorie.</div></td></tr>
                 )}
               </tbody>
-            </table>
+            </FilterTable>
           </div>
         </div>
       )}

@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import { localDay } from '../../utils/dataFollowup';
 import { useDB } from '../../context/DBContext';
 import Topbar from '../layout/Topbar';
 import BarreProgression from '../common/BarreProgression';
@@ -9,15 +10,18 @@ import { suivisDeCoordinateur, calculerObjectifsClosingJour, calculerKpisClosing
 export default function MesObjectifs({ user, isAdminView }) {
   const { db } = useDB();
   const cible = user || {};
-  const objectif = useMemo(() => calculerObjectifActif(db, cible), [db, cible]);
-  const progression = useMemo(() => calculerProgressionJour(db, cible), [db, cible]);
+  const [dateObjectif, setDateObjectif] = useState(localDay());
+  const date = new Date(dateObjectif + 'T12:00');
+  const objectif = useMemo(() => calculerObjectifActif(db, cible, date), [db, cible, dateObjectif]);
+  const progression = useMemo(() => calculerProgressionJour(db, cible, date), [db, cible, dateObjectif]);
   const estCoordinateurClosing = suivisDeCoordinateur(db, cible).length > 0;
-  const closingJour = useMemo(() => estCoordinateurClosing ? calculerObjectifsClosingJour(db, cible) : null, [db, cible, estCoordinateurClosing]);
+  const closingJour = useMemo(() => estCoordinateurClosing ? calculerObjectifsClosingJour(db, cible, date) : null, [db, cible, estCoordinateurClosing, dateObjectif]);
   const closingPeriode = useMemo(() => estCoordinateurClosing ? calculerKpisClosingPeriode(db, cible) : null, [db, cible, estCoordinateurClosing]);
 
   return (
     <div>
       <Topbar titre={isAdminView ? `Objectifs — ${cible.nomComplet}` : 'Mes objectifs'} />
+      <label>Date des objectifs <input type="date" value={dateObjectif} onChange={e => e.target.value && setDateObjectif(e.target.value)} /></label>
 
       {objectif.parDefaut && (
         <div className="vide" style={{ textAlign: 'left', marginBottom: '14px' }}>{objectif.label}</div>

@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React from 'react';
 import { useDB } from '../../context/DBContext';
 import { useToast } from '../../context/ToastContext';
@@ -51,7 +52,7 @@ export default function FicheClientClosing({ codeProp, code: codeFromProp }) {
 
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead><tr><th>Dossier</th><th>Produit</th><th>Statut</th><th>Dernier contact</th><th></th></tr></thead>
             <tbody>
               {dossiers.map(d => (
@@ -64,7 +65,7 @@ export default function FicheClientClosing({ codeProp, code: codeFromProp }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
 

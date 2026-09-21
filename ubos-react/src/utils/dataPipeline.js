@@ -1,3 +1,5 @@
+import { localDay, localDateTime, deadlineDue } from './dataFollowup.js';
+
 /**
  * Clients "belonging" to an agent: assigned via responsableCommercial (name)
  * or via their service (e.g. "Data" for any team-wide fallback assignment).
@@ -56,22 +58,23 @@ export function clientsActifsData(db, user) {
 }
 
 export function leadsDuJour(db, user, date = new Date()) {
-  const jour = date.toISOString().slice(0, 10);
+  const jour = localDay(date);
   return demandesDeAgent(db, user)
-    .filter(d => (d.dateDemande || String(d.dateHeureReception || '').slice(0, 10)) === jour)
+    .filter(d => d.createdManually !== true && d.created_manually !== true && d.source !== 'Saisie manuelle')
+    .filter(d => (d.dateHeureReception ? localDay(new Date(d.dateHeureReception)) : d.dateDemande) === jour)
     .sort((a, b) => String(b.dateHeureReception || b.ts || '').localeCompare(String(a.dateHeureReception || a.ts || '')));
 }
 
 function dateSuiviClient(client) {
-  return client.dernierSuiviData || client.dernierContact || client.dateDerniereDemande || client.datePremierContact || null;
+  return client.dateDernierChangementEtat || client.dateEntreeData || client.dateCreation || client.datePremierContact || null;
 }
 
-export function codesSansSuiviDepuis(db, user, jours = 30, date = new Date()) {
-  const debutJour = new Date(date.toDateString());
-  return clientsDeAgent(db, user).filter(client => {
+export function codesSansSuiviDepuis(db, user, jours = 7, date = new Date()) {
+  const debutJour = date;
+  return clientsActifsData(db, user).filter(client => {
     if (client.segment === 'Inactif') return false;
     const valeur = dateSuiviClient(client);
-    if (!valeur) return true;
+    if (!valeur) return false;
     const suivi = new Date(valeur);
     return !Number.isNaN(suivi.getTime()) && Math.floor((debutJour - suivi) / 864e5) >= jours;
   });
@@ -94,7 +97,7 @@ export function calculerRelanceSuivante(nbRelances) {
   const jours = SEQUENCE_RELANCE_JOURS[idx];
   const d = new Date();
   d.setDate(d.getDate() + jours);
-  return d.toISOString().slice(0, 10);
+  return localDateTime(d);
 }
 
 /**
@@ -107,7 +110,7 @@ export function calculerPrioriteClient(client) {
 
   const auj = new Date(new Date().toDateString());
   const aujourdHui = new Date().toISOString().slice(0, 10);
-  if (client.echeanceActionSuivante && jourIso(client.echeanceActionSuivante) < aujourdHui) return { tag: 'Urgent', score: 90 };
+  if (deadlineDue(client.echeanceActionSuivante)) return { tag: 'Urgent', score: 90 };
   if (client.urgence === 'Urgente') return { tag: 'Urgent', score: 85 };
   if (!client.dernierContact) return { tag: 'Très chaud', score: 80 };
 
@@ -136,36 +139,36 @@ export function genererFileDeTravail(db, user) {
 
   clientsActifsData(db, user).forEach(c => {
     const echeanceJour = jourIso(c.echeanceActionSuivante);
-    const due = echeanceJour && echeanceJour <= ajd;
-    const jamaisContacte = !c.dernierContact && estEntreDansSuiviData(c);
+    const due = deadlineDue(c.echeanceActionSuivante);
+    const jamaisContacte = !c.dernierContact && !c.echeanceActionSuivante && estEntreDansSuiviData(c);
     if (due || jamaisContacte) {
       const { tag, score } = calculerPrioriteClient(c);
       ajouter({
         type: 'client', code: c.code, libelle: c.nom,
         sousLibelle: c.actionSuivante || (jamaisContacte ? 'Premier contact à effectuer' : 'Relance à effectuer'),
         lien: `#ficheClient:${c.code}`,
-        retard: !!(echeanceJour && echeanceJour < ajd),
+        retard: deadlineDue(c.echeanceActionSuivante),
         tag, score, motif: 'relance'
       });
     }
 
     const echeanceCode = jourIso(c.echeanceCode);
-    if (echeanceCode && echeanceCode <= ajd) {
+    if (deadlineDue(c.echeanceCode)) {
       ajouter({
         type: 'client', code: c.code, libelle: `${c.code} — ${c.nom}`,
         sousLibelle: c.actionSuivante || 'Traiter le code à la date promise au client',
-        lien: `#ficheClient:${c.code}`, retard: echeanceCode < ajd,
-        tag: echeanceCode < ajd ? 'Urgent' : "Aujourd'hui", score: echeanceCode < ajd ? 98 : 88,
+        lien: `#ficheClient:${c.code}`, retard: deadlineDue(c.echeanceCode),
+        tag: 'Urgent', score: 98,
         motif: 'echeance-code',
       });
     }
   });
 
-  codesSansSuiviDepuis(db, user, 30, auj).forEach(c => ajouter({
+  codesSansSuiviDepuis(db, user, 7, auj).forEach(c => ajouter({
     type: 'client', code: c.code, libelle: `${c.code} — ${c.nom}`,
-    sousLibelle: 'Aucun suivi Data depuis au moins un mois',
+    sousLibelle: 'Aucun changement d’état depuis une semaine',
     lien: `#ficheClient:${c.code}`, retard: true, tag: 'Dormant', score: 82,
-    motif: 'sans-suivi-30j',
+    motif: 'sans-etat-7j',
   }));
 
   const demandesAgent = demandesDeAgent(db, user);
@@ -178,17 +181,17 @@ export function genererFileDeTravail(db, user) {
 
   demandesAgent.forEach(d => {
     const echeance = jourIso(d.echeanceActionSuivante);
-    if (echeance && echeance <= ajd) {
+    if (deadlineDue(d.echeanceActionSuivante)) {
       ajouter({
         type: 'demande', code: d.code, libelle: `${d.codeClientUltex || d.client || d.code} — ${d.objectifGeneral || 'Demande'}`,
         sousLibelle: d.actionSuivante || 'Traiter l’échéance de la demande',
-        lien: `#ficheDemande:${d.code}`, retard: echeance < ajd,
-        tag: echeance < ajd ? 'Urgent' : "Aujourd'hui", score: echeance < ajd ? 96 : 86,
+        lien: `#ficheDemande:${d.code}`, retard: true,
+        tag: 'Urgent', score: 96,
         motif: 'echeance-demande',
       });
     }
     const actionTag = estDemandeDansSuiviData(d) ? ACTION_PAR_DATA_TAG[d.dataTag] : null;
-    if (actionTag && !(echeance && echeance <= ajd)) {
+    if (actionTag && !d.echeanceActionSuivante) {
       ajouter({
         type: 'demande', code: d.code, libelle: `${d.codeClientUltex || d.client || d.code} — ${d.objectifGeneral || 'Demande'}`,
         sousLibelle: `${actionTag} · Data Tag : ${d.dataTag}`,
@@ -203,7 +206,7 @@ export function genererFileDeTravail(db, user) {
   (db.taches || []).filter(t => t.statut !== 'Terminée' && ((user?.services || []).includes(t.assigne) || t.assigne === nom))
     .forEach(t => {
       const enRetard = !!(t.echeance && new Date(t.echeance) < auj);
-      const duJour = t.echeance === ajd;
+      const duJour = deadlineDue(t.echeance);
       if (!enRetard && !duJour) return;
       ajouter({
         type: 'tache', code: t.code, libelle: t.titre,
@@ -219,7 +222,7 @@ export function genererFileDeTravail(db, user) {
   return items.sort((a, b) => (b.retard - a.retard) || (b.score - a.score));
 }
 
-const SEUIL_JOURS_SANS_RELANCE = 30;
+const SEUIL_JOURS_SANS_RELANCE = 7;
 
 /** The 7 alerts that are actually derivable from real fields — no fabricated "blocked" state. */
 export function genererAlertesData(db, user) {
@@ -229,10 +232,10 @@ export function genererAlertesData(db, user) {
 
   const push = (titre, clients) => { if (clients.length) alertes.push({ titre, clients }); };
 
-  push('Codes sans suivi Data depuis 1 mois ou plus', codesSansSuiviDepuis(db, user, SEUIL_JOURS_SANS_RELANCE, auj));
+  push('Codes sans changement d’état depuis 1 semaine', codesSansSuiviDepuis(db, user, SEUIL_JOURS_SANS_RELANCE, auj));
 
   push('Échéances de traitement des codes arrivées', clientsAgent.filter(c =>
-    c.echeanceCode && jourIso(c.echeanceCode) <= new Date().toISOString().slice(0, 10) && c.segment !== 'Inactif'
+    deadlineDue(c.echeanceCode) && c.segment !== 'Inactif'
   ));
 
   push('Clients sans prochaine action définie', clientsAgent.filter(c =>
@@ -245,7 +248,7 @@ export function genererAlertesData(db, user) {
 
   push('Clients prêts à devenir une Demande', clientsAgent.filter(c => c.etapePipeline === 'Prêt pour Demande'));
 
-  push('Relances dépassées', clientsAgent.filter(c => c.echeanceActionSuivante && jourIso(c.echeanceActionSuivante) < new Date().toISOString().slice(0, 10)));
+  push('Relances dépassées', clientsAgent.filter(c => deadlineDue(c.echeanceActionSuivante)));
 
   push('Clients jamais contactés', clientsAgent.filter(c =>
     estEntreDansSuiviData(c) && !c.dernierContact && c.segment !== 'Inactif'
@@ -273,8 +276,8 @@ const OBJECTIF_PAR_DEFAUT = {
  * (`utilisateur` blank) covering the same date, else a clearly-labeled
  * default.
  */
-export function calculerObjectifActif(db, user) {
-  const ajd = new Date().toISOString().slice(0, 10);
+export function calculerObjectifActif(db, user, date = new Date()) {
+  const ajd = localDay(date);
   const actifs = (db.objectifsData || []).filter(o => o.dateDebut <= ajd && ajd <= o.dateFin);
   const nom = user?.nomComplet || user?.identifiant;
   const nominatif = nom && actifs.find(o => o.utilisateur === nom);
@@ -283,18 +286,18 @@ export function calculerObjectifActif(db, user) {
 }
 
 /** Real counters only — nothing here is estimated or simulated. */
-export function calculerProgressionJour(db, user) {
+export function calculerProgressionJour(db, user, date = new Date()) {
   const nom = user?.nomComplet || user?.identifiant;
   const ajd = new Date().toISOString().slice(0, 10);
-  const dateAuditAjd = new Date().toLocaleDateString('fr-FR');
+  const dateAuditAjd = date.toLocaleDateString('fr-FR');
   const auditAujourdhui = (db.audit || []).filter(a => a.utilisateur === nom && a.date === dateAuditAjd);
   const clientsAgent = clientsDeAgent(db, user);
 
   return {
     demandesCreees: auditAujourdhui.filter(a => a.module === 'Demandes' && a.action === 'Création').length,
     nouveauxClients: auditAujourdhui.filter(a => a.module === 'Clients' && a.action === 'Création').length,
-    clientsContactes: clientsAgent.filter(c => c.dernierContact === ajd).length,
-    relancesEffectuees: clientsAgent.filter(c => c.dernierContact === ajd && (c.nbRelances || 0) > 0).length
+    clientsContactes: new Set(auditAujourdhui.filter(a => a.module === 'Clients' && a.action === 'Contact effectué').map(a => a.objet)).size,
+    relancesEffectuees: auditAujourdhui.filter(a => a.module === 'Clients' && a.action === 'Contact effectué').length
   };
 }
 

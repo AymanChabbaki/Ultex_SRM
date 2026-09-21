@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -47,7 +48,7 @@ export default function RapportLimexDirection() {
 
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead>
               <tr>
                 <th>Code</th>
@@ -70,7 +71,7 @@ export default function RapportLimexDirection() {
                 ))
               )}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
     </>

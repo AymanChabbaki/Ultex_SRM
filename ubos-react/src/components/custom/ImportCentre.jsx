@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -752,7 +753,7 @@ export default function ImportCentre() {
                 <ClipboardList size={16} /> File d'attente des fichiers à importer ({fileQueue.length})
               </h4>
               <div className="defile">
-                <table>
+                <FilterTable>
                   <thead>
                     <tr>
                       <th>Nom du fichier</th>
@@ -792,7 +793,7 @@ export default function ImportCentre() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </FilterTable>
               </div>
             </div>
           ) : (
@@ -828,7 +829,7 @@ export default function ImportCentre() {
               </div>
               {(db.limexImportHistory || []).length > 0 && (
                 <div className="defile" style={{ marginTop: '14px' }}>
-                  <table>
+                  <FilterTable>
                     <thead><tr><th>Version</th><th>Date</th><th>Fichier</th><th>Utilisateur</th><th>Ajoutés</th><th>Mis à jour</th><th>Désactivés</th></tr></thead>
                     <tbody>
                       {(db.limexImportHistory || []).slice(0, 5).map(h => (
@@ -838,7 +839,7 @@ export default function ImportCentre() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </FilterTable>
                 </div>
               )}
             </div>
@@ -857,7 +858,7 @@ export default function ImportCentre() {
             )}
           </div>
           <div className="defile">
-            <table>
+            <FilterTable>
               <thead>
                 <tr>
                   <th>Code Modèle</th>
@@ -880,7 +881,7 @@ export default function ImportCentre() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </FilterTable>
           </div>
         </div>
         </div>
@@ -895,7 +896,7 @@ export default function ImportCentre() {
             <History size={17} /> Historique permanent des importations
           </h4>
           <div className="defile">
-            <table>
+            <FilterTable>
               <thead>
                 <tr>
                   <th>Code Import</th>
@@ -935,7 +936,7 @@ export default function ImportCentre() {
                 ))}
                 {!historique.length && <tr><td colSpan="11" className="vide">Aucun historique d'import disponible.</td></tr>}
               </tbody>
-            </table>
+            </FilterTable>
           </div>
         </div>
       )}
@@ -950,7 +951,7 @@ export default function ImportCentre() {
           </h4>
           {erreursImport.length ? (
             <div className="defile">
-              <table>
+              <FilterTable>
                 <thead>
                   <tr>
                     <th>Fichier</th>
@@ -973,7 +974,7 @@ export default function ImportCentre() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </FilterTable>
             </div>
           ) : (
             <div className="vide" style={{ padding: '30px' }}>
@@ -1050,7 +1051,7 @@ export default function ImportCentre() {
                 Prévisualisation des 20 premières lignes avec décision par ligne :
               </b>
               <div className="defile" style={{ border: '1px solid var(--bord)', borderRadius: '10px' }}>
-                <table>
+                <FilterTable>
                   <thead>
                     <tr>
                       <th>Ligne</th>
@@ -1083,7 +1084,7 @@ export default function ImportCentre() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </FilterTable>
               </div>
             </div>
           </div>
@@ -1306,7 +1307,7 @@ export default function ImportCentre() {
                 Mappez les colonnes de votre fichier vers les champs UBOS :
               </b>
               <div className="defile">
-                <table>
+                <FilterTable>
                   <thead>
                     <tr>
                       <th>Colonne Fichier</th>
@@ -1340,7 +1341,7 @@ export default function ImportCentre() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </FilterTable>
               </div>
             </div>
           </div>

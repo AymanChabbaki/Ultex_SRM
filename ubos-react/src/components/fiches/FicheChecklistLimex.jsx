@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState, useMemo } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -197,7 +198,7 @@ export default function FicheChecklistLimex({ codeProp, code: codeFromProp }) {
       <h3 className="titre-sec">Portes de validation</h3>
       <div className="panneau mb-lg">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead>
               <tr><th>Porte</th><th>Contrôles P0 bloquants</th><th>Décision</th><th>Validateur / Date</th></tr>
             </thead>
@@ -222,7 +223,7 @@ export default function FicheChecklistLimex({ codeProp, code: codeFromProp }) {
                 );
               })}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
 
@@ -248,7 +249,7 @@ export default function FicheChecklistLimex({ codeProp, code: codeFromProp }) {
 
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead>
               <tr>
                 <th>ID</th><th>Domaine</th><th>Contrôle</th><th>Priorité</th><th>Applicable</th>
@@ -275,7 +276,7 @@ export default function FicheChecklistLimex({ codeProp, code: codeFromProp }) {
                 <tr><td colSpan="9" className="vide">Aucun contrôle ne correspond à ces filtres.</td></tr>
               )}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import Topbar from '../layout/Topbar';
@@ -81,7 +82,7 @@ export default function RechercheGlobale() {
               <h3>{r.label} — {r.items.length} résultat{r.items.length > 1 ? 's' : ''}</h3>
               <div className="panneau">
                 <div className="defile">
-                  <table>
+                  <FilterTable>
                     <thead>
                       <tr>
                         <th>Code</th>
@@ -107,7 +108,7 @@ export default function RechercheGlobale() {
                         );
                       })}
                     </tbody>
-                  </table>
+                  </FilterTable>
                 </div>
               </div>
             </div>

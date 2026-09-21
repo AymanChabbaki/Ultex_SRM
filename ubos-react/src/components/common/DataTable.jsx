@@ -1,9 +1,12 @@
+import FilterTable from './FilterTable';
 import React from 'react';
 import EmptyState from './EmptyState';
+import { formatCreationDate } from '../../utils/creationDate';
 
 const DataTable = ({ columns, data, actions, onRowClick }) => {
   const listData = Array.isArray(data) ? data : [];
-  const listCols = Array.isArray(columns) ? columns : [];
+  const originalCols = Array.isArray(columns) ? columns : [];
+  const listCols = originalCols.some(col => ['dateCreation', 'createdAt'].includes(col.key)) ? originalCols : [...originalCols, {key:'createdAt', label:'Date de création', render:(_, row) => formatCreationDate(row)}];
   const listActions = Array.isArray(actions) ? actions : [];
 
   if (listData.length === 0) {
@@ -13,7 +16,7 @@ const DataTable = ({ columns, data, actions, onRowClick }) => {
   return (
     <div className="panneau">
       <div className="defile">
-        <table>
+        <FilterTable>
           <thead>
             <tr>
               {listCols.map((col, i) => (
@@ -48,7 +51,7 @@ const DataTable = ({ columns, data, actions, onRowClick }) => {
               </tr>
             ))}
           </tbody>
-        </table>
+        </FilterTable>
       </div>
     </div>
   );

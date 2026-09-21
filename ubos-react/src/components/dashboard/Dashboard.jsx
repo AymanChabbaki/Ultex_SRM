@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useDB } from '../../context/DBContext';
@@ -141,7 +142,7 @@ export default function Dashboard() {
           <div className="panneau">
             {estDirection() ? (
               <div className="defile">
-                <table>
+                <FilterTable>
                   <thead>
                     <tr><th>Heure</th><th>Utilisateur</th><th>Module</th><th>Action</th><th>Objet</th></tr>
                   </thead>
@@ -157,7 +158,7 @@ export default function Dashboard() {
                     ))}
                     {!db.audit.length && <tr><td colSpan="5" className="vide">Aucune action enregistrée.</td></tr>}
                   </tbody>
-                </table>
+                </FilterTable>
               </div>
             ) : (
               <div className="note-verrou"><b>Réservé à la Direction</b>Le journal d'audit détaillé n'est visible que par la Direction.</div>
@@ -169,7 +170,7 @@ export default function Dashboard() {
       <h3 className="titre-sec mt-lg">Équipe — vue par utilisateur</h3>
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead>
               <tr><th>Utilisateur</th><th>Services</th><th>Tâches du jour</th><th>Tâches en retard</th><th>Dossiers affectés</th><th>Non lues</th><th>Actions (7 j)</th><th></th></tr>
             </thead>
@@ -191,7 +192,7 @@ export default function Dashboard() {
                 );
               })}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
     </>

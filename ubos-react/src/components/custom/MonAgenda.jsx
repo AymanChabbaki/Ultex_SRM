@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState, useMemo } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -167,7 +168,7 @@ export default function MonAgenda() {
               </h4>
               <div className="panneau">
                 <div className="defile">
-                  <table>
+                  <FilterTable>
                     <tbody>
                       {parJour[j].map((e, idx) => (
                         <tr key={idx}>
@@ -179,7 +180,7 @@ export default function MonAgenda() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </FilterTable>
                 </div>
               </div>
             </div>

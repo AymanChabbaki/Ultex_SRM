@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -47,7 +48,7 @@ export default function QuiFaitQuoi() {
       )}
       <div className="panneau mb-lg">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead><tr><th>Collaborateur</th><th>Tâches ouvertes</th><th>Dossiers actifs</th><th>Charge</th></tr></thead>
             <tbody>
               {charges.map(({ user, charge }) => (
@@ -57,7 +58,7 @@ export default function QuiFaitQuoi() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
 
@@ -96,14 +97,14 @@ export default function QuiFaitQuoi() {
       <h3 className="titre-sec mt-lg">Tâches à dépendance unique par dossier ({dependanceUnique.length})</h3>
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead><tr><th>Dossier</th><th>Responsable unique</th><th>Nb tâches</th></tr></thead>
             <tbody>
               {dependanceUnique.length ? dependanceUnique.map(([dossier, taches]) => (
                 <tr key={dossier}><td><a href={`#ficheDossier:${dossier}`}>{dossier}</a></td><td>{taches[0].assigne}</td><td>{taches.length}</td></tr>
               )) : <tr><td colSpan="3" className="vide">Aucune dépendance à personne unique détectée.</td></tr>}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
     </div>

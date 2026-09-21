@@ -1,3 +1,4 @@
+import { localDateTime } from '../../utils/dataFollowup';
 import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -346,7 +347,7 @@ export default function FicheSuiviClosing({ codeProp, code: codeFromProp }) {
                     {OPTIONS_DELAI_RELANCE.map(d => (
                       <button key={d} className={`btn mini ${delai === d && !dateChoisie ? 'or' : 'doux'}`} onClick={() => { setDelai(d); setDateChoisie(''); }}>{d}</button>
                     ))}
-                    <input type="date" value={dateChoisie} onChange={e => setDateChoisie(e.target.value)} />
+                    <input type="datetime-local" value={localDateTime(dateChoisie)} onChange={e => setDateChoisie(e.target.value)} />
                   </div>
                 </div>
                 <div className="champ large"><label>Note (facultatif)</label><input value={noteTraiter} onChange={e => setNoteTraiter(e.target.value)} /></div>
@@ -406,7 +407,7 @@ export default function FicheSuiviClosing({ codeProp, code: codeFromProp }) {
           <Modal title="Programmer une relance" onClose={fermer} footer={
             <><button className="btn doux" onClick={fermer}>Annuler</button><button className="btn or" onClick={handleProgrammerRelance}>Programmer</button></>
           }>
-            <div className="corps"><div className="champ large"><label>Date de relance</label><input type="date" value={relanceDate} onChange={e => setRelanceDate(e.target.value)} /></div></div>
+            <div className="corps"><div className="champ large"><label>Date de relance</label><input type="datetime-local" value={localDateTime(relanceDate)} onChange={e => setRelanceDate(e.target.value)} /></div></div>
           </Modal>
         )}
 
@@ -447,7 +448,7 @@ export default function FicheSuiviClosing({ codeProp, code: codeFromProp }) {
                 </select>
               </div>
               <div className="champ"><label>Responsable actuel</label><input value={editForm.responsableActionActuelle} onChange={e => setEditForm(prev => ({ ...prev, responsableActionActuelle: e.target.value }))} /></div>
-              <div className="champ"><label>Prochaine échéance</label><input type="date" value={editForm.echeanceActionSuivante} onChange={e => setEditForm(prev => ({ ...prev, echeanceActionSuivante: e.target.value }))} /></div>
+              <div className="champ"><label>Prochaine échéance</label><input type="datetime-local" value={localDateTime(editForm.echeanceActionSuivante)} onChange={e => setEditForm(prev => ({ ...prev, echeanceActionSuivante: e.target.value }))} /></div>
               <div className="champ large"><label>Action recommandée</label><input value={editForm.actionRecommandee} onChange={e => setEditForm(prev => ({ ...prev, actionRecommandee: e.target.value }))} /></div>
               <div className="champ large"><label>Remarque</label><textarea value={editForm.remarque} onChange={e => setEditForm(prev => ({ ...prev, remarque: e.target.value }))} /></div>
             </div>

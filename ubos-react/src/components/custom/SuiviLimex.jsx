@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState, useMemo } from 'react';
 import { useDB } from '../../context/DBContext';
 import Topbar from '../layout/Topbar';
@@ -85,7 +86,7 @@ export default function SuiviLimex({ user }) {
             </div>
             {ouvertes.length > 0 && (
               <div className="defile" style={{ marginTop: '10px' }}>
-                <table>
+                <FilterTable>
                   <thead><tr><th>Point</th><th>Responsable</th><th>Statut</th></tr></thead>
                   <tbody>
                     {ouvertes.slice(0, 6).map(a => (
@@ -96,7 +97,7 @@ export default function SuiviLimex({ user }) {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </FilterTable>
               </div>
             )}
             <a className="btn mini or" style={{ marginTop: '10px', display: 'inline-block' }} href={`#ficheSuiviLimex:${suivi.code}`}>Ouvrir le dossier</a>

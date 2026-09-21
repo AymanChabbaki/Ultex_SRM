@@ -12,6 +12,7 @@ import { PrinterIcon } from '../common/Icons';
 import { DATA_TAGS_WORKFLOW, PIPELINE_ETAPES_CLIENT } from '../../data/constants';
 import { calculerRelanceSuivante, calculerPrioriteClient } from '../../utils/dataPipeline';
 import { estSuiviOuvert } from '../../utils/closingCoordination';
+import { recordFollowup, localDateTime } from '../../utils/dataFollowup';
 import { pill } from '../../utils/format';
 import { categorieDepuisFichier, lireFichierDataUrl } from '../../utils/fileData';
 
@@ -88,6 +89,7 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
   const [onglet, setOnglet] = useState(ongletInitial || 'identite');
+  const [note, setNote] = useState('');
   const [uploadEnCours, setUploadEnCours] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showRattacher, setShowRattacher] = useState(false);
@@ -126,20 +128,23 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
   const demandes = (db?.demandes || []).filter(d => d.client === code);
   const contacts = (db?.contacts || []).filter(c => c.codeClientAssocie === code || c.client === code);
   const docs = (db?.documents || []).filter(d => d.client === code);
-  const historiqueAudit = (db?.audit || []).filter(a => a.ref === code);
+  const historiqueAudit = (db?.audit || []).filter(a => (a.objet || a.ref) === code);
+
+  const enregistrerSuivi = (patch, action) => {
+    const updated = recordFollowup(client, patch, { actor: userCourant, notes: note.trim(), action });
+    updateDB({ ...db, clients: (db.clients || []).map(c => c.code === code ? updated : c) });
+    setNote('');
+  };
 
   const handleMarquerContacte = () => {
     const ajd = new Date().toISOString().slice(0, 10);
     const prochaine = calculerRelanceSuivante(client.nbRelances || 0);
     const nbRelances = (client.nbRelances || 0) + 1;
-    const nextClients = (db.clients || []).map(c => c.code === code ? {
-      ...c,
-      dernierContact: ajd,
+    enregistrerSuivi({ dernierContact: ajd,
       dernierSuiviData: ajd,
       nbRelances,
       echeanceActionSuivante: prochaine,
-    } : c);
-    updateDB({ ...db, clients: nextClients });
+    }, 'Contact effectué');
     audit('Clients', 'Contact effectué', code, 'dernierContact', client.dernierContact, ajd);
     toast(`Contact enregistré. Prochaine relance : ${prochaine}.`);
   };
@@ -155,20 +160,14 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
   };
 
   const handleChangeEtape = (etape) => {
-    const nextClients = (db.clients || []).map(c => c.code === code ? { ...c, etapePipeline: etape } : c);
-    updateDB({ ...db, clients: nextClients });
+    enregistrerSuivi({ etapePipeline: etape }, 'Étape modifiée');
     audit('Clients', 'Étape pipeline modifiée', code, 'etapePipeline', client.etapePipeline, etape);
   };
 
   const handleChangeSuiviData = (field, value, label) => {
     const oldValue = client[field] || '';
     if (oldValue === value) return;
-    const nextClients = (db.clients || []).map(c => c.code === code ? {
-      ...c,
-      [field]: value,
-      dateEntreeData: c.dateEntreeData || new Date().toISOString().slice(0, 10),
-    } : c);
-    updateDB({ ...db, clients: nextClients });
+    enregistrerSuivi({ [field]: value, dateEntreeData: client.dateEntreeData || new Date().toISOString() }, label);
     audit('Clients', `${label} modifié(e)`, code, field, oldValue || '—', value || '—');
     toast(`${label} enregistré${value ? ` : ${value}` : ''}.`);
   };
@@ -290,6 +289,10 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
         {onglet === "docs" && (
           <div className="bloc-fiche large">
             <h4>Darf — Tous les fichiers du client</h4>
+            <div className="champ"><label>Message / notes</label>
+              <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Message reçu ou notes du client…" />
+              <button className="btn" disabled={!note.trim()} onClick={() => enregistrerSuivi({}, 'Note Darf')}>Enregistrer la note</button>
+            </div>
             <div className="panneau" style={{padding:'14px', marginBottom:'14px'}}>
               <label className="btn or" style={{display:'inline-flex', cursor: uploadEnCours ? 'wait' : 'pointer'}}>
                 {uploadEnCours ? 'Ajout en cours…' : '+ Ajouter des fichiers'}
@@ -373,7 +376,7 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
         {onglet === "suiviData" && (
           <div className="bloc-fiche large">
             <h4>
-              Suivi Data
+              Suivi Data {client.etatVersion > 0 && <span className="pill p-gris">V{client.etatVersion}</span>}
               <span style={{float:'right', display:'flex', gap:'6px'}}>
                 {client.dataTag ? pill(client.dataTag, 'p-bleu') : null}
                 {pill(calculerPrioriteClient(client).tag, 'p-or')}
@@ -394,8 +397,8 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
                 <div className="champ">
                   <label>Échéance de traitement du code</label>
                   <input
-                    type="date"
-                    value={client.echeanceCode || ''}
+                    type="datetime-local"
+                    value={localDateTime(client.echeanceCode)}
                     onChange={e => handleChangeSuiviData('echeanceCode', e.target.value, 'Échéance du code')}
                   />
                 </div>
@@ -405,6 +408,13 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
               </small>
             </div>
             <KVDisplay data={client} fields={CHAMPS_SUIVI_DATA} />
+            <div className="champ"><label>Notes de relance / changement d’état</label>
+              <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Note conservée avec votre prochaine action" />
+              <button className="btn doux" disabled={!note.trim()} onClick={() => enregistrerSuivi({}, 'Note de suivi')}>Enregistrer la note</button>
+            </div>
+            <div className="champ"><label>Prochaine relance — date et heure</label>
+              <input type="datetime-local" value={localDateTime(client.echeanceActionSuivante)} onChange={e => handleChangeSuiviData('echeanceActionSuivante', e.target.value, 'Prochaine relance')} />
+            </div>
             <div style={{display:'flex', gap:'10px', alignItems:'flex-end', marginTop:'14px', flexWrap:'wrap'}}>
               <div className="champ" style={{maxWidth:'320px'}}>
                 <label>Changer l'étape du pipeline</label>
@@ -420,10 +430,17 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
 
         <div className="bloc-fiche large" style={{marginTop:'20px'}}>
           <h4>Historique / Audit</h4>
+          <DataTable columns={[
+            {key:'date', label:'Date et heure', render:v => new Date(v).toLocaleString('fr-FR')},
+            {key:'version', label:'Version état', render:v => v ? 'V' + v : '—'},
+            {key:'utilisateur', label:'Utilisateur'}, {key:'action', label:'Action'},
+            {key:'avant', label:'État précédent'}, {key:'etat', label:'État'},
+            {key:'etape', label:'Étape'}, {key:'notes', label:'Notes'}, {key:'echeance', label:'Échéance'},
+          ]} data={[...(client.historiqueSuivi || [])].reverse()} />
           <DataTable 
             columns={[
               {key: 'ts', label: 'Date', render: (val) => new Date(val).toLocaleString()},
-              {key: 'par', label: 'Utilisateur'},
+              {key: 'utilisateur', label: 'Utilisateur'},
               {key: 'action', label: 'Action'},
               {key: 'champ', label: 'Champ'},
               {key: 'apres', label: 'Valeur'}

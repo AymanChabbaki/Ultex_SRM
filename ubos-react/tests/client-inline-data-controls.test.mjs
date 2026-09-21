@@ -9,6 +9,6 @@ test('la fiche client modifie directement le Data Tag et son échéance', () => 
   assert.match(source, /handleChangeSuiviData\('dataTag'/);
   assert.match(source, /handleChangeSuiviData\('echeanceCode'/);
   assert.match(source, /value=\{client\.dataTag \|\| ''\}/);
-  assert.match(source, /value=\{client\.echeanceCode \|\| ''\}/);
+  assert.match(source, /value=\{localDateTime\(client\.echeanceCode\)\}/);
   assert.match(source, /audit\('Clients', `\$\{label\} modifié\(e\)`/);
 });

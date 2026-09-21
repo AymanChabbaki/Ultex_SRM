@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState, useMemo } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -10,6 +11,7 @@ import { exporterExcel } from '../../utils/export';
 import { DownloadIcon } from '../common/Icons';
 import * as Actions from '../../utils/businessActions';
 import { supprimerEnregistrementSecurise } from '../../services/security';
+import { formatCreationDate } from '../../utils/creationDate';
 import { codeClientAffiche, groupeCodeClient, GROUPES_CODES_CLIENT } from '../../utils/clientCodeGroups';
 
 const PERMISSION_REQUISE = {
@@ -176,10 +178,11 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
 
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead>
               <tr>
                 <th>Code</th>
+                <th>Date de création</th>
                 {(M.cols || []).map(c => <th key={c[1]}>{c[1]}</th>)}
                 <th>Actions</th>
               </tr>
@@ -187,7 +190,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
             <tbody>
               {!lignes.length ? (
                 <tr>
-                  <td colSpan={(M.cols || []).length + 2}>
+                  <td colSpan={(M.cols || []).length + 3}>
                     <div className="vide">
                       <b>Aucun enregistrement</b>
                       Ajoutez le premier élément avec le bouton « + Ajouter ».
@@ -199,7 +202,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
                   <React.Fragment key={o.code}>
                   {moduleId === 'produits' && (rowIndex === 0 || (lignes[rowIndex - 1].hsCode || '') !== (o.hsCode || '')) && (
                     <tr className="groupe-hs">
-                      <td colSpan={(M.cols || []).length + 2} style={{ fontWeight: 700, background: 'var(--fond-jaune)' }}>
+                      <td colSpan={(M.cols || []).length + 3} style={{ fontWeight: 700, background: 'var(--fond-jaune)' }}>
                         Groupe HS : {o.hsCode || 'Sans HS Code'}
                       </td>
                     </tr>
@@ -208,7 +211,9 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
                     <td className="code">
                       {M.fiche ? <a href={`#${M.fiche}:${o.code}`}>{moduleId === 'clients' ? codeClientAffiche(o) : (o.referenceMetier || o.code)}</a> : (o.referenceMetier || o.code)}
                     </td>
+                    <td>{formatCreationDate(o)}</td>
                     {(M.cols || []).map(c => {
+                      // Column values retain their original formatting.
                       const val = o[c[0]];
                       let content = val ?? "—";
                       if (c[2]) {
@@ -249,7 +254,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
                 ))
               )}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
       

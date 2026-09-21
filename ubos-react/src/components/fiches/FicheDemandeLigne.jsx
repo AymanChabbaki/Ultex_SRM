@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -281,12 +282,12 @@ export default function FicheDemandeLigne({ codeProp, code: codeFromProp }) {
     if (typeTraitement === 'Fournisseur connu, Proforma disponible' || typeTraitement === 'Calcul direct possible') {
       return (
         <>
-          <table style={{ marginBottom: '12px' }}>
+          <FilterTable style={{ marginBottom: '12px' }}>
             <thead><tr><th>Élément</th><th>Statut</th></tr></thead>
             <tbody>
               {checklist.map(c => <tr key={c.champ}><td>{c.label}</td><td>{pill(c.statut, STATUT_CHECKLIST_PILL[c.statut] || 'p-gris')}</td></tr>)}
             </tbody>
-          </table>
+          </FilterTable>
           <button className="btn or" onClick={() => envoyer('Études & Chiffrage', { sousReserve: !verifCalcul.ok, manquants: verifCalcul.manquants, titreNotif: 'NOUVELLE DEMANDE — ÉTUDES & CHIFFRAGE' })}>
             {verifCalcul.ok ? 'Envoyer à Études & Chiffrage' : 'Envoyer sous réserve'}
           </button>

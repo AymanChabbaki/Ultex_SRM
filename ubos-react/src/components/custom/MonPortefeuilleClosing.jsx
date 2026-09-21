@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState, useMemo } from 'react';
 import { useDB } from '../../context/DBContext';
 import Topbar from '../layout/Topbar';
@@ -82,7 +83,7 @@ export default function MonPortefeuilleClosing({ user }) {
 
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead><tr><th>Code client</th><th>Dossier</th><th>Statut</th><th>Dernière action</th><th>Dernier contact</th><th>Prochaine action</th><th>Prochaine échéance</th><th>Responsable actuel</th><th>Alerte</th><th></th></tr></thead>
             <tbody>
               {filtres.length ? filtres.map(s => {
@@ -105,7 +106,7 @@ export default function MonPortefeuilleClosing({ user }) {
                 <tr><td colSpan="10"><div className="vide"><b>Rien ici</b> Aucun code ne correspond à ce filtre. {recherche.trim() && 'Vérifiez le code saisi — recherche partielle acceptée (ex. "84" trouve "8477").'}</div></td></tr>
               )}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
     </div>

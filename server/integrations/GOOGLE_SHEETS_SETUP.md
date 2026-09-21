@@ -15,4 +15,3 @@ Deux colonnes techniques sont ajoutées automatiquement :
 
 - `CRM_SYNC_ID` : identifiant permanent empêchant les doublons même après tri des lignes.
 - `CRM_SYNC_STATUS` : résultat et heure de la dernière synchronisation.
-

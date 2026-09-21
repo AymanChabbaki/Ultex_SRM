@@ -407,7 +407,7 @@ app.get('/api/db', authMiddleware, async (req, res) => {
     const items = await prisma.collectionItem.findMany();
     items.forEach(item => {
       if (dbState[item.collection]) {
-        dbState[item.collection].push({ id: item.id, ...item.data });
+        dbState[item.collection].push({ id: item.id, createdAt: item.createdAt.toISOString(), ...item.data });
       }
     });
 
@@ -895,6 +895,24 @@ function normaliserDataTag(value) {
   return LIBELLE_DATA_TAG[brut] || brut;
 }
 
+function versionnerEtatSynchronise(ancien, suivant, auteur) {
+  if ((ancien.dataTag || '') === (suivant.dataTag || '')) return;
+  const now = new Date();
+  suivant.etatVersion = (Number(ancien.etatVersion) || 0) + 1;
+  suivant.dateDernierChangementEtat = now.toISOString();
+  suivant.historiqueSuivi = [...(ancien.historiqueSuivi || []), {
+    id: crypto.randomUUID(), ts: now.getTime(), date: now.toISOString(),
+    version: suivant.etatVersion, utilisateur: auteur, action: 'État synchronisé',
+    avant: ancien.dataTag || '', etat: suivant.dataTag || '', notes: '',
+  }];
+}
+
+function dateHeureEcheance(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
 function dateIsoJour(value, fallback = new Date()) {
   const date = value ? new Date(value) : fallback;
   return Number.isNaN(date.getTime()) ? fallback.toISOString().slice(0, 10) : date.toISOString().slice(0, 10);
@@ -1089,7 +1107,7 @@ async function fusionnerDoublonsClientParTelephone(canonicalClient, telephone) {
 
 app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   const {
-    ultexDossierId, referenceCode, nom, telephone, email, ville, dateReception, dataTag,
+    ultexDossierId, referenceCode, nom, telephone, email, ville, dateReception, dataTag, createdManually,
     objectifGeneral, typeProjet, urgence, budgetGlobalEstime, remarque,
     // Global ULTEX client code (e.g. "A201"), shared across all of that
     // client's dossiers -- visible cross-system identifier, not just an
@@ -1145,6 +1163,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         dateDerniereDemande: sourceEstLaPlusRecente ? dateDemandeSource : client.data.dateDerniereDemande,
         ...(dataTagRecu && sourceEstLaPlusRecente ? { dataTag: dataTagLisible } : {})
       };
+      versionnerEtatSynchronise(client.data, merged, merged.sourceDonnees);
       if (codeClientUltex && client.code !== codeClientUltex) {
         // ULTEX is authoritative for the cross-system client code. This also
         // repairs legacy cases where the CRM kept an obsolete A-code (not
@@ -1258,6 +1277,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         dateHeureReception: dateReception || demande.data.dateHeureReception || dateDemandeSource,
         responsableData: demande.data.responsableData || 'Data',
         sourceSynchronisation: 'Workflow',
+        ...(typeof createdManually === 'boolean' ? { createdManually } : {}),
         modeTransport: modeTransport || demande.data.modeTransport,
         montantVente: montantVente != null ? montantVente : demande.data.montantVente,
         montantAchat: montantAchat != null ? montantAchat : demande.data.montantAchat,
@@ -1267,6 +1287,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         budgetGlobalEstime: budgetGlobalEstime != null ? budgetGlobalEstime : demande.data.budgetGlobalEstime,
         remarqueGenerale: remarque || demande.data.remarqueGenerale
       };
+      versionnerEtatSynchronise(demande.data, merged, 'Workflow');
       demande = await prisma.collectionItem.update({
         where: { collection_id: { collection: 'demandes', id: demande.id } },
         data: { data: merged }
@@ -1282,7 +1303,8 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         montantVente: montantVente != null ? montantVente : undefined,
         montantAchat: montantAchat != null ? montantAchat : undefined,
         dateDemande: dateDemandeSource, dateHeureReception: dateReception || dateDemandeSource,
-        source: 'WhatsApp', canalReception: 'WhatsApp', sourceSynchronisation: 'Workflow',
+        source: createdManually ? 'Saisie manuelle' : 'WhatsApp', canalReception: createdManually ? 'Saisie manuelle' : 'WhatsApp', sourceSynchronisation: 'Workflow',
+        createdManually: createdManually === true,
         responsableData: 'Data', dataTag: dataTagLisible,
         objectifGeneral: objectifGeneral || '—', typeProjet: typeProjet || undefined,
         urgence: urgence || 'Normale',
@@ -1470,9 +1492,10 @@ app.post('/api/sync/sheets/lead', ultexSyncAuth, async (req, res) => {
         sourceDonnees: 'Google Sheets',
         dateDerniereDemande: sourceEstLaPlusRecente ? dateDemandeSource : client.data.dateDerniereDemande,
         ...(dataTag !== undefined && sourceEstLaPlusRecente ? { dataTag: dataTagLisible } : {}),
-        ...(echeanceCode ? { echeanceCode: dateIsoJour(echeanceCode) } : {}),
+        ...(echeanceCode ? { echeanceCode: dateHeureEcheance(echeanceCode) } : {}),
         ...(actionSuivante ? { actionSuivante } : {}),
       };
+      versionnerEtatSynchronise(client.data, merged, merged.sourceDonnees);
       if (codeClientUltex && client.code !== codeClientUltex) {
         client = await adopterCodeUltex(client, codeClientUltex, merged);
       } else {
@@ -1489,7 +1512,7 @@ app.post('/api/sync/sheets/lead', ultexSyncAuth, async (req, res) => {
         sourceDonnees: 'Google Sheets', datePremierContact: dateDemandeSource,
         dateEntreeData: new Date().toISOString().slice(0, 10),
         dateDerniereDemande: dateDemandeSource, dataTag: dataTagLisible,
-        echeanceCode: echeanceCode ? dateIsoJour(echeanceCode) : '',
+        echeanceCode: echeanceCode ? dateHeureEcheance(echeanceCode) : '',
         actionSuivante: actionSuivante || '', remarque: remarque || origineRemarque,
       };
       try {
@@ -1557,7 +1580,7 @@ app.post('/api/sync/sheets/lead', ultexSyncAuth, async (req, res) => {
           budgetGlobalEstime: budgetGlobalEstime != null ? Number(budgetGlobalEstime) : demande.data.budgetGlobalEstime,
           remarqueGenerale: remarque || demande.data.remarqueGenerale,
           dataTag: dataTag !== undefined ? dataTagLisible : demande.data.dataTag,
-          echeanceActionSuivante: echeanceCode ? dateIsoJour(echeanceCode) : demande.data.echeanceActionSuivante,
+          echeanceActionSuivante: echeanceCode ? dateHeureEcheance(echeanceCode) : demande.data.echeanceActionSuivante,
           actionSuivante: actionSuivante || demande.data.actionSuivante,
         } },
       });
@@ -1573,7 +1596,7 @@ app.post('/api/sync/sheets/lead', ultexSyncAuth, async (req, res) => {
         sensOperation: sensOperation || undefined, urgence: urgence || 'Normale',
         budgetGlobalEstime: budgetGlobalEstime != null && budgetGlobalEstime !== '' ? Number(budgetGlobalEstime) : undefined,
         remarqueGenerale: remarque || origineRemarque, statut: 'Nouvelle', dataTag: dataTagLisible,
-        echeanceActionSuivante: echeanceCode ? dateIsoJour(echeanceCode) : '',
+        echeanceActionSuivante: echeanceCode ? dateHeureEcheance(echeanceCode) : '',
         actionSuivante: actionSuivante || '',
       };
       demande = await prisma.collectionItem.create({ data: { collection: 'demandes', id: code, code, data } });

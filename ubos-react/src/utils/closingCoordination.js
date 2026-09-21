@@ -355,11 +355,11 @@ export function calculerPipelineClosing(db, user) {
 }
 
 /** Compteurs du jour/semaine (§15/§19) — dérivés de champs réels et de l'audit, jamais estimés. */
-export function calculerObjectifsClosingJour(db, user) {
+export function calculerObjectifsClosingJour(db, user, date = new Date()) {
   const nom = user?.nomComplet || user?.identifiant;
-  const ajd = AJD_ISO();
-  const dateAuditAjd = new Date().toLocaleDateString('fr-FR');
-  const auj = AUJOURD_HUI();
+  const ajd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const dateAuditAjd = date.toLocaleDateString('fr-FR');
+  const auj = new Date(date.toDateString());
   const septJoursAvant = new Date(auj); septJoursAvant.setDate(septJoursAvant.getDate() - 7);
 
   const suivis = suivisDeCoordinateur(db, user);
@@ -367,7 +367,7 @@ export function calculerObjectifsClosingJour(db, user) {
 
   return {
     codesSuivis: suivis.filter(estSuiviOuvert).length,
-    clientsContactes: suivis.filter(s => s.dernierContact === ajd).length,
+    clientsContactes: new Set(auditAujourdhui.filter(a => a.action === 'Contact enregistré').map(a => a.objet)).size,
     relancesRealisees: auditAujourdhui.filter(a => a.action === 'Contact enregistré').length,
     devisValides: auditAujourdhui.filter(a => a.action === 'Devis validé').length,
     retoursCorrection: auditAujourdhui.filter(a => a.action === 'Devis à revoir').length,

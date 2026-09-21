@@ -37,6 +37,12 @@ const Topbar = ({ titre, toggleSidebar: propToggle }) => {
         <MenuIcon size={18} color="#ffffff" />
       </button>
       <h2>{titre}</h2>
+      {window.location.hash.startsWith('#fiche') && (
+        <button className="btn mini doux" onClick={() => {
+          if (window.history.length > 1) window.history.back();
+          else window.location.hash = 'dashboard';
+        }}>← Retour</button>
+      )}
       <input 
         type="search" 
         className="gsearch" 

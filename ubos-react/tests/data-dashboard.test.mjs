@@ -32,12 +32,12 @@ test('Data dashboard lists today leads from Workflow and Google Sheets', () => {
   assert.deepEqual(leadsDuJour(database(), user, today).map(item => item.code).sort(), ['D1', 'D2']);
 });
 
-test('code deadlines and one-month follow-up gaps become daily work', () => {
+test('code deadlines remain visible and historical clients stay outside the weekly state alert', () => {
   const db = database();
-  assert.deepEqual(codesSansSuiviDepuis(db, user, 30, today).map(item => item.code), ['L300']);
+  assert.deepEqual(codesSansSuiviDepuis(db, user, 7, today), []);
   const work = genererFileDeTravail(db, user);
   assert.ok(work.some(item => item.code === 'L100' && item.motif === 'echeance-code'));
-  assert.ok(work.some(item => item.code === 'L300' && item.motif === 'sans-suivi-30j'));
+  assert.ok(!work.some(item => item.code === 'L300' && item.motif === 'sans-etat-7j'));
 });
 
 test('historical clients do not flood new missing-action alerts or first-contact work', () => {

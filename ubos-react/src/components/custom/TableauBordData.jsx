@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import Topbar from '../layout/Topbar';
 import DataTable from '../common/DataTable';
@@ -10,32 +10,33 @@ import {
   calculerSourcingsObtenus, genererResumeJournalier, calculerPrioriteClient,
   leadsDuJour, codesSansSuiviDepuis, clientsActifsData
 } from '../../utils/dataPipeline';
-import { PIPELINE_ETAPES_CLIENT } from '../../data/constants';
+import { localDay, deadlineDue } from '../../utils/dataFollowup';
 
 const TAG_PILL_CLASS = { Urgent: 'p-rouge', "Aujourd'hui": 'p-or', Nouveau: 'p-vert', 'Très chaud': 'p-or', Chaud: 'p-ambre', Normal: 'p-gris', Froid: 'p-bleu', Dormant: 'p-gris', VIP: 'p-vert' };
 
 export default function TableauBordData({ user, isAdminView }) {
   const { db } = useDB();
   const [resume, setResume] = useState(null);
+  const [dateObjectif, setDateObjectif] = useState(localDay());
+  const [clock, setClock] = useState(Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setClock(Date.now()), 30000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const file = useMemo(() => genererFileDeTravail(db, user), [db, user]);
-  const alertes = useMemo(() => genererAlertesData(db, user), [db, user]);
-  const objectif = useMemo(() => calculerObjectifActif(db, user), [db, user]);
-  const progression = useMemo(() => calculerProgressionJour(db, user), [db, user]);
+  const file = useMemo(() => genererFileDeTravail(db, user), [db, user, clock]);
+  const alertes = useMemo(() => genererAlertesData(db, user), [db, user, clock]);
+  const objectif = useMemo(() => calculerObjectifActif(db, user, new Date(dateObjectif + 'T12:00')), [db, user, dateObjectif]);
+  const progression = useMemo(() => calculerProgressionJour(db, user, new Date(dateObjectif + 'T12:00')), [db, user, dateObjectif]);
   const sourcings = useMemo(() => calculerSourcingsObtenus(db, user), [db, user]);
   const clientsAgent = useMemo(() => clientsActifsData(db, user), [db, user]);
   const nouveauxLeads = useMemo(() => leadsDuJour(db, user), [db, user]);
-  const sansSuiviUnMois = useMemo(() => codesSansSuiviDepuis(db, user, 30), [db, user]);
+  const sansSuiviUnMois = useMemo(() => codesSansSuiviDepuis(db, user, 7), [db, user]);
   const echeancesCodes = useMemo(() => {
     const jour = new Date().toISOString().slice(0, 10);
-    return clientsAgent.filter(c => c.echeanceCode && String(c.echeanceCode).slice(0, 10) <= jour);
-  }, [clientsAgent]);
+    return clientsAgent.filter(c => deadlineDue(c.echeanceCode));
+  }, [clientsAgent, clock]);
 
-  const parEtape = useMemo(() => {
-    const map = Object.fromEntries(PIPELINE_ETAPES_CLIENT.map(e => [e, []]));
-    clientsAgent.forEach(c => { if (map[c.etapePipeline]) map[c.etapePipeline].push(c); });
-    return map;
-  }, [clientsAgent]);
 
   return (
     <div>
@@ -55,7 +56,7 @@ export default function TableauBordData({ user, isAdminView }) {
         <StatCard val={nouveauxLeads.length} label="Leads reçus aujourd'hui" />
         <StatCard val={file.length} label="Actions Data à traiter" alerte={file.some(item => item.retard)} />
         <StatCard val={echeancesCodes.length} label="Échéances code arrivées" alerte={echeancesCodes.length > 0} />
-        <StatCard val={sansSuiviUnMois.length} label="Codes sans suivi depuis 1 mois" alerte={sansSuiviUnMois.length > 0} />
+        <StatCard val={sansSuiviUnMois.length} label="Sans changement d’état depuis 1 semaine" alerte={sansSuiviUnMois.length > 0} />
       </div>
 
       <h3 className="titre-sec mt-lg">Leads reçus aujourd'hui</h3>
@@ -66,7 +67,7 @@ export default function TableauBordData({ user, isAdminView }) {
             { key: 'objectifGeneral', label: 'Besoin / produit' },
             { key: 'dateHeureReception', label: 'Reçu le', render: (v, o) => v || o.dateDemande || '—' },
             { key: 'sourceSynchronisation', label: 'Source', render: (v, o) => pill(v || o.source || '—', 'p-gris') },
-            { key: 'dataTag', label: 'Data Tag', render: (v) => v ? pill(v, 'p-bleu') : '—' },
+            { key: 'dataTag', label: 'Data Tag', render: (v, o) => v ? pill((o.etatVersion ? 'V' + o.etatVersion + ' · ' : '') + v, 'p-bleu') : '—' },
             { key: 'statut', label: 'État', render: (v) => pill(v || 'Nouvelle', 'p-gris') },
           ]}
           data={nouveauxLeads}
@@ -74,8 +75,9 @@ export default function TableauBordData({ user, isAdminView }) {
       </div>
 
       <div className="panneau mb-lg" style={{ padding: '18px 22px' }}>
-        <h4 style={{ marginTop: 0 }}>Objectifs du jour {!objectif.parDefaut ? `— ${objectif.label}` : ''}</h4>
-        <BarreProgression val={progression.demandesCreees} obj={objectif.demandesParJour} label="Demandes créées aujourd'hui" />
+        <label>Date des objectifs <input type="date" value={dateObjectif} onChange={e => e.target.value && setDateObjectif(e.target.value)} /></label>
+        <h4 style={{ marginTop: 0 }}>Objectifs du {dateObjectif} {!objectif.parDefaut ? `— ${objectif.label}` : ''}</h4>
+        <BarreProgression val={progression.demandesCreees} obj={objectif.demandesParJour} label="Demandes créées à la date sélectionnée" />
         <BarreProgression val={progression.clientsContactes} obj={objectif.clientsContactesParJour} label="Clients contactés" />
         <BarreProgression val={progression.relancesEffectuees} obj={objectif.relancesParJour} label="Relances effectuées" />
         <BarreProgression val={progression.nouveauxClients} obj={objectif.nouveauxClientsParJour} label="Nouveaux clients créés" />
@@ -118,16 +120,6 @@ export default function TableauBordData({ user, isAdminView }) {
             </div>
           </div>
         )) : <div className="vide"><b>Rien à signaler</b>Aucune alerte pour le moment.</div>}
-      </div>
-
-      <h3 className="titre-sec mt-lg">Pipeline</h3>
-      <div className="panneau mb-lg">
-        <div className="defile">
-          <table>
-            <thead><tr>{PIPELINE_ETAPES_CLIENT.map(e => <th key={e}>{e}</th>)}</tr></thead>
-            <tbody><tr>{PIPELINE_ETAPES_CLIENT.map(e => <td key={e} style={{ textAlign: 'center', fontWeight: 700 }}>{parEtape[e]?.length || 0}</td>)}</tr></tbody>
-          </table>
-        </div>
       </div>
 
       <h3 className="titre-sec mt-lg">Mes clients actifs depuis le 18/09/2026 ({clientsAgent.length})</h3>

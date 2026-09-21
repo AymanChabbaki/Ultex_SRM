@@ -2,6 +2,7 @@ import React from 'react';
 import { useDB } from '../../context/DBContext';
 import { INCOTERMS_2020, PAYS_MONDE, PORTS_MONDE, AEROPORTS_MONDE } from '../../data/constants';
 import SearchableSelect from './SearchableSelect';
+import { localDateTime } from '../../utils/dataFollowup';
 
 const BulleAide = ({ texte }) => {
   if (!texte) return null;
@@ -33,7 +34,8 @@ const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, opt
   };
 
   let inputEl = null;
-  const fieldType = fieldDef.t || 'text';
+  const originalFieldType = fieldDef.t || 'text';
+  const fieldType = originalFieldType === 'date' && /echeance/i.test(fieldDef.k) ? 'datetime-local' : originalFieldType;
 
   if (fieldType === "select") {
     let opts = typeof fieldDef.opts === "function" ? fieldDef.opts(db) : (fieldDef.opts || []);
@@ -140,7 +142,7 @@ const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, opt
     );
   } else {
     inputEl = (
-      <input type={fieldType} id={`f_${fieldDef.k}`} value={val} onChange={handleChange} disabled={disabled} />
+      <input type={fieldType} id={`f_${fieldDef.k}`} value={fieldType === 'datetime-local' ? localDateTime(val) : val} onChange={handleChange} disabled={disabled} />
     );
   }
 

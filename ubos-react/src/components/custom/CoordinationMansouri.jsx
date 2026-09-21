@@ -1,3 +1,5 @@
+import { localDateTime } from '../../utils/dataFollowup';
+import FilterTable from '../common/FilterTable';
 import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useToast } from '../../context/ToastContext';
@@ -65,7 +67,7 @@ export default function CoordinationMansouri({ user }) {
         <h4>À transmettre {pill(aTransmettre.length, 'p-gris')}</h4>
         {aTransmettre.length ? (
           <div className="defile">
-            <table>
+            <FilterTable>
               <thead><tr><th>Code</th><th>Ce qu'il doit faire</th><th>Échéance</th><th>Action</th></tr></thead>
               <tbody>
                 {aTransmettre.map(s => (
@@ -77,7 +79,7 @@ export default function CoordinationMansouri({ user }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </FilterTable>
           </div>
         ) : <div className="vide">Aucun code prêt à transmettre.</div>}
       </div>
@@ -86,7 +88,7 @@ export default function CoordinationMansouri({ user }) {
         <h4>Attente Mansouri {pill(chezMansouri.length, 'p-gris')}</h4>
         {chezMansouri.length ? (
           <div className="defile">
-            <table>
+            <FilterTable>
               <thead><tr><th>Code</th><th>Ce qu'il doit faire</th><th>Transmis depuis</th><th>Échéance</th><th>Retour</th><th>Action</th></tr></thead>
               <tbody>
                 {chezMansouri.map(s => {
@@ -103,7 +105,7 @@ export default function CoordinationMansouri({ user }) {
                   );
                 })}
               </tbody>
-            </table>
+            </FilterTable>
           </div>
         ) : <div className="vide">Rien chez Mansouri pour l'instant.</div>}
       </div>
@@ -112,19 +114,19 @@ export default function CoordinationMansouri({ user }) {
         <h4>Retour reçu {pill(retourRecu.length, 'p-vert')}</h4>
         {retourRecu.length ? (
           <div className="defile">
-            <table>
+            <FilterTable>
               <thead><tr><th>Code</th><th>Retour de Mansouri</th><th>Prochaine relance proposée</th><th>Action</th></tr></thead>
               <tbody>
                 {retourRecu.map(s => (
                   <tr key={s.code}>
                     <td className="code"><a href={`#ficheSuiviClosing:${s.code}`}>{libelleCode(s)}</a></td>
                     <td>{(s.memoire || [])[(s.memoire || []).length - 1]?.texte}</td>
-                    <td><input type="date" value={dateEdit[s.code] || s.echeanceActionSuivante || ''} onChange={e => setDateEdit(prev => ({ ...prev, [s.code]: e.target.value }))} /></td>
+                    <td><input type="datetime-local" value={localDateTime(dateEdit[s.code] || s.echeanceActionSuivante || '')} onChange={e => setDateEdit(prev => ({ ...prev, [s.code]: e.target.value }))} /></td>
                     <td><button className="btn mini or" onClick={() => handleConfirmerRelance(s)}>Confirmer</button></td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </FilterTable>
           </div>
         ) : <div className="vide">Aucun retour à traiter.</div>}
       </div>
@@ -133,7 +135,7 @@ export default function CoordinationMansouri({ user }) {
         <h4>En retard {pill(retourEnRetard.length, retourEnRetard.length ? 'p-rouge' : 'p-gris')}</h4>
         {retourEnRetard.length ? (
           <div className="defile">
-            <table>
+            <FilterTable>
               <thead><tr><th>Code</th><th>Statut</th><th>Action</th></tr></thead>
               <tbody>
                 {retourEnRetard.map(s => (
@@ -144,7 +146,7 @@ export default function CoordinationMansouri({ user }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </FilterTable>
           </div>
         ) : <div className="vide">Aucun retour en retard.</div>}
       </div>

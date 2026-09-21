@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useMemo } from 'react';
 import { useDB } from '../../context/DBContext';
 import { destinataireEstMoi } from '../../data/permissions';
@@ -139,7 +140,7 @@ export default function PersonalDashboard({ user, isAdminView }) {
       <h3 className="titre-sec mt-lg">Cette semaine</h3>
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <tbody>
               {agendaSemaine.length ? agendaSemaine.map((e, i) => (
                 <tr key={i}>
@@ -152,14 +153,14 @@ export default function PersonalDashboard({ user, isAdminView }) {
                 <tr><td className="vide">Aucune échéance cette semaine.</td></tr>
               )}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
 
       <h3 className="titre-sec mt-lg">Mes dossiers actifs</h3>
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead><tr><th>Code</th><th>Produit</th><th>Étape</th><th>Statut</th></tr></thead>
             <tbody>
               {mesDossiers.length ? mesDossiers.map(d => (
@@ -173,7 +174,7 @@ export default function PersonalDashboard({ user, isAdminView }) {
                 <tr><td colSpan="4" className="vide">Aucun dossier actif affecté.</td></tr>
               )}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
     </>

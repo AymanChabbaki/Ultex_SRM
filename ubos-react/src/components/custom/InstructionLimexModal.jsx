@@ -1,3 +1,4 @@
+import { localDateTime } from '../../utils/dataFollowup';
 import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useToast } from '../../context/ToastContext';
@@ -122,7 +123,7 @@ export default function InstructionLimexModal({ codeReferenceInitial, onClose, o
                 <option value="">Responsable…</option>
                 {personnes.map(pe => <option key={pe} value={pe}>{pe}</option>)}
               </select>
-              <input type="date" value={p.echeance} onChange={e => majProposition(i, { echeance: e.target.value })} />
+              <input type="datetime-local" value={localDateTime(p.echeance)} onChange={e => majProposition(i, { echeance: e.target.value })} />
               <button className="btn mini rouge" onClick={() => supprimerProposition(i)}>Suppr.</button>
             </div>
           ))}

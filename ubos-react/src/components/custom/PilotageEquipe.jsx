@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -28,7 +29,7 @@ export default function PilotageEquipe() {
       <Topbar titre="Pilotage équipe" />
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead>
               <tr>
                 <th>Collaborateur</th><th>Aujourd'hui</th><th>Terminées</th><th>En retard</th>
@@ -61,7 +62,7 @@ export default function PilotageEquipe() {
                 );
               })}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
     </div>

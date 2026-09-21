@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useToast } from '../../context/ToastContext';
@@ -124,7 +125,7 @@ export default function MaJourneeClosing({ user }) {
             <button className="btn mini doux" onClick={() => setFiltreActif(null)}>✕ Retirer le filtre</button>
           </div>
           <div className="defile">
-            <table>
+            <FilterTable>
               <thead>
                 <tr>
                   <th>Code</th><th>Situation</th>
@@ -154,7 +155,7 @@ export default function MaJourneeClosing({ user }) {
                   <tr><td colSpan="5"><div className="vide">Rien dans cette catégorie.</div></td></tr>
                 )}
               </tbody>
-            </table>
+            </FilterTable>
           </div>
         </div>
       )}
@@ -180,7 +181,7 @@ export default function MaJourneeClosing({ user }) {
 
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead><tr><th>Code</th><th>Situation</th><th>Action recommandée</th><th>Dernier contact</th><th>Prochaine échéance</th><th>Priorité</th><th></th></tr></thead>
             <tbody>
               {programme.length ? programme.map(item => (
@@ -197,7 +198,7 @@ export default function MaJourneeClosing({ user }) {
                 <tr><td colSpan="7"><div className="vide"><b>Rien à traiter</b> Aucun code en attente d'action aujourd'hui.</div></td></tr>
               )}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
 

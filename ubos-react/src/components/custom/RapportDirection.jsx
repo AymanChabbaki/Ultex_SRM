@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -57,7 +58,7 @@ export default function RapportDirection() {
         <div className="bloc-fiche large">
           <h4>Dossiers actifs ({actifs.length})</h4>
           <div className="defile">
-            <table>
+            <FilterTable>
               <thead>
                 <tr>
                   <th>Code</th>
@@ -82,14 +83,14 @@ export default function RapportDirection() {
                   ))
                 )}
               </tbody>
-            </table>
+            </FilterTable>
           </div>
         </div>
 
         <div className="bloc-fiche">
           <h4>Paiements en attente</h4>
           <div className="defile">
-            <table>
+            <FilterTable>
               <thead>
                 <tr>
                   <th>Code</th>
@@ -106,14 +107,14 @@ export default function RapportDirection() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </FilterTable>
           </div>
         </div>
 
         <div className="bloc-fiche">
           <h4>Tâches en retard</h4>
           <div className="defile">
-            <table>
+            <FilterTable>
               <thead>
                 <tr>
                   <th>Titre</th>
@@ -130,7 +131,7 @@ export default function RapportDirection() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </FilterTable>
           </div>
         </div>
       </div>

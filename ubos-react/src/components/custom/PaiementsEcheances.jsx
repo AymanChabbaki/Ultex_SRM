@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -100,7 +101,7 @@ export default function PaiementsEcheances() {
 
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead><tr><th>Code</th><th>Bénéficiaire</th><th>Type</th><th>Montant</th><th>Échéance</th><th>Priorité</th><th>Statut</th><th>Alertes</th><th></th></tr></thead>
             <tbody>
               {filtres.length ? filtres.map(p => {
@@ -125,7 +126,7 @@ export default function PaiementsEcheances() {
                 <tr><td colSpan="9"><div className="vide">Rien dans cette catégorie.</div></td></tr>
               )}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
 
@@ -133,7 +134,7 @@ export default function PaiementsEcheances() {
         <h4>Documents comptables Casa</h4>
         <button className="btn mini doux" style={{ marginBottom: '10px' }} onClick={() => setDocForm({})}>+ Ajouter un document</button>
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead><tr><th>Date</th><th>Dossier</th><th>Type</th><th>Fournisseur</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
             <tbody>
               {docsCasa.length ? docsCasa.slice(0, 20).map(d => (
@@ -150,7 +151,7 @@ export default function PaiementsEcheances() {
                 <tr><td colSpan="7"><div className="vide">Aucun document.</div></td></tr>
               )}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
 
@@ -201,7 +202,7 @@ export default function PaiementsEcheances() {
         }>
           <div className="corps">
             <div className="defile" style={{ gridColumn: '1/-1' }}>
-              <table>
+              <FilterTable>
                 <thead><tr><th>Code</th><th>Bénéficiaire</th><th>Type</th><th>Montant</th><th>Échéance</th><th>Priorité</th><th>Statut</th></tr></thead>
                 <tbody>
                   {paiements.filter(p => p.statut !== 'Annulé').map(p => (
@@ -212,7 +213,7 @@ export default function PaiementsEcheances() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </FilterTable>
             </div>
             <div style={{ gridColumn: '1/-1', marginTop: '14px' }}>
               {Object.entries(totauxParDevise).map(([dev, total]) => (

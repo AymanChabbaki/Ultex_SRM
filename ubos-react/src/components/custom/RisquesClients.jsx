@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -52,7 +53,7 @@ export default function RisquesClients() {
         <div className="bloc-fiche">
           <h4>Impayés en cours</h4>
           <div className="defile">
-            <table>
+            <FilterTable>
               <thead>
                 <tr>
                   <th>Code</th>
@@ -75,14 +76,14 @@ export default function RisquesClients() {
                   ))
                 )}
               </tbody>
-            </table>
+            </FilterTable>
           </div>
         </div>
 
         <div className="bloc-fiche">
           <h4>Abandons & Pertes</h4>
           <div className="defile">
-            <table>
+            <FilterTable>
               <thead>
                 <tr>
                   <th>Code</th>
@@ -103,7 +104,7 @@ export default function RisquesClients() {
                   ))
                 )}
               </tbody>
-            </table>
+            </FilterTable>
           </div>
         </div>
       </div>

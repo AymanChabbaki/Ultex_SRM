@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useToast } from '../../context/ToastContext';
@@ -102,7 +103,7 @@ export default function EtudesCalcul() {
 
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead><tr><th>Code</th><th>Titre</th><th>Calculateur</th><th>Reçu à</th><th>Échéance</th><th>Statut</th><th>Position tarifaire</th><th></th></tr></thead>
             <tbody>
               {liste.length ? liste.map(t => (
@@ -124,7 +125,7 @@ export default function EtudesCalcul() {
                 <tr><td colSpan="8"><div className="vide">Rien dans cette catégorie.</div></td></tr>
               )}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
 

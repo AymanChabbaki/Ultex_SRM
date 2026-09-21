@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
@@ -77,7 +78,7 @@ export default function EtatClosing() {
 
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead><tr><th>Code</th><th>Coordinateur</th><th>Statut</th><th>Responsable action</th><th>Dernier contact</th></tr></thead>
             <tbody>
               {lignes.length ? lignes.map(s => (
@@ -92,7 +93,7 @@ export default function EtatClosing() {
                 <tr><td colSpan="5"><div className="vide">Aucun code dans cette catégorie.</div></td></tr>
               )}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
     </div>

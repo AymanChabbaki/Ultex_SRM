@@ -1,3 +1,4 @@
+import FilterTable from '../common/FilterTable';
 import React from 'react';
 import { useDB } from '../../context/DBContext';
 import Topbar from '../layout/Topbar';
@@ -34,7 +35,7 @@ export default function DashboardLimex() {
 
       <div className="panneau">
         <div className="defile">
-          <table>
+          <FilterTable>
             <thead>
               <tr>
                 <th>Code</th>
@@ -59,7 +60,7 @@ export default function DashboardLimex() {
                 ))
               )}
             </tbody>
-          </table>
+          </FilterTable>
         </div>
       </div>
     </>
