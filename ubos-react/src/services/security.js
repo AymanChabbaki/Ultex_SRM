@@ -53,6 +53,15 @@ export async function supprimerClientTestGoogleSheets(code, elevationToken) {
   return await res.json();
 }
 
+export async function supprimerDemandeTestGoogleSheets(demandeCode, elevationToken) {
+  const res = await fetch(`${API_URL}/security/sheet-test-demandes/${encodeURIComponent(demandeCode)}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders(elevationToken) }
+  });
+  if (!res.ok) throw new Error(await lireErreur(res));
+  return await res.json();
+}
+
 export async function restaurerSecurise(data, elevationToken) {
   const res = await fetch(`${API_URL}/security/restore`, {
     method: 'POST',

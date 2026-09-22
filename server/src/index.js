@@ -773,6 +773,66 @@ app.delete('/api/security/sheet-test-clients/:code', authMiddleware, requireElev
   }
 });
 
+// Dashboard cleanup is keyed by the demande, not by the displayed client
+// code. This matters when an old orphaned test demande still says L6911 but
+// that client code now legitimately belongs to somebody else.
+app.delete('/api/security/sheet-test-demandes/:demandeCode', authMiddleware, requireElevation, async (req, res) => {
+  const demandeCode = String(req.params.demandeCode || '').trim();
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const demande = await tx.collectionItem.findFirst({ where: { collection: 'demandes', code: demandeCode } });
+      if (!demande) throw Object.assign(new Error('Demande test introuvable.'), { status: 404 });
+      const sheetDemande = demande.data?.sourceSynchronisation === 'Google Sheets' || Boolean(demande.data?.sheetLeadId);
+      if (!sheetDemande) throw Object.assign(new Error("Cette demande ne vient pas du test Google Sheets."), { status: 409 });
+
+      const clientCode = demande.data?.client || demande.data?.codeClientUltex || '';
+      const lines = (await tx.collectionItem.findMany({ where: { collection: 'demandeLignes' } }))
+        .filter(item => item.data?.demande === demande.code);
+      const demandeDocuments = (await tx.collectionItem.findMany({ where: { collection: 'documents' } }))
+        .filter(item => item.data?.demande === demande.code);
+
+      if (lines.length) await tx.collectionItem.deleteMany({ where: { collection: 'demandeLignes', id: { in: lines.map(item => item.id) } } });
+      if (demandeDocuments.length) await tx.collectionItem.deleteMany({ where: { collection: 'documents', id: { in: demandeDocuments.map(item => item.id) } } });
+      await tx.collectionItem.deleteMany({ where: { collection: 'demandes', id: demande.id } });
+
+      let deletedClient = 0;
+      let deletedContacts = 0;
+      let deletedClientDocuments = 0;
+      if (clientCode) {
+        const client = await tx.collectionItem.findFirst({ where: { collection: 'clients', code: clientCode } });
+        const remainingDemandes = await tx.collectionItem.findMany({
+          where: { collection: 'demandes', data: { path: ['client'], equals: clientCode } }
+        });
+        const sheetClient = client?.data?.sourceDonnees === 'Google Sheets' && Boolean(client?.data?.sheetLeadId);
+        if (client && sheetClient && remainingDemandes.length === 0) {
+          const contacts = (await tx.collectionItem.findMany({
+            where: { collection: 'contacts', data: { path: ['codeClientAssocie'], equals: clientCode } }
+          })).filter(item => item.data?.sourceDonnees === 'Google Sheets');
+          const documents = await tx.collectionItem.findMany({
+            where: { collection: 'documents', data: { path: ['client'], equals: clientCode } }
+          });
+          if (contacts.length) deletedContacts = (await tx.collectionItem.deleteMany({ where: { collection: 'contacts', id: { in: contacts.map(item => item.id) } } })).count;
+          if (documents.length) deletedClientDocuments = (await tx.collectionItem.deleteMany({ where: { collection: 'documents', id: { in: documents.map(item => item.id) } } })).count;
+          deletedClient = (await tx.collectionItem.deleteMany({ where: { collection: 'clients', id: client.id } })).count;
+        }
+      }
+      return { clientCode, counts: {
+        demandes: 1, demandeLignes: lines.length,
+        documents: demandeDocuments.length + deletedClientDocuments,
+        contacts: deletedContacts, clients: deletedClient,
+      } };
+    });
+    const auteur = req.auth.nomComplet || req.auth.identifiant;
+    await ecrireJournalSecurite({ action: 'Suppression demande test Google Sheets', utilisateur: auteur, module: 'demandes', resultat: `${demandeCode} — client affiché ${result.clientCode || '—'}`, ip: req.ip });
+    await alerterDirection(`${auteur} a supprimé la demande test Google Sheets ${demandeCode}.`);
+    res.json({ status: 'deleted', demandeCode, ...result });
+  } catch (error) {
+    console.error('Sheet test demande delete error:', error);
+    const status = error.status || 500;
+    res.status(status).json({ error: status < 500 ? error.message : 'Erreur lors de la suppression de la demande test.' });
+  }
+});
+
 // Deletes one record from any collection — the single choke point every
 // module's "Supprimer" button now goes through, gated behind OTP elevation.
 app.delete('/api/security/records/:collection/:code', authMiddleware, requireElevation, async (req, res) => {

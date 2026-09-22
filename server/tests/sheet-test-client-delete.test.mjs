@@ -33,3 +33,10 @@ test('orphaned Sheet demandes can be cleaned after the client row was already de
 test('generic client deletion cannot orphan another Google Sheets test lead', () => {
   assert.match(server, /Utilisez « Supprimer ce code test » pour retirer aussi les demandes et produits liés/);
 });
+
+test('dashboard cleanup deletes by demande code and preserves a real client that reused the displayed L code', () => {
+  assert.match(server, /app\.delete\('\/api\/security\/sheet-test-demandes\/:demandeCode', authMiddleware, requireElevation/);
+  assert.match(server, /const sheetDemande = demande\.data\?\.sourceSynchronisation === 'Google Sheets'/);
+  assert.match(server, /if \(client && sheetClient && remainingDemandes\.length === 0\)/);
+  assert.match(server, /Suppression demande test Google Sheets/);
+});
