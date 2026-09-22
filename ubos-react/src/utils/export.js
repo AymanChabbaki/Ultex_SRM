@@ -1,5 +1,3 @@
-import * as XLSX from 'xlsx';
-
 export function exporterJSON(db) {
   const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
   const dlAnchorElem = document.createElement('a');
@@ -26,9 +24,11 @@ export function importerJSON(file, setDB) {
   });
 }
 
-export function exporterExcel(modId, db, mods, toast) {
+export async function exporterExcel(modId, db, mods, toast) {
   try {
-    const xlsxLib = typeof XLSX.writeFile !== 'undefined' ? XLSX : (Object.keys(XLSX).length ? XLSX : window.XLSX);
+    // XLSX is large; load it only after the user actually asks for an export.
+    const xlsxModule = await import('xlsx');
+    const xlsxLib = xlsxModule.default?.utils ? xlsxModule.default : xlsxModule;
     const M = mods[modId];
     if (!M || !M.coll) return;
     

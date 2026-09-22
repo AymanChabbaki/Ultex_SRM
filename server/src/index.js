@@ -163,6 +163,15 @@ const COLLS = [
   "suivisLimex", "actionsLimex", "instructionsLimex", "documentsComptablesCasa"
 ];
 
+// Technical import workspaces can contain thousands of temporary/extracted
+// rows and are irrelevant to normal CRM navigation. They are fetched only
+// when the Centre d'importation is opened.
+const LAZY_SNAPSHOT_COLLECTIONS = [
+  'importJobs', 'importFiles', 'importModels', 'importMappings', 'importRows',
+  'importErrors', 'importHistory', 'importDetectedTypes', 'importExtractedData',
+  'importAttachments', 'importRollbacks', 'limexImportHistory'
+];
+
 const COLLECTION_FILTER_KEYS = new Set([
   'segment', 'dataTag', 'statut', 'etape', 'urgence', 'source', 'client',
   'dossier', 'service', 'departement', 'actif'
@@ -430,7 +439,9 @@ app.get('/api/db', authMiddleware, async (req, res) => {
     // network round-trips from every login without changing the snapshot shape.
     const [sequences, items, users, notifications, auditLogs] = await Promise.all([
       prisma.sequenceCounter.findMany(),
-      prisma.collectionItem.findMany(),
+      prisma.collectionItem.findMany({
+        where: { collection: { notIn: LAZY_SNAPSHOT_COLLECTIONS } }
+      }),
       prisma.user.findMany(),
       prisma.notificationItem.findMany({ orderBy: { createdAt: 'desc' }, take: 500 }),
       prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 5000 })

@@ -1,67 +1,85 @@
-import React, { useState, useEffect } from 'react';
+import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DBProvider, useDB } from './context/DBContext';
 import { ToastProvider } from './context/ToastContext';
 import { SecurityProvider } from './context/SecurityContext';
 import Layout from './components/layout/Layout';
 
-// Dashboard
-import Dashboard from './components/dashboard/Dashboard';
-import PersonalDashboard from './components/dashboard/PersonalDashboard';
+// Route components are split into independent chunks. PDF/OCR/Excel and the
+// dozens of operational screens no longer block the login/dashboard bundle.
+const Dashboard = lazy(() => import('./components/dashboard/Dashboard'));
+const PersonalDashboard = lazy(() => import('./components/dashboard/PersonalDashboard'));
+const FicheClient = lazy(() => import('./components/fiches/FicheClient'));
+const FicheDossier = lazy(() => import('./components/fiches/FicheDossier'));
+const FicheDemande = lazy(() => import('./components/fiches/FicheDemande'));
+const FicheDemandeLigne = lazy(() => import('./components/fiches/FicheDemandeLigne'));
+const FicheCommande = lazy(() => import('./components/fiches/FicheCommande'));
+const FicheArrivage = lazy(() => import('./components/fiches/FicheArrivage'));
+const FicheDocument = lazy(() => import('./components/fiches/FicheDocument'));
+const FicheFF = lazy(() => import('./components/fiches/FicheFF'));
+const FicheChecklistLimex = lazy(() => import('./components/fiches/FicheChecklistLimex'));
+const FicheTache = lazy(() => import('./components/fiches/FicheTache'));
+const FicheSuiviClosing = lazy(() => import('./components/fiches/FicheSuiviClosing'));
+const FicheClientClosing = lazy(() => import('./components/fiches/FicheClientClosing'));
+const FicheSuiviLimex = lazy(() => import('./components/fiches/FicheSuiviLimex'));
+const Notifications = lazy(() => import('./components/custom/Notifications'));
+const MonAgenda = lazy(() => import('./components/custom/MonAgenda'));
+const AuditGlobal = lazy(() => import('./components/custom/AuditGlobal'));
+const Utilisateurs = lazy(() => import('./components/custom/Utilisateurs'));
+const RechercheGlobale = lazy(() => import('./components/custom/RechercheGlobale'));
+const Rapports = lazy(() => import('./components/custom/Rapports'));
+const RapportDirection = lazy(() => import('./components/custom/RapportDirection'));
+const Performance = lazy(() => import('./components/custom/Performance'));
+const ImportCentre = lazy(() => import('./components/custom/ImportCentre'));
+const RisquesClients = lazy(() => import('./components/custom/RisquesClients'));
+const DashboardLimex = lazy(() => import('./components/custom/DashboardLimex'));
+const RapportLimexDirection = lazy(() => import('./components/custom/RapportLimexDirection'));
+const TableauBordData = lazy(() => import('./components/custom/TableauBordData'));
+const MonProgrammeDuJour = lazy(() => import('./components/custom/MonProgrammeDuJour'));
+const MesTaches = lazy(() => import('./components/custom/MesTaches'));
+const MesObjectifs = lazy(() => import('./components/custom/MesObjectifs'));
+const MonRapportJournalier = lazy(() => import('./components/custom/MonRapportJournalier'));
+const PilotageEquipe = lazy(() => import('./components/custom/PilotageEquipe'));
+const QuiFaitQuoi = lazy(() => import('./components/custom/QuiFaitQuoi'));
+const AjouterTache = lazy(() => import('./components/custom/AjouterTache'));
+const MonProfil = lazy(() => import('./components/custom/MonProfil'));
+const JournalSecurite = lazy(() => import('./components/custom/JournalSecurite'));
+const MaJourneeClosing = lazy(() => import('./components/custom/MaJourneeClosing'));
+const DevisAControler = lazy(() => import('./components/custom/DevisAControler'));
+const CoordinationMansouri = lazy(() => import('./components/custom/CoordinationMansouri'));
+const MonPortefeuilleClosing = lazy(() => import('./components/custom/MonPortefeuilleClosing'));
+const EtatClosing = lazy(() => import('./components/custom/EtatClosing'));
+const AQualifierClosing = lazy(() => import('./components/custom/AQualifierClosing'));
+const MaJourneeImane = lazy(() => import('./components/custom/MaJourneeImane'));
+const SuiviLimex = lazy(() => import('./components/custom/SuiviLimex'));
+const EtudesCalcul = lazy(() => import('./components/custom/EtudesCalcul'));
+const PaiementsEcheances = lazy(() => import('./components/custom/PaiementsEcheances'));
+const FacturationRecus = lazy(() => import('./components/custom/FacturationRecus'));
+const DocumentsPartages = lazy(() => import('./components/custom/DocumentsPartages'));
+const GenericModule = lazy(() => import('./components/modules/GenericModule'));
 
-// Fiches
-import FicheClient from './components/fiches/FicheClient';
-import FicheDossier from './components/fiches/FicheDossier';
-import FicheDemande from './components/fiches/FicheDemande';
-import FicheDemandeLigne from './components/fiches/FicheDemandeLigne';
-import FicheCommande from './components/fiches/FicheCommande';
-import FicheArrivage from './components/fiches/FicheArrivage';
-import FicheDocument from './components/fiches/FicheDocument';
-import FicheFF from './components/fiches/FicheFF';
-import FicheChecklistLimex from './components/fiches/FicheChecklistLimex';
-import FicheTache from './components/fiches/FicheTache';
-import FicheSuiviClosing from './components/fiches/FicheSuiviClosing';
-import FicheClientClosing from './components/fiches/FicheClientClosing';
-import FicheSuiviLimex from './components/fiches/FicheSuiviLimex';
+const IMPORT_COLLECTIONS = [
+  'importJobs', 'importFiles', 'importModels', 'importMappings', 'importRows',
+  'importErrors', 'importHistory', 'importDetectedTypes', 'importExtractedData',
+  'importAttachments', 'importRollbacks', 'limexImportHistory'
+];
 
-// Custom Modules
-import Notifications from './components/custom/Notifications';
-import MonAgenda from './components/custom/MonAgenda';
-import AuditGlobal from './components/custom/AuditGlobal';
-import Utilisateurs from './components/custom/Utilisateurs';
-import RechercheGlobale from './components/custom/RechercheGlobale';
-import Rapports from './components/custom/Rapports';
-import RapportDirection from './components/custom/RapportDirection';
-import Performance from './components/custom/Performance';
-import ImportCentre from './components/custom/ImportCentre';
-import RisquesClients from './components/custom/RisquesClients';
-import DashboardLimex from './components/custom/DashboardLimex';
-import RapportLimexDirection from './components/custom/RapportLimexDirection';
-import TableauBordData from './components/custom/TableauBordData';
-import MonProgrammeDuJour from './components/custom/MonProgrammeDuJour';
-import MesTaches from './components/custom/MesTaches';
-import MesObjectifs from './components/custom/MesObjectifs';
-import MonRapportJournalier from './components/custom/MonRapportJournalier';
-import PilotageEquipe from './components/custom/PilotageEquipe';
-import QuiFaitQuoi from './components/custom/QuiFaitQuoi';
-import AjouterTache from './components/custom/AjouterTache';
-import MonProfil from './components/custom/MonProfil';
-import JournalSecurite from './components/custom/JournalSecurite';
-import MaJourneeClosing from './components/custom/MaJourneeClosing';
-import DevisAControler from './components/custom/DevisAControler';
-import CoordinationMansouri from './components/custom/CoordinationMansouri';
-import MonPortefeuilleClosing from './components/custom/MonPortefeuilleClosing';
-import EtatClosing from './components/custom/EtatClosing';
-import AQualifierClosing from './components/custom/AQualifierClosing';
-import MaJourneeImane from './components/custom/MaJourneeImane';
-import SuiviLimex from './components/custom/SuiviLimex';
-import EtudesCalcul from './components/custom/EtudesCalcul';
-import PaiementsEcheances from './components/custom/PaiementsEcheances';
-import FacturationRecus from './components/custom/FacturationRecus';
-import DocumentsPartages from './components/custom/DocumentsPartages';
+const ImportCentreRoute = () => {
+  const { chargerCollections } = useDB();
+  const [state, setState] = useState({ loading: true, error: '' });
 
-// Generic
-import GenericModule from './components/modules/GenericModule';
+  useEffect(() => {
+    let mounted = true;
+    chargerCollections(IMPORT_COLLECTIONS)
+      .then(() => { if (mounted) setState({ loading: false, error: '' }); })
+      .catch(error => { if (mounted) setState({ loading: false, error: error?.message || 'Chargement impossible' }); });
+    return () => { mounted = false; };
+  }, [chargerCollections]);
+
+  if (state.loading) return <div className="panneau"><div className="vide"><b>Chargement du centre d’importation…</b></div></div>;
+  if (state.error) return <div className="panneau"><div className="note-verrou">{state.error}</div></div>;
+  return <ImportCentre />;
+};
 
 // Constants
 import { MODS } from './data/modules';
@@ -209,7 +227,7 @@ const Router = () => {
       case 'rapports': return <Rapports />;
       case 'rapportDirection': return <RapportDirection />;
       case 'performance': return <Performance />;
-      case 'importCentre': return <ImportCentre />;
+      case 'importCentre': return <ImportCentreRoute />;
       case 'risquesClients': return <RisquesClients />;
       case 'dashboardLimex': return <DashboardLimex />;
       case 'rapportLimexDirection': return <RapportLimexDirection />;
@@ -228,7 +246,9 @@ const Router = () => {
 
   return (
     <Layout>
-      {renderRoute()}
+      <Suspense fallback={<div className="panneau"><div className="vide"><b>Chargement…</b></div></div>}>
+        {renderRoute()}
+      </Suspense>
     </Layout>
   );
 };

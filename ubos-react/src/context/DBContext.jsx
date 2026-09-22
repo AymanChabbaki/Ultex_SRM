@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import { baseVide, genCode as genCodeDb, audit as auditDb, notifier as notifierDb, journaliserSecurite as journaliserSecuriteDb } from '../data/db';
 import { COLLS } from '../data/constants';
 import { seedUsers } from '../data/permissions';
-import { checkBackendHealth, fetchDB, saveDBPatch, saveDBSync } from '../services/api';
+import { checkBackendHealth, fetchCollectionPage, fetchDB, saveDBPatch, saveDBSync } from '../services/api';
 import { useToast } from './ToastContext';
 
 const DBContext = createContext();
@@ -13,8 +13,14 @@ function recordKey(record) {
   return String(record?.id || record?.code || '');
 }
 
-function serialize(value) {
-  return JSON.stringify(value ?? null);
+function fingerprint(value) {
+  const input = JSON.stringify(value ?? null);
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
 function fingerprintDatabase(database) {
@@ -23,15 +29,15 @@ function fingerprintDatabase(database) {
     arrays[key] = new Map();
     (database[key] || []).forEach(record => {
       const id = recordKey(record);
-      if (id) arrays[key].set(id, serialize(record));
+      if (id) arrays[key].set(id, { ref: record, hash: fingerprint(record) });
     });
   });
-  return { seq: serialize(database.seq || {}), arrays };
+  return { seq: fingerprint(database.seq || {}), arrays };
 }
 
 function createPatch(database, keys, fingerprints) {
   const patch = { collections: {} };
-  const nextSeq = serialize(database.seq || {});
+  const nextSeq = fingerprint(database.seq || {});
   if (nextSeq !== fingerprints.seq) patch.seq = database.seq || {};
 
   keys.forEach(key => {
@@ -39,7 +45,10 @@ function createPatch(database, keys, fingerprints) {
     const known = fingerprints.arrays[key] || new Map();
     const changed = database[key].filter(record => {
       const id = recordKey(record);
-      return id && known.get(id) !== serialize(record);
+      if (!id) return false;
+      const previous = known.get(id);
+      if (!previous || previous.ref !== record) return true;
+      return previous.hash !== fingerprint(record);
     });
     if (!changed.length) return;
     if (key === 'utilisateurs' || key === 'audit' || key === 'notifs') patch[key] = changed;
@@ -55,14 +64,14 @@ function patchIsEmpty(patch) {
 }
 
 function updateFingerprints(fingerprints, patch) {
-  if (patch.seq) fingerprints.seq = serialize(patch.seq);
+  if (patch.seq) fingerprints.seq = fingerprint(patch.seq);
   const arrays = { ...(patch.collections || {}) };
   ['utilisateurs', 'audit', 'notifs'].forEach(key => {
     if (patch[key]) arrays[key] = patch[key];
   });
   Object.entries(arrays).forEach(([key, records]) => {
     if (!fingerprints.arrays[key]) fingerprints.arrays[key] = new Map();
-    records.forEach(record => fingerprints.arrays[key].set(recordKey(record), serialize(record)));
+    records.forEach(record => fingerprints.arrays[key].set(recordKey(record), { ref: record, hash: fingerprint(record) }));
   });
 }
 
@@ -82,6 +91,7 @@ export const DBProvider = ({ children }) => {
   // results immediately, instead of racing on a stale value.
   const dbRef = useRef(db);
   const fingerprintsRef = useRef(fingerprintDatabase(db));
+  const collectionLoadsRef = useRef(new Map());
 
   // audit()/notifier()/updateDB() each trigger their own saveDBSync() call,
   // and callers routinely fire several of them back-to-back without
@@ -124,11 +134,54 @@ export const DBProvider = ({ children }) => {
     }
   }, []);
 
+  const chargerCollections = useCallback(async (collectionNames) => {
+    const names = [...new Set((collectionNames || []).filter(name => TRACKED_ARRAYS.includes(name)))];
+    const loaded = await Promise.all(names.map(async name => {
+      let pending = collectionLoadsRef.current.get(name);
+      if (!pending) {
+        pending = (async () => {
+          const records = [];
+          let page = 1;
+          let totalPages = 1;
+          do {
+            const result = await fetchCollectionPage(name, { page, pageSize: 100 });
+            records.push(...(result.items || []));
+            totalPages = Math.max(1, Number(result.totalPages || 1));
+            page += 1;
+          } while (page <= totalPages);
+          return records;
+        })();
+        collectionLoadsRef.current.set(name, pending);
+      }
+      try {
+        return [name, await pending];
+      } catch (error) {
+        collectionLoadsRef.current.delete(name);
+        throw error;
+      }
+    }));
+
+    const next = { ...dbRef.current };
+    loaded.forEach(([name, records]) => {
+      next[name] = records;
+      const fingerprints = new Map();
+      records.forEach(record => {
+        const id = recordKey(record);
+        if (id) fingerprints.set(id, { ref: record, hash: fingerprint(record) });
+      });
+      fingerprintsRef.current.arrays[name] = fingerprints;
+    });
+    dbRef.current = next;
+    setDb(next);
+    return next;
+  }, []);
+
   // Called on logout so the previous user's data doesn't linger in memory
   // while the login screen is showing.
   const viderDonnees = useCallback(() => {
     dbRef.current = baseVide();
     fingerprintsRef.current = fingerprintDatabase(dbRef.current);
+    collectionLoadsRef.current.clear();
     setDb(dbRef.current);
   }, []);
 
@@ -223,7 +276,7 @@ export const DBProvider = ({ children }) => {
     <DBContext.Provider value={{
       db, setDb, updateDB, genCode, audit, notifier, journalSecurite,
       userCourant, setUserCourant, isPostgresConnected, syncToPostgres,
-      dbLoading, chargerDonnees, viderDonnees
+      dbLoading, chargerDonnees, chargerCollections, viderDonnees
     }}>
       {children}
     </DBContext.Provider>
