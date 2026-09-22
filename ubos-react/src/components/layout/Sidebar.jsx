@@ -5,6 +5,7 @@ import { useToast } from '../../context/ToastContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { destinataireEstMoi } from '../../data/permissions';
 import { MODS, ORDRE_NAV } from '../../data/modules';
+import { COLLS } from '../../data/constants';
 import Logo from '../common/Logo';
 import { DownloadIcon, UploadIcon } from '../common/Icons';
 import { useSidebar } from './Layout';
@@ -12,7 +13,7 @@ import { restaurerSecurise } from '../../services/security';
 
 const Sidebar = ({ ouvert }) => {
   const { moduleVisible, session } = useAuth();
-  const { db } = useDB();
+  const { db, chargerCollections } = useDB();
   const { toast } = useToast();
   const { demanderElevation } = useSecurity();
   const sidebarCtx = useSidebar();
@@ -40,7 +41,8 @@ const Sidebar = ({ ouvert }) => {
     if (!db) return;
     try {
       await demanderElevation('Sauvegarde complète (export JSON)');
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+      const completeDb = await chargerCollections(COLLS);
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(completeDb, null, 2));
       const a = document.createElement('a');
       a.href = dataStr;
       a.download = `UBOS_Backup_${new Date().toISOString().slice(0, 10)}.json`;

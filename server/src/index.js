@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Prisma, PrismaClient } from '@prisma/client';
+import { createClient } from 'redis';
 import { createRequire } from 'module';
 import { lLeadHandler } from './sheetsLLeads.js';
 
@@ -20,6 +21,7 @@ dotenv.config();
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5000;
+const REDIS_URL = process.env.REDIS_URL || '';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads'));
 const JWT_SECRET = process.env.JWT_SECRET || 'ubos_secret_2026';
@@ -145,6 +147,80 @@ app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
+let redisClient = null;
+
+async function initialiserRedis() {
+  if (!REDIS_URL) {
+    console.warn('⚠️ REDIS_URL non défini — cache distribué désactivé.');
+    return;
+  }
+  const client = createClient({ url: REDIS_URL, socket: { reconnectStrategy: retries => Math.min(retries * 100, 3000) } });
+  client.on('error', error => console.error('Redis:', error.message));
+  try {
+    await client.connect();
+    redisClient = client;
+    await redisClient.setNX('crm:cache:version', '1');
+  } catch (error) {
+    console.error('⚠️ Redis indisponible — PostgreSQL reste actif sans cache:', error.message);
+    redisClient = null;
+  }
+}
+
+async function cacheVersion() {
+  if (!redisClient?.isReady) return null;
+  try {
+    return await redisClient.get('crm:cache:version') || '1';
+  } catch (error) {
+    console.error('Redis version:', error.message);
+    return null;
+  }
+}
+
+async function cacheLire(scope) {
+  const version = await cacheVersion();
+  if (!version) return null;
+  try {
+    return await redisClient.get(`crm:v${version}:${scope}`);
+  } catch (error) {
+    console.error('Redis read:', error.message);
+    return null;
+  }
+}
+
+async function cacheEcrire(scope, value, ttlSeconds = 30) {
+  const version = await cacheVersion();
+  if (!version) return;
+  try {
+    await redisClient.setEx(`crm:v${version}:${scope}`, ttlSeconds, value);
+  } catch (error) {
+    console.error('Redis write:', error.message);
+  }
+}
+
+async function invaliderCache() {
+  if (!redisClient?.isReady) return;
+  try {
+    await redisClient.incr('crm:cache:version');
+  } catch (error) {
+    console.error('Redis invalidation:', error.message);
+  }
+}
+
+// One monotonically increasing Redis version invalidates every cached view in
+// O(1), including when several backend instances are added behind a balancer.
+app.use((req, res, next) => {
+  const mutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
+  const cacheNeutral = req.path.startsWith('/api/auth/')
+    || req.path.startsWith('/api/security/otp/')
+    || req.path === '/api/ocr/pdf';
+  if (mutation && !cacheNeutral) {
+    res.on('finish', () => {
+      if (res.statusCode >= 200 && res.statusCode < 400) void invaliderCache();
+    });
+  }
+  next();
+});
+
 const COLLS = [
   "clients", "leads", "fournisseurs", "produits", "dossiers", "sourcings", "etudes",
   "offres", "paiements", "analyses", "transports", "transits", "documents", "taches",
@@ -163,19 +239,11 @@ const COLLS = [
   "suivisLimex", "actionsLimex", "instructionsLimex", "documentsComptablesCasa"
 ];
 
-// Technical import workspaces can contain thousands of temporary/extracted
-// rows and are irrelevant to normal CRM navigation. They are fetched only
-// when the Centre d'importation is opened.
-const LAZY_SNAPSHOT_COLLECTIONS = [
-  'importJobs', 'importFiles', 'importModels', 'importMappings', 'importRows',
-  'importErrors', 'importHistory', 'importDetectedTypes', 'importExtractedData',
-  'importAttachments', 'importRollbacks', 'limexImportHistory'
-];
+// Login only needs identity, notifications, sequences and a short audit tail.
+// Business collections are fetched by the route that consumes them.
+const BOOTSTRAP_COLLECTIONS = [];
 
-const COLLECTION_FILTER_KEYS = new Set([
-  'segment', 'dataTag', 'statut', 'etape', 'urgence', 'source', 'client',
-  'dossier', 'service', 'departement', 'actif'
-]);
+const COLLECTION_FILTER_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 
 function collectionCodeExpression() {
   return Prisma.sql`COALESCE(NULLIF(data->>'codeClientUltex', ''), NULLIF(code, ''), id)`;
@@ -183,7 +251,11 @@ function collectionCodeExpression() {
 
 async function creerIndexPerformance() {
   const statements = [
+    'CREATE EXTENSION IF NOT EXISTS pg_trgm',
     'CREATE INDEX IF NOT EXISTS collection_items_collection_created_at_idx ON collection_items (collection, "createdAt" DESC)',
+    'CREATE INDEX CONCURRENTLY IF NOT EXISTS collection_items_id_trgm_idx ON collection_items USING gin (id gin_trgm_ops)',
+    'CREATE INDEX CONCURRENTLY IF NOT EXISTS collection_items_code_trgm_idx ON collection_items USING gin (code gin_trgm_ops)',
+    'CREATE INDEX CONCURRENTLY IF NOT EXISTS collection_items_data_trgm_idx ON collection_items USING gin ((data::text) gin_trgm_ops)',
     "CREATE INDEX IF NOT EXISTS collection_items_clients_code_ultex_idx ON collection_items ((data->>'codeClientUltex')) WHERE collection = 'clients'",
     "CREATE INDEX IF NOT EXISTS collection_items_clients_telephone_idx ON collection_items ((data->>'telephone')) WHERE collection = 'clients'",
     "CREATE INDEX IF NOT EXISTS collection_items_contacts_client_idx ON collection_items ((data->>'codeClientAssocie')) WHERE collection = 'contacts'",
@@ -237,7 +309,12 @@ async function ecrireJournalSecurite({ action, utilisateur, module, resultat, ip
 
 // Health Check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', database: 'PostgreSQL', timestamp: new Date() });
+  res.json({
+    status: 'ok',
+    database: 'PostgreSQL',
+    cache: redisClient?.isReady ? 'Redis connected' : 'Redis unavailable',
+    timestamp: new Date()
+  });
 });
 
 // Requires a valid, non-expired JWT (issued by /api/auth/login) on every
@@ -430,6 +507,15 @@ app.post('/api/security/otp/verify', authMiddleware, async (req, res) => {
 app.get('/api/db', authMiddleware, async (req, res) => {
   const startedAt = Date.now();
   try {
+    const cached = await cacheLire('snapshot');
+    if (cached) {
+      res.set('Server-Timing', `redis;dur=${Date.now() - startedAt}`);
+      res.set('X-CRM-Cache', 'HIT');
+      res.set('X-CRM-Bytes', String(Buffer.byteLength(cached)));
+      res.set('Cache-Control', 'private, no-cache');
+      return res.type('application/json').send(cached);
+    }
+
     const dbState = { seq: {} };
 
     // Initialize empty collections
@@ -437,15 +523,28 @@ app.get('/api/db', authMiddleware, async (req, res) => {
 
     // These tables are independent. Reading them concurrently removes several
     // network round-trips from every login without changing the snapshot shape.
-    const [sequences, items, users, notifications, auditLogs] = await Promise.all([
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const [sequences, items, users, notifications, auditLogs, collectionCounts, auditCounts7d] = await Promise.all([
       prisma.sequenceCounter.findMany(),
       prisma.collectionItem.findMany({
-        where: { collection: { notIn: LAZY_SNAPSHOT_COLLECTIONS } }
+        where: { collection: { in: BOOTSTRAP_COLLECTIONS } }
       }),
       prisma.user.findMany(),
-      prisma.notificationItem.findMany({ orderBy: { createdAt: 'desc' }, take: 500 }),
-      prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 5000 })
+      prisma.notificationItem.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }),
+      prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }),
+      prisma.collectionItem.groupBy({ by: ['collection'], _count: { _all: true } }),
+      prisma.auditLog.groupBy({
+        by: ['utilisateur'],
+        where: { createdAt: { gte: sevenDaysAgo } },
+        _count: { _all: true }
+      })
     ]);
+
+    dbState._loadedCollections = [...BOOTSTRAP_COLLECTIONS];
+    dbState._counts = Object.fromEntries(collectionCounts.map(row => [row.collection, row._count._all]));
+    dbState._metrics = {
+      audit7dByUser: Object.fromEntries(auditCounts7d.map(row => [row.utilisateur, row._count._all]))
+    };
 
     sequences.forEach(s => { dbState.seq[s.key] = s.val; });
 
@@ -497,9 +596,15 @@ app.get('/api/db', authMiddleware, async (req, res) => {
       dossier: a.dossier
     }));
 
-    res.set('Server-Timing', `db-snapshot;dur=${Date.now() - startedAt}`);
+    const json = JSON.stringify(dbState);
+    await cacheEcrire('snapshot', json, 30);
+    res.set('Server-Timing', `postgres;dur=${Date.now() - startedAt}`);
+    res.set('X-CRM-Cache', 'MISS');
     res.set('X-CRM-Records', String(items.length));
-    res.json(dbState);
+    res.set('X-CRM-Bytes', String(Buffer.byteLength(json)));
+    res.set('Cache-Control', 'private, no-cache');
+    console.info(`[performance] snapshot PostgreSQL: ${Date.now() - startedAt} ms, ${items.length} enregistrements, ${Buffer.byteLength(json)} octets`);
+    res.type('application/json').send(json);
   } catch (error) {
     console.error('Fetch DB error:', error);
     res.status(500).json({ error: 'Erreur lors du chargement de la base de données PostgreSQL' });
@@ -510,17 +615,26 @@ app.get('/api/db', authMiddleware, async (req, res) => {
 // thousands of rows in React. The full /api/db snapshot remains available for
 // legacy fiche/dashboard logic while modules are migrated incrementally.
 app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
+  const startedAt = Date.now();
   const collection = String(req.params.collection || '');
   if (!COLLS.includes(collection) || collection === 'utilisateurs') {
     return res.status(404).json({ error: 'Collection introuvable' });
   }
 
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
-  const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 25));
+  const pageSize = Math.min(500, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 25));
   const q = String(req.query.q || '').trim().slice(0, 200);
   const codeGroup = String(req.query.codeGroup || '').toUpperCase();
   const filterKey = String(req.query.filterKey || '');
   const filterValue = String(req.query.filterValue || '').slice(0, 200);
+  const scopeHash = crypto.createHash('sha1').update(JSON.stringify({ collection, page, pageSize, q, codeGroup, filterKey, filterValue })).digest('hex');
+  const cached = await cacheLire(`collection:${scopeHash}`);
+  if (cached) {
+    res.set('Server-Timing', `redis;dur=${Date.now() - startedAt}`);
+    res.set('X-CRM-Cache', 'HIT');
+    res.set('Cache-Control', 'private, no-cache');
+    return res.type('application/json').send(cached);
+  }
   const where = [Prisma.sql`collection = ${collection}`];
 
   if (q) {
@@ -535,14 +649,14 @@ app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
       : Prisma.sql`${codeExpression} ~* ${`^${codeGroup}`}`);
   }
 
-  if (filterValue && COLLECTION_FILTER_KEYS.has(filterKey)) {
+  if (filterValue && COLLECTION_FILTER_KEY_PATTERN.test(filterKey)) {
     where.push(Prisma.sql`data ->> ${filterKey} = ${filterValue}`);
   }
 
   try {
     const clause = Prisma.join(where, ' AND ');
     const offset = (page - 1) * pageSize;
-    const [rows, countRows] = await Promise.all([
+    const [rows, countRows, groupRows] = await Promise.all([
       prisma.$queryRaw(Prisma.sql`
         SELECT id, code, data, "createdAt"
         FROM collection_items
@@ -554,19 +668,82 @@ app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
         SELECT COUNT(*)::int AS total
         FROM collection_items
         WHERE ${clause}
-      `)
+      `),
+      collection === 'clients'
+        ? prisma.$queryRaw(Prisma.sql`
+            SELECT CASE
+              WHEN ${collectionCodeExpression()} ~* '^L' THEN 'L'
+              WHEN ${collectionCodeExpression()} ~* '^A' THEN 'A'
+              WHEN ${collectionCodeExpression()} ~* '^R' THEN 'R'
+              ELSE '#'
+            END AS groupe, COUNT(*)::int AS total
+            FROM collection_items
+            WHERE collection = 'clients'
+            GROUP BY 1
+          `)
+        : Promise.resolve([])
     ]);
     const total = Number(countRows[0]?.total || 0);
-    res.json({
+    const payload = {
       items: rows.map(item => ({ id: item.id, createdAt: item.createdAt.toISOString(), ...item.data })),
       page,
       pageSize,
       total,
-      totalPages: Math.max(1, Math.ceil(total / pageSize))
-    });
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      ...(collection === 'clients'
+        ? { groupCounts: Object.fromEntries(groupRows.map(row => [row.groupe, Number(row.total || 0)])) }
+        : {})
+    };
+    const json = JSON.stringify(payload);
+    await cacheEcrire(`collection:${scopeHash}`, json, 60);
+    res.set('Server-Timing', `postgres;dur=${Date.now() - startedAt}`);
+    res.set('X-CRM-Cache', 'MISS');
+    res.set('Cache-Control', 'private, no-cache');
+    res.type('application/json').send(json);
   } catch (error) {
     console.error('Collection page error:', error);
     res.status(500).json({ error: 'Erreur lors du chargement de la collection' });
+  }
+});
+
+app.get('/api/audit', authMiddleware, async (req, res) => {
+  const startedAt = Date.now();
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const pageSize = Math.min(500, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 100));
+  const scope = `audit:${page}:${pageSize}`;
+  const cached = await cacheLire(scope);
+  if (cached) {
+    res.set('Server-Timing', `redis;dur=${Date.now() - startedAt}`);
+    res.set('X-CRM-Cache', 'HIT');
+    res.set('Cache-Control', 'private, no-cache');
+    return res.type('application/json').send(cached);
+  }
+  try {
+    const [rows, total] = await Promise.all([
+      prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.auditLog.count()
+    ]);
+    const payload = {
+      items: rows.map(a => ({
+        id: a.id, ts: Number(a.ts), date: a.date, heure: a.heure,
+        utilisateur: a.utilisateur, module: a.module, action: a.action,
+        objet: a.objet, champ: a.champ, avant: a.avant, apres: a.apres,
+        dossier: a.dossier
+      })),
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize))
+    };
+    const json = JSON.stringify(payload);
+    await cacheEcrire(scope, json, 60);
+    res.set('Server-Timing', `postgres;dur=${Date.now() - startedAt}`);
+    res.set('X-CRM-Cache', 'MISS');
+    res.set('Cache-Control', 'private, no-cache');
+    res.type('application/json').send(json);
+  } catch (error) {
+    console.error('Audit page error:', error);
+    res.status(500).json({ error: 'Erreur lors du chargement du journal d’audit' });
   }
 });
 
@@ -2080,6 +2257,8 @@ app.listen(PORT, async () => {
   try {
     await prisma.$connect();
     console.log('✅ Connexion PostgreSQL établie.');
+    await initialiserRedis();
+    if (redisClient?.isReady) console.log('✅ Cache Redis connecté.');
     await creerIndexPerformance();
     console.log('✅ Index de performance CRM vérifiés.');
   } catch (e) {

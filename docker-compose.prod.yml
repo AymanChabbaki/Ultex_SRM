@@ -16,6 +16,28 @@ services:
     networks:
       - ubos-net
 
+  ubos-redis:
+    image: redis:7-alpine
+    container_name: ubos_redis_prod
+    restart: always
+    command:
+      - redis-server
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - ubos-net
+
   ubos-backend:
     build:
       context: ./server
@@ -25,6 +47,7 @@ services:
     environment:
       PORT: 5000
       DATABASE_URL: "postgresql://postgres:postgres_secure_pass_2026@ubos-postgres:5432/ubos_db?schema=public"
+      REDIS_URL: "redis://ubos-redis:6379"
       JWT_SECRET: "ubos_prod_jwt_secret_98765"
       ULTEX_SYNC_API_KEY: "a1fdd91e9a1c867ee14423c8140fa5cb228e6d7b0d0abbaf"
       ULTEX_WORKFLOW_PAYMENT_SYNC_URL: "${ULTEX_WORKFLOW_PAYMENT_SYNC_URL:-https://workflow.ultex.ma/api/v1/crm-sync/payment}"
@@ -32,7 +55,10 @@ services:
     ports:
       - '5050:5000'
     depends_on:
-      - ubos-postgres
+      ubos-postgres:
+        condition: service_started
+      ubos-redis:
+        condition: service_healthy
     volumes:
       - ubos_arrivage_documents:/app/uploads
       - ${ARRIVAGE_IMPORT_ROOT:-/home/ultex/Arrivage}:/import/arrivages:ro

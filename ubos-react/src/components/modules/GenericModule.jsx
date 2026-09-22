@@ -12,7 +12,7 @@ import { DownloadIcon } from '../common/Icons';
 import * as Actions from '../../utils/businessActions';
 import { supprimerEnregistrementSecurise } from '../../services/security';
 import { formatCreationDate } from '../../utils/creationDate';
-import { codeClientAffiche, groupeCodeClient, GROUPES_CODES_CLIENT } from '../../utils/clientCodeGroups';
+import { codeClientAffiche, GROUPES_CODES_CLIENT } from '../../utils/clientCodeGroups';
 import { fetchCollectionPage } from '../../services/api';
 
 const PERMISSION_REQUISE = {
@@ -23,7 +23,7 @@ const PERMISSION_REQUISE = {
 };
 
 export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
-  const { db, updateDB, audit, genCode, sauver, notifier, userCourant } = useDB();
+  const { db, updateDB, audit, genCode, notifier, userCourant, chargerCollections, hydraterEnregistrements } = useDB();
   const { peut, moduleVisible } = useAuth();
   const { toast } = useToast();
   const { demanderElevation } = useSecurity();
@@ -33,35 +33,38 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
   const [showForm, setShowForm] = useState(false);
   const [editCode, setEditCode] = useState(null);
   const [groupeClients, setGroupeClients] = useState('L');
-  const [remoteClients, setRemoteClients] = useState([]);
+  const [remoteRows, setRemoteRows] = useState([]);
   const [remoteTotal, setRemoteTotal] = useState(0);
   const [remotePage, setRemotePage] = useState(1);
   const [remotePageSize, setRemotePageSize] = useState(25);
   const [remoteTotalPages, setRemoteTotalPages] = useState(1);
+  const [remoteGroupCounts, setRemoteGroupCounts] = useState({ L: 0, A: 0, R: 0, '#': 0 });
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [remoteError, setRemoteError] = useState('');
 
   const M = MODS[moduleId];
+  const collectionRevision = M ? db[M.coll] : null;
 
   useEffect(() => {
-    if (moduleId !== 'clients') return undefined;
+    if (!M?.coll) return undefined;
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       setRemoteLoading(true);
       setRemoteError('');
       try {
-        const result = await fetchCollectionPage('clients', {
+        const result = await fetchCollectionPage(M.coll, {
           page: remotePage,
           pageSize: remotePageSize,
           q: recherche,
-          codeGroup: groupeClients,
-          filterKey: filtreStatut ? 'segment' : '',
+          codeGroup: moduleId === 'clients' ? groupeClients : '',
+          filterKey: filtreStatut ? M.statut : '',
           filterValue: filtreStatut
         });
         if (cancelled) return;
-        setRemoteClients(result.items || []);
+        setRemoteRows(result.items || []);
         setRemoteTotal(Number(result.total || 0));
         setRemoteTotalPages(Math.max(1, Number(result.totalPages || 1)));
+        if (moduleId === 'clients') setRemoteGroupCounts({ L: 0, A: 0, R: 0, '#': 0, ...(result.groupCounts || {}) });
         if (remotePage > Number(result.totalPages || 1)) setRemotePage(Math.max(1, Number(result.totalPages || 1)));
       } catch (error) {
         if (!cancelled) setRemoteError(error?.message || 'Chargement impossible');
@@ -73,12 +76,12 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [moduleId, recherche, filtreStatut, groupeClients, remotePage, remotePageSize, db.clients]);
+  }, [M?.coll, M?.statut, moduleId, recherche, filtreStatut, groupeClients, remotePage, remotePageSize, collectionRevision]);
 
   const { lignes, optsStatut } = useMemo(() => {
     if (!M) return { lignes: [], optsStatut: [] };
     
-    let l = (moduleId === 'clients' ? remoteClients : (db[M.coll] || [])).slice().sort((a, b) => {
+    let l = remoteRows.slice().sort((a, b) => {
       if (moduleId === 'produits') {
         const hsOrder = String(a.hsCode || 'ZZZZZZ').localeCompare(String(b.hsCode || 'ZZZZZZ'), 'fr', { numeric: true });
         if (hsOrder !== 0) return hsOrder;
@@ -87,26 +90,11 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
       return (b.ts || 0) - (a.ts || 0);
     });
     
-    if (recherche && moduleId !== 'clients') {
-      const q = recherche.toLowerCase();
-      l = l.filter(o => Object.values(o).some(v => String(v ?? "").toLowerCase().includes(q)));
-    }
-    
-    if (filtreStatut && M.statut && moduleId !== 'clients') {
-      l = l.filter(o => o[M.statut] === filtreStatut);
-    }
-
     let opts = M.statut ? (M.champs?.find(f => f.k === M.statut)?.opts || []) : [];
     if (typeof opts === "function") opts = opts(db);
     
     return { lignes: l, optsStatut: opts };
-  }, [db, M, recherche, filtreStatut, moduleId, remoteClients]);
-
-  const compteGroupesClients = useMemo(() => {
-    const compte = { L: 0, A: 0, R: 0, '#': 0 };
-    (db.clients || []).forEach(client => { compte[groupeCodeClient(client)] += 1; });
-    return compte;
-  }, [db.clients]);
+  }, [db, M, moduleId, remoteRows]);
 
   if (!M) return <div>Module introuvable</div>;
 
@@ -147,12 +135,30 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
   };
 
   const handleExport = () => {
-    exporterExcel(moduleId, db, MODS, toast);
+    chargerCollections([M.coll])
+      .then(completeDb => exporterExcel(moduleId, completeDb, MODS, toast))
+      .catch(error => toast(error?.message || "Échec du chargement pour l'export."));
   };
 
-  const handleActionClick = (a, code) => {
+  const ouvrirAjout = async () => {
+    try {
+      await chargerCollections([M.coll]);
+      setEditCode(null);
+      setShowForm(true);
+    } catch (error) {
+      toast(error?.message || 'Chargement impossible.');
+    }
+  };
+
+  const handleActionClick = (a, record) => {
+    const code = record.code;
+    const current = db[M.coll] || [];
+    const actionDb = current.some(item => item.code === code)
+      ? db
+      : { ...db, [M.coll]: [...current, record] };
+    hydraterEnregistrements(M.coll, [record]);
     if (typeof a.fn === 'function') {
-      a.fn(code, db);
+      a.fn(code, actionDb);
     } else if (typeof a.fn === 'string') {
       if (a.fn.startsWith('ouvrirFiche')) {
         const type = a.fn.replace('ouvrirFiche', '');
@@ -161,7 +167,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
       } else if (Actions[a.fn]) {
         // Appelle la logique métier réelle
         const permission = PERMISSION_REQUISE[a.fn];
-        Actions[a.fn](code, db, genCode, audit, userCourant, updateDB, toast, permission ? peut(permission) : true, notifier);
+        Actions[a.fn](code, actionDb, genCode, audit, userCourant, updateDB, toast, permission ? peut(permission) : true, notifier);
       } else {
         toast(`Action « ${a.txt} » exécutée sur ${code}`);
       }
@@ -193,7 +199,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
           </button>
         )}
         {peut("ajouter") && (
-          <button className="btn" onClick={() => { setEditCode(null); setShowForm(true); }}>+ Ajouter</button>
+          <button className="btn" onClick={ouvrirAjout}>+ Ajouter</button>
         )}
       </div>
 
@@ -206,16 +212,16 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
               className={`onglet ${groupeClients === groupe.id ? 'actif' : ''}`}
               onClick={() => { setGroupeClients(groupe.id); setRemotePage(1); }}
             >
-              {groupe.label} ({compteGroupesClients[groupe.id]})
+              {groupe.label} ({remoteGroupCounts[groupe.id]})
             </button>
           ))}
         </div>
       )}
 
       <div className="panneau">
-        {moduleId === 'clients' && remoteError && <div className="note-verrou">{remoteError}</div>}
+        {remoteError && <div className="note-verrou">{remoteError}</div>}
         <div className="defile">
-          <FilterTable pagination={moduleId !== 'clients'}>
+          <FilterTable pagination={false}>
             <thead>
               <tr>
                 <th>Code</th>
@@ -225,7 +231,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
               </tr>
             </thead>
             <tbody>
-              {remoteLoading && moduleId === 'clients' ? (
+              {remoteLoading ? (
                 <tr><td colSpan={(M.cols || []).length + 3}><div className="vide"><b>Chargement…</b></div></td></tr>
               ) : !lignes.length ? (
                 <tr>
@@ -238,7 +244,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
                 </tr>
               ) : (
                 lignes.map((o, rowIndex) => (
-                  <React.Fragment key={o.code}>
+                  <React.Fragment key={o.code || o.id}>
                   {moduleId === 'produits' && (rowIndex === 0 || (lignes[rowIndex - 1].hsCode || '') !== (o.hsCode || '')) && (
                     <tr className="groupe-hs">
                       <td colSpan={(M.cols || []).length + 3} style={{ fontWeight: 700, background: 'var(--fond-jaune)' }}>
@@ -271,13 +277,13 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
                       <div className="acts">
                         {M.actions && M.actions.map((a, i) => (
                           (!a.si || a.si(o)) ? (
-                            <button key={i} className={a.cls} onClick={() => handleActionClick(a, o.code)}>
+                            <button key={i} className={a.cls} onClick={() => handleActionClick(a, o)}>
                               {a.txt}
                             </button>
                           ) : null
                         ))}
                         {peut("modifier") && (
-                          <button className="btn mini doux" onClick={() => { setEditCode(o.code); setShowForm(true); }}>
+                          <button className="btn mini doux" onClick={() => { hydraterEnregistrements(M.coll, [o]); setEditCode(o.code); setShowForm(true); }}>
                             Modifier
                           </button>
                         )}
@@ -295,8 +301,8 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
             </tbody>
           </FilterTable>
         </div>
-        {moduleId === 'clients' && !remoteError && remoteTotal > 0 && (
-          <nav className="table-pagination" aria-label="Pagination des clients">
+        {!remoteError && remoteTotal > 0 && (
+          <nav className="table-pagination" aria-label={`Pagination de ${M.label}`}>
             <div className="table-pagination-summary">
               <strong>{(remotePage - 1) * remotePageSize + 1}–{Math.min(remotePage * remotePageSize, remoteTotal)}</strong> sur <strong>{remoteTotal}</strong>
             </div>

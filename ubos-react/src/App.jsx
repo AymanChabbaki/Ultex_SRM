@@ -61,8 +61,29 @@ const GenericModule = lazy(() => import('./components/modules/GenericModule'));
 const IMPORT_COLLECTIONS = [
   'importJobs', 'importFiles', 'importModels', 'importMappings', 'importRows',
   'importErrors', 'importHistory', 'importDetectedTypes', 'importExtractedData',
-  'importAttachments', 'importRollbacks', 'limexImportHistory'
+  'importAttachments', 'importRollbacks', 'limexImportHistory', 'clients',
+  'dossiers', 'controlesLimex'
 ];
+
+const DataBoundary = ({ collections, children, label = 'Chargement des données…' }) => {
+  const { chargerCollections } = useDB();
+  const collectionKey = [...new Set(collections || [])].sort().join(',');
+  const [state, setState] = useState({ key: '', loading: true, error: '' });
+
+  useEffect(() => {
+    let mounted = true;
+    const names = collectionKey ? collectionKey.split(',') : [];
+    setState({ key: collectionKey, loading: true, error: '' });
+    chargerCollections(names)
+      .then(() => { if (mounted) setState({ key: collectionKey, loading: false, error: '' }); })
+      .catch(error => { if (mounted) setState({ key: collectionKey, loading: false, error: error?.message || 'Chargement impossible' }); });
+    return () => { mounted = false; };
+  }, [chargerCollections, collectionKey]);
+
+  if (state.key !== collectionKey || state.loading) return <div className="panneau"><div className="vide"><b>{label}</b></div></div>;
+  if (state.error) return <div className="panneau"><div className="note-verrou">{state.error}</div></div>;
+  return children;
+};
 
 const ImportCentreRoute = () => {
   const { chargerCollections } = useDB();
@@ -83,6 +104,7 @@ const ImportCentreRoute = () => {
 
 // Constants
 import { MODS } from './data/modules';
+import { COLLS } from './data/constants';
 
 const DashUserRoute = ({ identifiant }) => {
   const { db } = useDB();
@@ -166,6 +188,7 @@ const PersonalPageRoute = ({ Component, identifiant }) => {
 
 const Router = () => {
   const [currentHash, setCurrentHash] = useState(window.location.hash.replace('#', '') || 'dashboard');
+  const { session, estDirection } = useAuth();
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -181,66 +204,75 @@ const Router = () => {
     const route = parts[0];
     const params = parts[1];
     const sousPage = parts[2];
+    const wrap = (element, collections, label) => (
+      <DataBoundary key={`${route}:${params || ''}`} collections={collections} label={label}>{element}</DataBoundary>
+    );
+    const dashboardCollections = estDirection()
+      ? ['leads', 'dossiers', 'paiements', 'taches', 'transits']
+      : (session?.services || []).includes('Data')
+        ? ['clients', 'demandes', 'demandeLignes', 'objectifsData', 'taches']
+        : ['dossiers', 'taches'];
 
     switch (route) {
-      case 'dashboard': return <Dashboard />;
-      case 'dashUser': return <DashUserRoute identifiant={params} />;
-      case 'tableauBordData': return <TableauBordDataRoute identifiant={params} />;
-      case 'monProgramme': return <PersonalPageRoute Component={MonProgrammeDuJour} identifiant={params} />;
-      case 'mesTaches': return <PersonalPageRoute Component={MesTaches} identifiant={params} />;
-      case 'mesObjectifs': return <PersonalPageRoute Component={MesObjectifs} identifiant={params} />;
-      case 'monRapportJournalier': return <PersonalPageRoute Component={MonRapportJournalier} identifiant={params} />;
+      case 'dashboard': return wrap(<Dashboard />, dashboardCollections, 'Préparation de votre tableau de bord…');
+      case 'dashUser': return wrap(<DashUserRoute identifiant={params} />, ['dossiers', 'taches'], 'Chargement du tableau de bord…');
+      case 'tableauBordData': return wrap(<TableauBordDataRoute identifiant={params} />, ['clients', 'demandes', 'demandeLignes', 'objectifsData', 'taches']);
+      case 'monProgramme': return wrap(<PersonalPageRoute Component={MonProgrammeDuJour} identifiant={params} />, ['dossiers', 'taches', 'suivisClosing']);
+      case 'mesTaches': return wrap(<PersonalPageRoute Component={MesTaches} identifiant={params} />, ['taches', 'suivisClosing']);
+      case 'mesObjectifs': return wrap(<PersonalPageRoute Component={MesObjectifs} identifiant={params} />, ['audit', 'clients', 'demandeLignes', 'demandes', 'objectifsData', 'suivisClosing', 'taches']);
+      case 'monRapportJournalier': return wrap(<PersonalPageRoute Component={MonRapportJournalier} identifiant={params} />, ['rapportsJournaliers']);
       case 'monProfil': return <MonProfil />;
       case 'pilotageEquipe': return <PilotageEquipe />;
-      case 'quiFaitQuoi': return <QuiFaitQuoi />;
-      case 'journalSecurite': return <JournalSecurite />;
-      case 'maJourneeClosing': return <PersonalPageRoute Component={MaJourneeClosing} identifiant={params} />;
-      case 'devisAControler': return <PersonalPageRoute Component={DevisAControler} identifiant={params} />;
-      case 'coordinationMansouri': return <PersonalPageRoute Component={CoordinationMansouri} identifiant={params} />;
-      case 'monPortefeuilleClosing': return <PersonalPageRoute Component={MonPortefeuilleClosing} identifiant={params} />;
-      case 'aQualifierClosing': return <PersonalPageRoute Component={AQualifierClosing} identifiant={params} />;
-      case 'maJourneeImane': return <PersonalPageRoute Component={MaJourneeImane} identifiant={params} />;
-      case 'suiviLimex': return <PersonalPageRoute Component={SuiviLimex} identifiant={params} />;
-      case 'etudesCalcul': return <EtudesCalcul />;
-      case 'paiementsEcheances': return <PaiementsEcheances />;
-      case 'etatClosing': return <EtatClosing />;
-      case 'ficheSuiviClosing': return <FicheSuiviClosing codeProp={params} code={params} />;
-      case 'ficheClientClosing': return <FicheClientClosing codeProp={params} code={params} />;
-      case 'ficheSuiviLimex': return <FicheSuiviLimex codeProp={params} code={params} />;
-      case 'ajouterTache': return <AjouterTache />;
-      case 'ficheTache': return <FicheTache codeProp={params} code={params} />;
-      case 'ficheClient': return <FicheClient codeProp={params} code={params} ongletInitial={sousPage} />;
-      case 'ficheDossier': return <FicheDossier codeProp={params} code={params} />;
-      case 'ficheDemande': return <FicheDemande codeProp={params} code={params} />;
-      case 'ficheDemandeLigne': return <FicheDemandeLigne codeProp={params} code={params} />;
-      case 'ficheCommande': return <FicheCommande codeProp={params} code={params} />;
-      case 'ficheArrivage': return <FicheArrivage codeProp={params} code={params} />;
-      case 'ficheDocument': return <FicheDocument codeProp={params} code={params} />;
-      case 'ficheFF': return <FicheFF codeProp={params} code={params} />;
-      case 'ficheChecklistLimex': return <FicheChecklistLimex codeProp={params} code={params} />;
+      case 'quiFaitQuoi': return wrap(<QuiFaitQuoi />, ['dossiers', 'taches']);
+      case 'journalSecurite': return wrap(<JournalSecurite />, ['journalSecurite']);
+      case 'maJourneeClosing': return wrap(<PersonalPageRoute Component={MaJourneeClosing} identifiant={params} />, ['suivisClosing']);
+      case 'devisAControler': return wrap(<PersonalPageRoute Component={DevisAControler} identifiant={params} />, ['suivisClosing']);
+      case 'coordinationMansouri': return wrap(<PersonalPageRoute Component={CoordinationMansouri} identifiant={params} />, ['suivisClosing', 'taches']);
+      case 'monPortefeuilleClosing': return wrap(<PersonalPageRoute Component={MonPortefeuilleClosing} identifiant={params} />, ['clients', 'suivisClosing']);
+      case 'aQualifierClosing': return wrap(<PersonalPageRoute Component={AQualifierClosing} identifiant={params} />, ['suivisClosing']);
+      case 'maJourneeImane': return wrap(<PersonalPageRoute Component={MaJourneeImane} identifiant={params} />, ['actionsLimex', 'suivisLimex']);
+      case 'suiviLimex': return wrap(<PersonalPageRoute Component={SuiviLimex} identifiant={params} />, ['suivisLimex', 'paiements']);
+      case 'etudesCalcul': return wrap(<EtudesCalcul />, ['taches']);
+      case 'paiementsEcheances': return wrap(<PaiementsEcheances />, ['paiements', 'documentsComptablesCasa']);
+      case 'etatClosing': return wrap(<EtatClosing />, ['suivisClosing']);
+      case 'ficheSuiviClosing': return wrap(<FicheSuiviClosing codeProp={params} code={params} />, ['audit', 'suivisClosing', 'taches']);
+      case 'ficheClientClosing': return wrap(<FicheClientClosing codeProp={params} code={params} />, ['suivisClosing']);
+      case 'ficheSuiviLimex': return wrap(<FicheSuiviLimex codeProp={params} code={params} />, ['actionsLimex', 'audit', 'suivisLimex', 'taches']);
+      case 'ajouterTache': return wrap(<AjouterTache />, ['taches']);
+      case 'ficheTache': return wrap(<FicheTache codeProp={params} code={params} />, ['actionsLimex', 'audit', 'suivisClosing', 'suivisLimex', 'tacheEtapes', 'taches']);
+      case 'ficheClient': return wrap(<FicheClient codeProp={params} code={params} ongletInitial={sousPage} />, ['audit', 'clients', 'commandes', 'contacts', 'demandes', 'documents', 'dossiers', 'suivisClosing']);
+      case 'ficheDossier': return wrap(<FicheDossier codeProp={params} code={params} />, ['dossiers', 'clients', 'suivisClosing']);
+      case 'ficheDemande': return wrap(<FicheDemande codeProp={params} code={params} />, ['audit', 'clients', 'commandes', 'demandeLignes', 'demandeRoutages', 'demandes', 'documents', 'paiements']);
+      case 'ficheDemandeLigne': return wrap(<FicheDemandeLigne codeProp={params} code={params} />, ['demandeLignes', 'demandeRoutages', 'demandes', 'produits', 'taches']);
+      case 'ficheCommande': return wrap(<FicheCommande codeProp={params} code={params} />, ['arrivages', 'clients', 'commandes']);
+      case 'ficheArrivage': return wrap(<FicheArrivage codeProp={params} code={params} />, ['arrivages', 'clients', 'commandes', 'documents', 'fournisseurs', 'paiements']);
+      case 'ficheDocument': return wrap(<FicheDocument codeProp={params} code={params} />, ['documents']);
+      case 'ficheFF': return wrap(<FicheFF codeProp={params} code={params} />, ['clients', 'documents', 'dossiers', 'facturesFinales']);
+      case 'ficheChecklistLimex': return wrap(<FicheChecklistLimex codeProp={params} code={params} />, ['controlesLimex', 'dossierControlesLimex', 'dossiers', 'limexPortesValidation']);
       
       case 'notifications': return <Notifications />;
-      case 'monAgenda': return <MonAgenda />;
-      case 'auditGlobal': return <AuditGlobal />;
+      case 'monAgenda': return wrap(<MonAgenda />, ['certifs', 'clients', 'paiements', 'taches', 'transits', 'transports', 'transportsNat']);
+      case 'auditGlobal': return wrap(<AuditGlobal />, ['audit']);
       case 'utilisateurs': return <Utilisateurs />;
-      case 'rechercheGlobale': return <RechercheGlobale />;
-      case 'rapports': return <Rapports />;
-      case 'rapportDirection': return <RapportDirection />;
-      case 'performance': return <Performance />;
+      case 'rechercheGlobale': return wrap(<RechercheGlobale />, COLLS);
+      case 'rapports': return wrap(<Rapports />, ['rapports']);
+      case 'rapportDirection': return wrap(<RapportDirection />, ['dossiers', 'erreurs', 'paiements', 'taches']);
+      case 'performance': return wrap(<Performance />, ['audit', 'contacts', 'dossiers', 'erreurs', 'rapports', 'taches']);
       case 'importCentre': return <ImportCentreRoute />;
-      case 'risquesClients': return <RisquesClients />;
-      case 'dashboardLimex': return <DashboardLimex />;
-      case 'rapportLimexDirection': return <RapportLimexDirection />;
+      case 'risquesClients': return wrap(<RisquesClients />, ['abandons', 'facturesFinales', 'impayes']);
+      case 'dashboardLimex': return wrap(<DashboardLimex />, ['arrivages', 'documents', 'dossiers', 'transits']);
+      case 'rapportLimexDirection': return wrap(<RapportLimexDirection />, ['arrivages', 'dossiers']);
       case 'facturationRecus': return <FacturationRecus />;
-      case 'documentsPartages': return <DocumentsPartages />;
+      case 'documentsPartages': return wrap(<DocumentsPartages />, ['documents']);
 
       default:
         // Check if it's a generic module (clients, contacts, demandes, dossiers, documents, etc.)
         const moduleConfig = MODS[route];
         if (moduleConfig && moduleConfig.coll) {
-          return <GenericModule moduleId={route} />;
+          const references = (moduleConfig.champs || []).map(field => field.coll).filter(Boolean);
+          return wrap(<GenericModule moduleId={route} />, references);
         }
-        return <Dashboard />;
+        return wrap(<Dashboard />, dashboardCollections);
     }
   };
 

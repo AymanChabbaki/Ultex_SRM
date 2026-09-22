@@ -57,6 +57,14 @@ export async function fetchCollectionPage(collection, params = {}) {
   return await res.json();
 }
 
+export async function fetchAuditPage(page = 1, pageSize = 500) {
+  const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  const res = await fetch(`${API_URL}/audit?${query}`, { headers: { ...authHeaders() } });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  if (!res.ok) throw new Error('Erreur lors du chargement du journal d’audit');
+  return await res.json();
+}
+
 export async function fetchMe() {
   const res = await fetch(`${API_URL}/auth/me`, { headers: { ...authHeaders() } });
   if (res.status === 401) throw new AuthError('Session invalide ou expirée');

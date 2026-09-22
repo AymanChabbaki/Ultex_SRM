@@ -6,7 +6,6 @@ import { destinataireEstMoi } from '../../data/permissions';
 import Topbar from '../layout/Topbar';
 import StatCard from '../common/StatCard';
 import CheminDossier from '../common/CheminDossier';
-import DataTable from '../common/DataTable';
 import PersonalDashboard from './PersonalDashboard';
 import TableauBordData from '../custom/TableauBordData';
 import { FileBarChart } from 'lucide-react';
@@ -87,7 +86,7 @@ export default function Dashboard() {
       <Topbar titre="Dashboard Direction" />
       
       <div className="stats">
-        <StatCard val={db.clients.length} label="Clients" />
+        <StatCard val={db._counts?.clients ?? db.clients.length} label="Clients" />
         <StatCard val={leadsNouv.length} label="Leads à traiter" />
         <StatCard val={dossActifs.length} label="Dossiers actifs" />
         <StatCard val={pipeline.toLocaleString("fr-FR")} label="Pipeline (MAD)" />
@@ -177,7 +176,8 @@ export default function Dashboard() {
             <tbody>
               {db.utilisateurs.filter(x => x.actif).map(x => {
                 const dp = donneesPersoPour(db, x);
-                const act = db.audit.filter(a => a.ts >= lim7 && a.utilisateur === x.nomComplet).length;
+                const act = db._metrics?.audit7dByUser?.[x.nomComplet]
+                  ?? db.audit.filter(a => a.ts >= lim7 && a.utilisateur === x.nomComplet).length;
                 return (
                   <tr key={x.identifiant}>
                     <td><b>{x.nomComplet}</b><br /><small style={{ color: 'var(--gris)' }}>{x.poste || "—"}</small></td>

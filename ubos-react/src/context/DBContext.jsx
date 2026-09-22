@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import { baseVide, genCode as genCodeDb, audit as auditDb, notifier as notifierDb, journaliserSecurite as journaliserSecuriteDb } from '../data/db';
 import { COLLS } from '../data/constants';
 import { seedUsers } from '../data/permissions';
-import { checkBackendHealth, fetchCollectionPage, fetchDB, saveDBPatch, saveDBSync } from '../services/api';
+import { checkBackendHealth, fetchAuditPage, fetchCollectionPage, fetchDB, saveDBPatch, saveDBSync } from '../services/api';
 import { useToast } from './ToastContext';
 
 const DBContext = createContext();
@@ -122,6 +122,10 @@ export const DBProvider = ({ children }) => {
       const remoteDb = await fetchDB();
       const merged = Object.assign(baseVide(), remoteDb);
       seedUsers(merged);
+      collectionLoadsRef.current.clear();
+      (remoteDb._loadedCollections || []).forEach(name => {
+        collectionLoadsRef.current.set(name, { status: 'loaded' });
+      });
       dbRef.current = merged;
       fingerprintsRef.current = fingerprintDatabase(merged);
       setDb(merged);
@@ -137,24 +141,30 @@ export const DBProvider = ({ children }) => {
   const chargerCollections = useCallback(async (collectionNames) => {
     const names = [...new Set((collectionNames || []).filter(name => TRACKED_ARRAYS.includes(name)))];
     const loaded = await Promise.all(names.map(async name => {
-      let pending = collectionLoadsRef.current.get(name);
+      const existing = collectionLoadsRef.current.get(name);
+      if (existing?.status === 'loaded') return [name, null];
+      let pending = existing?.promise;
       if (!pending) {
         pending = (async () => {
           const records = [];
           let page = 1;
           let totalPages = 1;
           do {
-            const result = await fetchCollectionPage(name, { page, pageSize: 100 });
+            const result = name === 'audit'
+              ? await fetchAuditPage(page, 500)
+              : await fetchCollectionPage(name, { page, pageSize: 500 });
             records.push(...(result.items || []));
             totalPages = Math.max(1, Number(result.totalPages || 1));
             page += 1;
           } while (page <= totalPages);
           return records;
         })();
-        collectionLoadsRef.current.set(name, pending);
+        collectionLoadsRef.current.set(name, { status: 'loading', promise: pending });
       }
       try {
-        return [name, await pending];
+        const records = await pending;
+        collectionLoadsRef.current.set(name, { status: 'loaded' });
+        return [name, records];
       } catch (error) {
         collectionLoadsRef.current.delete(name);
         throw error;
@@ -163,6 +173,7 @@ export const DBProvider = ({ children }) => {
 
     const next = { ...dbRef.current };
     loaded.forEach(([name, records]) => {
+      if (records === null) return;
       next[name] = records;
       const fingerprints = new Map();
       records.forEach(record => {
@@ -174,6 +185,20 @@ export const DBProvider = ({ children }) => {
     dbRef.current = next;
     setDb(next);
     return next;
+  }, []);
+
+  const hydraterEnregistrements = useCallback((collection, records) => {
+    if (!TRACKED_ARRAYS.includes(collection) || !Array.isArray(records) || !records.length) return;
+    const current = dbRef.current[collection] || [];
+    const byId = new Map(current.map(record => [recordKey(record), record]));
+    records.forEach(record => byId.set(recordKey(record), record));
+    const next = { ...dbRef.current, [collection]: [...byId.values()] };
+    records.forEach(record => {
+      const id = recordKey(record);
+      if (id) fingerprintsRef.current.arrays[collection].set(id, { ref: record, hash: fingerprint(record) });
+    });
+    dbRef.current = next;
+    setDb(next);
   }, []);
 
   // Called on logout so the previous user's data doesn't linger in memory
@@ -266,7 +291,7 @@ export const DBProvider = ({ children }) => {
     try {
       await saveDBSync(dbRef.current);
       setIsPostgresConnected(true);
-    } catch (e) {
+    } catch {
       setIsPostgresConnected(false);
       toast('Échec de la synchronisation manuelle.');
     }
@@ -276,7 +301,7 @@ export const DBProvider = ({ children }) => {
     <DBContext.Provider value={{
       db, setDb, updateDB, genCode, audit, notifier, journalSecurite,
       userCourant, setUserCourant, isPostgresConnected, syncToPostgres,
-      dbLoading, chargerDonnees, chargerCollections, viderDonnees
+      dbLoading, chargerDonnees, chargerCollections, hydraterEnregistrements, viderDonnees
     }}>
       {children}
     </DBContext.Provider>
