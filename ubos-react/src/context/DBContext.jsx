@@ -1,10 +1,70 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { baseVide, genCode as genCodeDb, audit as auditDb, notifier as notifierDb, journaliserSecurite as journaliserSecuriteDb } from '../data/db';
+import { COLLS } from '../data/constants';
 import { seedUsers } from '../data/permissions';
-import { checkBackendHealth, fetchDB, saveDBSync } from '../services/api';
+import { checkBackendHealth, fetchDB, saveDBPatch, saveDBSync } from '../services/api';
 import { useToast } from './ToastContext';
 
 const DBContext = createContext();
+
+const TRACKED_ARRAYS = [...new Set([...COLLS, 'audit', 'notifs'])];
+
+function recordKey(record) {
+  return String(record?.id || record?.code || '');
+}
+
+function serialize(value) {
+  return JSON.stringify(value ?? null);
+}
+
+function fingerprintDatabase(database) {
+  const arrays = {};
+  TRACKED_ARRAYS.forEach(key => {
+    arrays[key] = new Map();
+    (database[key] || []).forEach(record => {
+      const id = recordKey(record);
+      if (id) arrays[key].set(id, serialize(record));
+    });
+  });
+  return { seq: serialize(database.seq || {}), arrays };
+}
+
+function createPatch(database, keys, fingerprints) {
+  const patch = { collections: {} };
+  const nextSeq = serialize(database.seq || {});
+  if (nextSeq !== fingerprints.seq) patch.seq = database.seq || {};
+
+  keys.forEach(key => {
+    if (!TRACKED_ARRAYS.includes(key) || !Array.isArray(database[key])) return;
+    const known = fingerprints.arrays[key] || new Map();
+    const changed = database[key].filter(record => {
+      const id = recordKey(record);
+      return id && known.get(id) !== serialize(record);
+    });
+    if (!changed.length) return;
+    if (key === 'utilisateurs' || key === 'audit' || key === 'notifs') patch[key] = changed;
+    else patch.collections[key] = changed;
+  });
+
+  return patch;
+}
+
+function patchIsEmpty(patch) {
+  return !patch.seq && !patch.utilisateurs && !patch.audit && !patch.notifs
+    && Object.keys(patch.collections || {}).length === 0;
+}
+
+function updateFingerprints(fingerprints, patch) {
+  if (patch.seq) fingerprints.seq = serialize(patch.seq);
+  const arrays = { ...(patch.collections || {}) };
+  ['utilisateurs', 'audit', 'notifs'].forEach(key => {
+    if (patch[key]) arrays[key] = patch[key];
+  });
+  Object.entries(arrays).forEach(([key, records]) => {
+    if (!fingerprints.arrays[key]) fingerprints.arrays[key] = new Map();
+    records.forEach(record => fingerprints.arrays[key].set(recordKey(record), serialize(record)));
+  });
+}
 
 export const useDB = () => useContext(DBContext);
 
@@ -21,6 +81,7 @@ export const DBProvider = ({ children }) => {
   // called back-to-back in the same event handler each see the others'
   // results immediately, instead of racing on a stale value.
   const dbRef = useRef(db);
+  const fingerprintsRef = useRef(fingerprintDatabase(db));
 
   // audit()/notifier()/updateDB() each trigger their own saveDBSync() call,
   // and callers routinely fire several of them back-to-back without
@@ -52,6 +113,7 @@ export const DBProvider = ({ children }) => {
       const merged = Object.assign(baseVide(), remoteDb);
       seedUsers(merged);
       dbRef.current = merged;
+      fingerprintsRef.current = fingerprintDatabase(merged);
       setDb(merged);
       setIsPostgresConnected(true);
     } catch (e) {
@@ -66,6 +128,7 @@ export const DBProvider = ({ children }) => {
   // while the login screen is showing.
   const viderDonnees = useCallback(() => {
     dbRef.current = baseVide();
+    fingerprintsRef.current = fingerprintDatabase(dbRef.current);
     setDb(dbRef.current);
   }, []);
 
@@ -74,14 +137,34 @@ export const DBProvider = ({ children }) => {
   // PostgreSQL. If that fails, the optimistic change is rolled back and
   // the user is told — instead of the previous silent fire-and-forget
   // that could leave the browser and the database disagreeing.
-  const commit = useCallback((next) => {
+  const commit = useCallback((next, forcedKeys = []) => {
     const previous = dbRef.current;
+    const changedKeys = new Set(forcedKeys);
+    TRACKED_ARRAYS.forEach(key => {
+      if (next[key] !== previous[key]) changedKeys.add(key);
+    });
+    // A few older forms still mutate an array before shallow-cloning the DB.
+    // If no changed reference is visible, compare all collections once so the
+    // update is still persisted while those forms are migrated.
+    if (!changedKeys.size) TRACKED_ARRAYS.forEach(key => changedKeys.add(key));
+    const patch = createPatch(next, changedKeys, fingerprintsRef.current);
     dbRef.current = next;
     setDb(next);
 
+    if (patchIsEmpty(patch)) return Promise.resolve();
+
     const enqueued = syncQueueRef.current.then(async () => {
       try {
-        await saveDBSync(next);
+        try {
+          await saveDBPatch(patch);
+          updateFingerprints(fingerprintsRef.current, patch);
+        } catch (e) {
+          // Allows a rolling deployment: a freshly deployed frontend can still
+          // save against the previous backend until the backend container is up.
+          if (e?.status !== 404 && e?.status !== 405) throw e;
+          await saveDBSync(next);
+          fingerprintsRef.current = fingerprintDatabase(next);
+        }
       } catch (e) {
         // Only roll back if nothing more recent has already superseded
         // this commit locally — otherwise a slow, now-stale failed request
@@ -111,19 +194,19 @@ export const DBProvider = ({ children }) => {
   const audit = useCallback((module, action, ref, champ, av, ap, doss) => {
     const nDb = { ...dbRef.current };
     auditDb(nDb, module, action, ref, champ, av, ap, doss, userCourant);
-    commit(nDb);
+    commit(nDb, ['audit']);
   }, [userCourant, commit]);
 
   const notifier = useCallback((dest, texte, lien) => {
     const nDb = { ...dbRef.current };
     notifierDb(nDb, dest, texte, lien, userCourant, (pfx, d) => genCodeDb(pfx, d));
-    commit(nDb);
+    commit(nDb, ['notifs']);
   }, [userCourant, commit]);
 
   const journalSecurite = useCallback((action, module, resultat) => {
     const nDb = { ...dbRef.current };
     journaliserSecuriteDb(nDb, action, userCourant, module, resultat);
-    commit(nDb);
+    commit(nDb, ['journalSecurite']);
   }, [userCourant, commit]);
 
   const syncToPostgres = useCallback(async () => {

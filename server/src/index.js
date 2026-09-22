@@ -8,7 +8,7 @@ import nodemailer from 'nodemailer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { createRequire } from 'module';
 import { lLeadHandler } from './sheetsLLeads.js';
 
@@ -162,6 +162,31 @@ const COLLS = [
   "suivisClosing",
   "suivisLimex", "actionsLimex", "instructionsLimex", "documentsComptablesCasa"
 ];
+
+const COLLECTION_FILTER_KEYS = new Set([
+  'segment', 'dataTag', 'statut', 'etape', 'urgence', 'source', 'client',
+  'dossier', 'service', 'departement', 'actif'
+]);
+
+function collectionCodeExpression() {
+  return Prisma.sql`COALESCE(NULLIF(data->>'codeClientUltex', ''), NULLIF(code, ''), id)`;
+}
+
+async function creerIndexPerformance() {
+  const statements = [
+    'CREATE INDEX IF NOT EXISTS collection_items_collection_created_at_idx ON collection_items (collection, "createdAt" DESC)',
+    "CREATE INDEX IF NOT EXISTS collection_items_clients_code_ultex_idx ON collection_items ((data->>'codeClientUltex')) WHERE collection = 'clients'",
+    "CREATE INDEX IF NOT EXISTS collection_items_clients_telephone_idx ON collection_items ((data->>'telephone')) WHERE collection = 'clients'",
+    "CREATE INDEX IF NOT EXISTS collection_items_contacts_client_idx ON collection_items ((data->>'codeClientAssocie')) WHERE collection = 'contacts'",
+    "CREATE INDEX IF NOT EXISTS collection_items_contacts_telephone_idx ON collection_items ((data->>'telephone')) WHERE collection = 'contacts'",
+    "CREATE INDEX IF NOT EXISTS collection_items_demandes_client_idx ON collection_items ((data->>'client')) WHERE collection = 'demandes'",
+    "CREATE INDEX IF NOT EXISTS collection_items_demandes_ultex_dossier_idx ON collection_items ((data->>'ultexDossierId')) WHERE collection = 'demandes'",
+    "CREATE INDEX IF NOT EXISTS collection_items_demande_lignes_demande_idx ON collection_items ((data->>'demande')) WHERE collection = 'demandeLignes'",
+    "CREATE INDEX IF NOT EXISTS collection_items_demande_lignes_product_idx ON collection_items ((data->>'ultexProductId')) WHERE collection = 'demandeLignes'",
+    "CREATE INDEX IF NOT EXISTS collection_items_documents_ultex_idx ON collection_items ((data->>'ultexDocumentId')) WHERE collection = 'documents'"
+  ];
+  for (const statement of statements) await prisma.$executeRawUnsafe(statement);
+}
 
 const PFX_ANNEE = ["DOS", "FF", "AV", "REL", "ABD", "IMP", "RMB", "CMD", "DMD", "ARR"];
 
@@ -394,26 +419,31 @@ app.post('/api/security/otp/verify', authMiddleware, async (req, res) => {
 
 // Get Full DB Snapshot
 app.get('/api/db', authMiddleware, async (req, res) => {
+  const startedAt = Date.now();
   try {
     const dbState = { seq: {} };
 
     // Initialize empty collections
     COLLS.forEach(col => { dbState[col] = []; });
 
-    // Fetch sequence counters
-    const sequences = await prisma.sequenceCounter.findMany();
+    // These tables are independent. Reading them concurrently removes several
+    // network round-trips from every login without changing the snapshot shape.
+    const [sequences, items, users, notifications, auditLogs] = await Promise.all([
+      prisma.sequenceCounter.findMany(),
+      prisma.collectionItem.findMany(),
+      prisma.user.findMany(),
+      prisma.notificationItem.findMany({ orderBy: { createdAt: 'desc' }, take: 500 }),
+      prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 5000 })
+    ]);
+
     sequences.forEach(s => { dbState.seq[s.key] = s.val; });
 
-    // Fetch collection items
-    const items = await prisma.collectionItem.findMany();
     items.forEach(item => {
       if (dbState[item.collection]) {
         dbState[item.collection].push({ id: item.id, createdAt: item.createdAt.toISOString(), ...item.data });
       }
     });
 
-    // Fetch users (all users, both active and inactive)
-    const users = await prisma.user.findMany();
     dbState.utilisateurs = users.map(u => ({
       id: u.id,
       code: u.code,
@@ -429,11 +459,6 @@ app.get('/api/db', authMiddleware, async (req, res) => {
       actif: u.actif
     }));
 
-    // Fetch notifications
-    const notifications = await prisma.notificationItem.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 500
-    });
     dbState.notifs = notifications.map(n => ({
       id: n.id,
       code: n.code,
@@ -446,11 +471,6 @@ app.get('/api/db', authMiddleware, async (req, res) => {
       date: n.date
     }));
 
-    // Fetch audit logs
-    const auditLogs = await prisma.auditLog.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 5000
-    });
     dbState.audit = auditLogs.map(a => ({
       id: a.id,
       ts: Number(a.ts),
@@ -466,10 +486,76 @@ app.get('/api/db', authMiddleware, async (req, res) => {
       dossier: a.dossier
     }));
 
+    res.set('Server-Timing', `db-snapshot;dur=${Date.now() - startedAt}`);
+    res.set('X-CRM-Records', String(items.length));
     res.json(dbState);
   } catch (error) {
     console.error('Fetch DB error:', error);
     res.status(500).json({ error: 'Erreur lors du chargement de la base de données PostgreSQL' });
+  }
+});
+
+// Lightweight collection reads for screens that do not need to materialise
+// thousands of rows in React. The full /api/db snapshot remains available for
+// legacy fiche/dashboard logic while modules are migrated incrementally.
+app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
+  const collection = String(req.params.collection || '');
+  if (!COLLS.includes(collection) || collection === 'utilisateurs') {
+    return res.status(404).json({ error: 'Collection introuvable' });
+  }
+
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 25));
+  const q = String(req.query.q || '').trim().slice(0, 200);
+  const codeGroup = String(req.query.codeGroup || '').toUpperCase();
+  const filterKey = String(req.query.filterKey || '');
+  const filterValue = String(req.query.filterValue || '').slice(0, 200);
+  const where = [Prisma.sql`collection = ${collection}`];
+
+  if (q) {
+    const pattern = `%${q}%`;
+    where.push(Prisma.sql`(id ILIKE ${pattern} OR COALESCE(code, '') ILIKE ${pattern} OR data::text ILIKE ${pattern})`);
+  }
+
+  if (collection === 'clients' && ['L', 'A', 'R', '#'].includes(codeGroup)) {
+    const codeExpression = collectionCodeExpression();
+    where.push(codeGroup === '#'
+      ? Prisma.sql`${codeExpression} !~* '^[LAR]'`
+      : Prisma.sql`${codeExpression} ~* ${`^${codeGroup}`}`);
+  }
+
+  if (filterValue && COLLECTION_FILTER_KEYS.has(filterKey)) {
+    where.push(Prisma.sql`data ->> ${filterKey} = ${filterValue}`);
+  }
+
+  try {
+    const clause = Prisma.join(where, ' AND ');
+    const offset = (page - 1) * pageSize;
+    const [rows, countRows] = await Promise.all([
+      prisma.$queryRaw(Prisma.sql`
+        SELECT id, code, data, "createdAt"
+        FROM collection_items
+        WHERE ${clause}
+        ORDER BY CASE WHEN data->>'ts' ~ '^[0-9]+$' THEN (data->>'ts')::bigint ELSE 0 END DESC, "createdAt" DESC
+        LIMIT ${pageSize} OFFSET ${offset}
+      `),
+      prisma.$queryRaw(Prisma.sql`
+        SELECT COUNT(*)::int AS total
+        FROM collection_items
+        WHERE ${clause}
+      `)
+    ]);
+    const total = Number(countRows[0]?.total || 0);
+    res.json({
+      items: rows.map(item => ({ id: item.id, createdAt: item.createdAt.toISOString(), ...item.data })),
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize))
+    });
+  } catch (error) {
+    console.error('Collection page error:', error);
+    res.status(500).json({ error: 'Erreur lors du chargement de la collection' });
   }
 });
 
@@ -648,6 +734,49 @@ async function alerterDirection(texte) {
     console.error('Alerte Direction error:', e.message);
   }
 }
+
+// Routine mutations use a delta rather than resending every CRM row. This is
+// intentionally upsert-only: deletion continues through the dedicated,
+// permission-checked endpoints and a stale browser can never purge data.
+app.post('/api/db/patch', authMiddleware, async (req, res) => {
+  const payload = req.body;
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return res.status(400).json({ error: 'Données invalides' });
+  }
+
+  const collections = payload.collections && typeof payload.collections === 'object'
+    ? payload.collections
+    : {};
+  const unknownCollections = Object.keys(collections).filter(col => !COLLS.includes(col) || col === 'utilisateurs');
+  if (unknownCollections.length) {
+    return res.status(400).json({ error: `Collections invalides: ${unknownCollections.join(', ')}` });
+  }
+
+  const arrays = [payload.utilisateurs, payload.audit, payload.notifs, ...Object.values(collections)]
+    .filter(value => value !== undefined);
+  if (arrays.some(value => !Array.isArray(value))) {
+    return res.status(400).json({ error: 'Le patch doit contenir des listes valides' });
+  }
+  const recordCount = arrays.reduce((sum, value) => sum + value.length, 0);
+  if (recordCount > 2000) {
+    return res.status(413).json({ error: 'Patch trop volumineux; utilisez la synchronisation complète' });
+  }
+
+  const partialState = {};
+  if (payload.seq && typeof payload.seq === 'object' && !Array.isArray(payload.seq)) partialState.seq = payload.seq;
+  if (Array.isArray(payload.utilisateurs)) partialState.utilisateurs = payload.utilisateurs;
+  if (Array.isArray(payload.audit)) partialState.audit = payload.audit;
+  if (Array.isArray(payload.notifs)) partialState.notifs = payload.notifs;
+  Object.entries(collections).forEach(([col, items]) => { partialState[col] = items; });
+
+  try {
+    await synchroniserEtatComplet(partialState);
+    res.json({ status: 'success', records: recordCount });
+  } catch (error) {
+    console.error('Delta sync error:', error);
+    res.status(500).json({ error: 'Erreur lors de la synchronisation avec PostgreSQL' });
+  }
+});
 
 // Routine save -- every "audit()/notifier()/updateDB()" in the frontend
 // goes through this on every single change. Deliberately non-destructive
@@ -1940,6 +2069,8 @@ app.listen(PORT, async () => {
   try {
     await prisma.$connect();
     console.log('✅ Connexion PostgreSQL établie.');
+    await creerIndexPerformance();
+    console.log('✅ Index de performance CRM vérifiés.');
   } catch (e) {
     console.error('⚠️ Attention: Connexion à la base PostgreSQL non disponible pour le moment:', e.message);
   }

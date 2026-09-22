@@ -1,5 +1,5 @@
 import FilterTable from '../common/FilterTable';
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -13,6 +13,7 @@ import * as Actions from '../../utils/businessActions';
 import { supprimerEnregistrementSecurise } from '../../services/security';
 import { formatCreationDate } from '../../utils/creationDate';
 import { codeClientAffiche, groupeCodeClient, GROUPES_CODES_CLIENT } from '../../utils/clientCodeGroups';
+import { fetchCollectionPage } from '../../services/api';
 
 const PERMISSION_REQUISE = {
   qualifierLead: 'valider',
@@ -32,13 +33,52 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
   const [showForm, setShowForm] = useState(false);
   const [editCode, setEditCode] = useState(null);
   const [groupeClients, setGroupeClients] = useState('L');
+  const [remoteClients, setRemoteClients] = useState([]);
+  const [remoteTotal, setRemoteTotal] = useState(0);
+  const [remotePage, setRemotePage] = useState(1);
+  const [remotePageSize, setRemotePageSize] = useState(25);
+  const [remoteTotalPages, setRemoteTotalPages] = useState(1);
+  const [remoteLoading, setRemoteLoading] = useState(false);
+  const [remoteError, setRemoteError] = useState('');
 
   const M = MODS[moduleId];
+
+  useEffect(() => {
+    if (moduleId !== 'clients') return undefined;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setRemoteLoading(true);
+      setRemoteError('');
+      try {
+        const result = await fetchCollectionPage('clients', {
+          page: remotePage,
+          pageSize: remotePageSize,
+          q: recherche,
+          codeGroup: groupeClients,
+          filterKey: filtreStatut ? 'segment' : '',
+          filterValue: filtreStatut
+        });
+        if (cancelled) return;
+        setRemoteClients(result.items || []);
+        setRemoteTotal(Number(result.total || 0));
+        setRemoteTotalPages(Math.max(1, Number(result.totalPages || 1)));
+        if (remotePage > Number(result.totalPages || 1)) setRemotePage(Math.max(1, Number(result.totalPages || 1)));
+      } catch (error) {
+        if (!cancelled) setRemoteError(error?.message || 'Chargement impossible');
+      } finally {
+        if (!cancelled) setRemoteLoading(false);
+      }
+    }, recherche ? 250 : 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [moduleId, recherche, filtreStatut, groupeClients, remotePage, remotePageSize, db.clients]);
 
   const { lignes, optsStatut } = useMemo(() => {
     if (!M) return { lignes: [], optsStatut: [] };
     
-    let l = (db[M.coll] || []).slice().sort((a, b) => {
+    let l = (moduleId === 'clients' ? remoteClients : (db[M.coll] || [])).slice().sort((a, b) => {
       if (moduleId === 'produits') {
         const hsOrder = String(a.hsCode || 'ZZZZZZ').localeCompare(String(b.hsCode || 'ZZZZZZ'), 'fr', { numeric: true });
         if (hsOrder !== 0) return hsOrder;
@@ -47,24 +87,20 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
       return (b.ts || 0) - (a.ts || 0);
     });
     
-    if (recherche) {
+    if (recherche && moduleId !== 'clients') {
       const q = recherche.toLowerCase();
       l = l.filter(o => Object.values(o).some(v => String(v ?? "").toLowerCase().includes(q)));
     }
     
-    if (filtreStatut && M.statut) {
+    if (filtreStatut && M.statut && moduleId !== 'clients') {
       l = l.filter(o => o[M.statut] === filtreStatut);
     }
 
-    if (moduleId === 'clients') {
-      l = l.filter(o => groupeCodeClient(o) === groupeClients);
-    }
-    
     let opts = M.statut ? (M.champs?.find(f => f.k === M.statut)?.opts || []) : [];
     if (typeof opts === "function") opts = opts(db);
     
     return { lignes: l, optsStatut: opts };
-  }, [db, M, recherche, filtreStatut, moduleId, groupeClients]);
+  }, [db, M, recherche, filtreStatut, moduleId, remoteClients]);
 
   const compteGroupesClients = useMemo(() => {
     const compte = { L: 0, A: 0, R: 0, '#': 0 };
@@ -141,10 +177,10 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
           type="search" 
           placeholder={`Rechercher dans ${M.label}…`} 
           value={recherche} 
-          onChange={(e) => setRecherche(e.target.value)} 
+          onChange={(e) => { setRecherche(e.target.value); setRemotePage(1); }}
         />
         {optsStatut.length > 0 && (
-          <select value={filtreStatut} onChange={(e) => setFiltreStatut(e.target.value)}>
+          <select value={filtreStatut} onChange={(e) => { setFiltreStatut(e.target.value); setRemotePage(1); }}>
             <option value="">Tous les statuts</option>
             {optsStatut.map(o => (
               <option key={o} value={o}>{o}</option>
@@ -168,7 +204,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
               key={groupe.id}
               type="button"
               className={`onglet ${groupeClients === groupe.id ? 'actif' : ''}`}
-              onClick={() => setGroupeClients(groupe.id)}
+              onClick={() => { setGroupeClients(groupe.id); setRemotePage(1); }}
             >
               {groupe.label} ({compteGroupesClients[groupe.id]})
             </button>
@@ -177,8 +213,9 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
       )}
 
       <div className="panneau">
+        {moduleId === 'clients' && remoteError && <div className="note-verrou">{remoteError}</div>}
         <div className="defile">
-          <FilterTable>
+          <FilterTable pagination={moduleId !== 'clients'}>
             <thead>
               <tr>
                 <th>Code</th>
@@ -188,7 +225,9 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
               </tr>
             </thead>
             <tbody>
-              {!lignes.length ? (
+              {remoteLoading && moduleId === 'clients' ? (
+                <tr><td colSpan={(M.cols || []).length + 3}><div className="vide"><b>Chargement…</b></div></td></tr>
+              ) : !lignes.length ? (
                 <tr>
                   <td colSpan={(M.cols || []).length + 3}>
                     <div className="vide">
@@ -256,6 +295,26 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
             </tbody>
           </FilterTable>
         </div>
+        {moduleId === 'clients' && !remoteError && remoteTotal > 0 && (
+          <nav className="table-pagination" aria-label="Pagination des clients">
+            <div className="table-pagination-summary">
+              <strong>{(remotePage - 1) * remotePageSize + 1}–{Math.min(remotePage * remotePageSize, remoteTotal)}</strong> sur <strong>{remoteTotal}</strong>
+            </div>
+            <label className="table-page-size">
+              <span>Lignes</span>
+              <select value={remotePageSize} onChange={event => { setRemotePageSize(Number(event.target.value)); setRemotePage(1); }}>
+                {[25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </label>
+            {remoteTotalPages > 1 && <div className="table-page-buttons">
+              <button type="button" className="table-page-nav" onClick={() => setRemotePage(1)} disabled={remotePage === 1} aria-label="Première page">«</button>
+              <button type="button" className="table-page-nav" onClick={() => setRemotePage(page => Math.max(1, page - 1))} disabled={remotePage === 1} aria-label="Page précédente">‹</button>
+              <span className="table-pagination-summary">Page <strong>{remotePage}</strong> / <strong>{remoteTotalPages}</strong></span>
+              <button type="button" className="table-page-nav" onClick={() => setRemotePage(page => Math.min(remoteTotalPages, page + 1))} disabled={remotePage === remoteTotalPages} aria-label="Page suivante">›</button>
+              <button type="button" className="table-page-nav" onClick={() => setRemotePage(remoteTotalPages)} disabled={remotePage === remoteTotalPages} aria-label="Dernière page">»</button>
+            </div>}
+          </nav>
+        )}
       </div>
       
       {showForm && (

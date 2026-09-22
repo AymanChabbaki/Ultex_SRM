@@ -40,6 +40,23 @@ export async function fetchDB() {
   return await res.json();
 }
 
+export async function fetchCollectionPage(collection, params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+  });
+  const res = await fetch(`${API_URL}/collections/${encodeURIComponent(collection)}?${query}`, {
+    headers: { ...authHeaders() }
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  if (!res.ok) {
+    const error = new Error('Erreur lors du chargement de la liste');
+    error.status = res.status;
+    throw error;
+  }
+  return await res.json();
+}
+
 export async function fetchMe() {
   const res = await fetch(`${API_URL}/auth/me`, { headers: { ...authHeaders() } });
   if (res.status === 401) throw new AuthError('Session invalide ou expirée');
@@ -56,6 +73,21 @@ export async function saveDBSync(dbState) {
   });
   if (res.status === 401) throw new AuthError('Session invalide ou expirée');
   if (!res.ok) throw new Error('Erreur lors de la synchronisation avec PostgreSQL');
+  return await res.json();
+}
+
+export async function saveDBPatch(patch) {
+  const res = await fetch(`${API_URL}/db/patch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(patch)
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  if (!res.ok) {
+    const error = new Error('Erreur lors de la synchronisation avec PostgreSQL');
+    error.status = res.status;
+    throw error;
+  }
   return await res.json();
 }
 
