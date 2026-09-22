@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useDB } from '../../context/DBContext';
+import { useAuth } from '../../context/AuthContext';
+import { useSecurity } from '../../context/SecurityContext';
 import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import KVDisplay from '../common/KVDisplay';
@@ -15,6 +17,7 @@ import { estSuiviOuvert } from '../../utils/closingCoordination';
 import { recordFollowup, localDateTime } from '../../utils/dataFollowup';
 import { pill } from '../../utils/format';
 import { categorieDepuisFichier, lireFichierDataUrl } from '../../utils/fileData';
+import { supprimerClientTestGoogleSheets } from '../../services/security';
 
 const ONGLETS_360 = [
   ["identite", "1. Identité"],
@@ -84,7 +87,9 @@ const CHAMPS_COMPORTEMENTAL = [
 ];
 
 const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
-  const { db, updateDB, audit, genCode, userCourant } = useDB();
+  const { db, updateDB, audit, genCode, userCourant, chargerDonnees } = useDB();
+  const { peut } = useAuth();
+  const { demanderElevation } = useSecurity();
   const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
@@ -202,6 +207,27 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
     }
   };
 
+  const estCodeTestGoogleSheets = client.sourceDonnees === 'Google Sheets' && Boolean(client.sheetLeadId);
+  const handleSupprimerCodeTest = async () => {
+    const confirmation = window.prompt(
+      `Cette action supprimera ${code}, ses demandes, produits, contacts et documents de test.\n\nSaisissez exactement ${code} pour confirmer.`
+    );
+    if (confirmation !== code) {
+      if (confirmation !== null) toast('Code de confirmation incorrect.');
+      return;
+    }
+    try {
+      const elevationToken = await demanderElevation(`Suppression du code test Google Sheets ${code}`);
+      const result = await supprimerClientTestGoogleSheets(code, elevationToken);
+      await chargerDonnees();
+      window.location.hash = '#clients';
+      const total = Object.values(result.counts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+      toast(`${code} et ${Math.max(0, total - 1)} donnée(s) liée(s) supprimés.`);
+    } catch (error) {
+      if (error?.message !== 'Vérification annulée.') toast(error?.message || 'Suppression impossible.');
+    }
+  };
+
   return (
     <div>
       <Topbar titre="Profil Client 360°" />
@@ -214,6 +240,9 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
           <button className="btn or" onClick={() => setOnglet('docs')}>Darf / Fichiers</button>
           <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>
           <button className="btn doux" onClick={() => setShowRattacher(true)}>Rattacher un suivi Closing</button>
+          {estCodeTestGoogleSheets && peut('supprimer') && (
+            <button className="btn rouge" onClick={handleSupprimerCodeTest}>Supprimer ce code test</button>
+          )}
           <button className="btn or" onClick={() => window.print()}><PrinterIcon size={14} /> Imprimer / PDF</button>
         </div>
 

@@ -711,6 +711,69 @@ app.post('/api/security/restore', authMiddleware, requireElevation, async (req, 
   }
 });
 
+// Removes a Google-Sheets test client together with the records created by
+// the same intake flow. It deliberately refuses ordinary/established clients
+// and clients that already have a non-Sheets demande.
+app.delete('/api/security/sheet-test-clients/:code', authMiddleware, requireElevation, async (req, res) => {
+  const code = String(req.params.code || '').trim();
+  if (!/^L\d+$/.test(code)) return res.status(400).json({ error: 'Seuls les codes test L peuvent être supprimés ici.' });
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const client = await tx.collectionItem.findFirst({ where: { collection: 'clients', code } });
+      if (!client) throw Object.assign(new Error('Code client introuvable.'), { status: 404 });
+      const sheetClient = client.data?.sourceDonnees === 'Google Sheets' && Boolean(client.data?.sheetLeadId);
+      if (!sheetClient) throw Object.assign(new Error("Ce code n'a pas été créé par le test Google Sheets."), { status: 409 });
+
+      const clientDemandes = await tx.collectionItem.findMany({
+        where: { collection: 'demandes', data: { path: ['client'], equals: code } }
+      });
+      const sheetDemandes = clientDemandes.filter(item =>
+        item.data?.sourceSynchronisation === 'Google Sheets' || Boolean(item.data?.sheetLeadId)
+      );
+      if (sheetDemandes.length !== clientDemandes.length) {
+        throw Object.assign(new Error('Suppression refusée : ce client possède une demande qui ne vient pas du test Google Sheets.'), { status: 409 });
+      }
+
+      const demandeCodes = new Set(sheetDemandes.map(item => item.code).filter(Boolean));
+      const allLines = demandeCodes.size ? await tx.collectionItem.findMany({ where: { collection: 'demandeLignes' } }) : [];
+      const lines = allLines.filter(item => demandeCodes.has(item.data?.demande));
+      const contacts = await tx.collectionItem.findMany({
+        where: { collection: 'contacts', data: { path: ['codeClientAssocie'], equals: code } }
+      });
+      const sheetContacts = contacts.filter(item => item.data?.sourceDonnees === 'Google Sheets');
+      const documents = await tx.collectionItem.findMany({
+        where: { collection: 'documents', data: { path: ['client'], equals: code } }
+      });
+
+      const groups = [
+        ['demandeLignes', lines],
+        ['documents', documents],
+        ['demandes', sheetDemandes],
+        ['contacts', sheetContacts],
+        ['clients', [client]],
+      ];
+      const counts = {};
+      for (const [collection, items] of groups) {
+        const ids = items.map(item => item.id);
+        counts[collection] = ids.length
+          ? (await tx.collectionItem.deleteMany({ where: { collection, id: { in: ids } } })).count
+          : 0;
+      }
+      return { counts };
+    });
+
+    const auteur = req.auth.nomComplet || req.auth.identifiant;
+    const detail = Object.entries(result.counts).map(([name, count]) => `${name}:${count}`).join(', ');
+    await ecrireJournalSecurite({ action: 'Suppression code test Google Sheets', utilisateur: auteur, module: 'clients', resultat: `${code} — ${detail}`, ip: req.ip });
+    await alerterDirection(`${auteur} a supprimé le code test Google Sheets ${code} et ses données liées.`);
+    res.json({ status: 'deleted', code, ...result });
+  } catch (error) {
+    console.error('Sheet test client delete error:', error);
+    const status = error.status || 500;
+    res.status(status).json({ error: status < 500 ? error.message : 'Erreur lors de la suppression du code test.' });
+  }
+});
+
 // Deletes one record from any collection — the single choke point every
 // module's "Supprimer" button now goes through, gated behind OTP elevation.
 app.delete('/api/security/records/:collection/:code', authMiddleware, requireElevation, async (req, res) => {
@@ -1466,8 +1529,8 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
 //
 // lead-l is the L-code intake used by the two Google Forms/landing-page
 // sheets (see sheetsLLeads.js): a new lead becomes a CRM client identified
-// by its own L-code (L6910, L6911, ...), continuing the legacy L-series
-// from the old tracking sheet (last issued: L6909). A Postgres advisory
+// by its own L-code (L6913, L6914, ...), continuing the shared L-series
+// after the last reserved code L6912. A Postgres advisory
 // lock serializes allocation across BOTH sheets so they can never race for
 // the same number, and the sync is idempotent on sheetLeadId so an Apps
 // Script retry never creates a duplicate lead.

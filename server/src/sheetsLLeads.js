@@ -64,7 +64,7 @@ export async function syncLLead(prisma, body) {
   const lead = validateSheetLead(body);
   return prisma.$transaction(async tx => {
     // PostgreSQL lock is shared across server processes and held until commit.
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(6909, 2026)`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(6912, 2026)`;
     const previous = await tx.collectionItem.findFirst({ where: bySource('demandes', lead.sheetLeadId) });
     if (previous) {
       return { status: 'ok', reused: true, client: { code: previous.data.client }, demande: { code: previous.code } };
@@ -81,7 +81,7 @@ export async function syncLLead(prisma, body) {
         pays: lead.pays, segment: 'Prospect', sourceDonnees: 'Google Sheets',
         datePremierContact: date, dateDerniereDemande: date, dateEntreeData: date,
         nbRelances: 0, dataTag: '', sheetLeadId: lead.sheetLeadId,
-      }, 6909);
+      }, 6912);
       client = await tx.collectionItem.update({ where: { id: client.id }, data: {
         data: { ...client.data, codeClientUltex: client.code },
       } });

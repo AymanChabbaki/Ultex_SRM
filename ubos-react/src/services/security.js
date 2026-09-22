@@ -44,6 +44,15 @@ export async function supprimerEnregistrementSecurise(collection, code, elevatio
   return await res.json();
 }
 
+export async function supprimerClientTestGoogleSheets(code, elevationToken) {
+  const res = await fetch(`${API_URL}/security/sheet-test-clients/${encodeURIComponent(code)}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders(elevationToken) }
+  });
+  if (!res.ok) throw new Error(await lireErreur(res));
+  return await res.json();
+}
+
 export async function restaurerSecurise(data, elevationToken) {
   const res = await fetch(`${API_URL}/security/restore`, {
     method: 'POST',
