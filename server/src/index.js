@@ -719,17 +719,16 @@ app.delete('/api/security/sheet-test-clients/:code', authMiddleware, requireElev
   if (!/^L\d+$/.test(code)) return res.status(400).json({ error: 'Seuls les codes test L peuvent être supprimés ici.' });
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const client = await tx.collectionItem.findFirst({ where: { collection: 'clients', code } });
-      if (!client) throw Object.assign(new Error('Code client introuvable.'), { status: 404 });
-      const sheetClient = client.data?.sourceDonnees === 'Google Sheets' && Boolean(client.data?.sheetLeadId);
-      if (!sheetClient) throw Object.assign(new Error("Ce code n'a pas été créé par le test Google Sheets."), { status: 409 });
-
       const clientDemandes = await tx.collectionItem.findMany({
         where: { collection: 'demandes', data: { path: ['client'], equals: code } }
       });
       const sheetDemandes = clientDemandes.filter(item =>
         item.data?.sourceSynchronisation === 'Google Sheets' || Boolean(item.data?.sheetLeadId)
       );
+      const client = await tx.collectionItem.findFirst({ where: { collection: 'clients', code } });
+      const sheetClient = client?.data?.sourceDonnees === 'Google Sheets' && Boolean(client?.data?.sheetLeadId);
+      if (client && !sheetClient) throw Object.assign(new Error("Ce code n'a pas été créé par le test Google Sheets."), { status: 409 });
+      if (!client && sheetDemandes.length === 0) throw Object.assign(new Error('Aucune donnée de test Google Sheets trouvée pour ce code.'), { status: 404 });
       if (sheetDemandes.length !== clientDemandes.length) {
         throw Object.assign(new Error('Suppression refusée : ce client possède une demande qui ne vient pas du test Google Sheets.'), { status: 409 });
       }
@@ -750,7 +749,7 @@ app.delete('/api/security/sheet-test-clients/:code', authMiddleware, requireElev
         ['documents', documents],
         ['demandes', sheetDemandes],
         ['contacts', sheetContacts],
-        ['clients', [client]],
+        ['clients', client ? [client] : []],
       ];
       const counts = {};
       for (const [collection, items] of groups) {
@@ -780,6 +779,12 @@ app.delete('/api/security/records/:collection/:code', authMiddleware, requireEle
   const { collection, code } = req.params;
   if (!COLLS.includes(collection)) return res.status(400).json({ error: 'Collection inconnue' });
   try {
+    if (collection === 'clients') {
+      const client = await prisma.collectionItem.findFirst({ where: { collection: 'clients', code } });
+      if (client?.data?.sourceDonnees === 'Google Sheets' && client?.data?.sheetLeadId) {
+        return res.status(409).json({ error: 'Utilisez « Supprimer ce code test » pour retirer aussi les demandes et produits liés.' });
+      }
+    }
     const deleted = await prisma.collectionItem.deleteMany({ where: { collection, code } });
     const auteur = req.auth.nomComplet || req.auth.identifiant;
     await ecrireJournalSecurite({ action: 'Suppression', utilisateur: auteur, module: collection, resultat: `${code} — ${deleted.count} enregistrement(s) supprimé(s)`, ip: req.ip });

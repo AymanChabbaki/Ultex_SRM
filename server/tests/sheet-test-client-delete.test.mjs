@@ -14,13 +14,22 @@ test('test-client deletion is elevation-gated and limited to L codes created by 
   assert.match(server, /app\.delete\('\/api\/security\/sheet-test-clients\/:code', authMiddleware, requireElevation/);
   assert.match(server, /if \(!\/\^L\\d\+\$\/\.test\(code\)\)/);
   assert.match(server, /sourceDonnees === 'Google Sheets'/);
-  assert.match(server, /Boolean\(client\.data\?\.sheetLeadId\)/);
+  assert.match(server, /Boolean\(client\?\.data\?\.sheetLeadId\)/);
 });
 
 test('test-client deletion removes linked lines before demandes and client', () => {
   const lines = server.indexOf("['demandeLignes', lines]");
   const demandes = server.indexOf("['demandes', sheetDemandes]");
-  const clients = server.indexOf("['clients', [client]]");
+  const clients = server.indexOf("['clients', client ? [client] : []]");
   assert.ok(lines > -1 && demandes > lines && clients > demandes);
   assert.match(server, /Suppression refusée : ce client possède une demande/);
+});
+
+test('orphaned Sheet demandes can be cleaned after the client row was already deleted', () => {
+  assert.match(server, /if \(!client && sheetDemandes\.length === 0\)/);
+  assert.match(server, /\['clients', client \? \[client\] : \[\]\]/);
+});
+
+test('generic client deletion cannot orphan another Google Sheets test lead', () => {
+  assert.match(server, /Utilisez « Supprimer ce code test » pour retirer aussi les demandes et produits liés/);
 });

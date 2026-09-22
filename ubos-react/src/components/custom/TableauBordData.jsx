@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useDB } from '../../context/DBContext';
+import { useAuth } from '../../context/AuthContext';
+import { useSecurity } from '../../context/SecurityContext';
+import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import DataTable from '../common/DataTable';
 import BarreProgression from '../common/BarreProgression';
@@ -11,11 +14,15 @@ import {
   leadsDuJour, codesSansSuiviDepuis, clientsActifsData
 } from '../../utils/dataPipeline';
 import { localDay, deadlineDue } from '../../utils/dataFollowup';
+import { supprimerClientTestGoogleSheets } from '../../services/security';
 
 const TAG_PILL_CLASS = { Urgent: 'p-rouge', "Aujourd'hui": 'p-or', Nouveau: 'p-vert', 'Très chaud': 'p-or', Chaud: 'p-ambre', Normal: 'p-gris', Froid: 'p-bleu', Dormant: 'p-gris', VIP: 'p-vert' };
 
 export default function TableauBordData({ user, isAdminView }) {
-  const { db } = useDB();
+  const { db, chargerDonnees } = useDB();
+  const { peut } = useAuth();
+  const { demanderElevation } = useSecurity();
+  const { toast } = useToast();
   const [resume, setResume] = useState(null);
   const [dateObjectif, setDateObjectif] = useState(localDay());
   const [clock, setClock] = useState(Date.now());
@@ -36,6 +43,26 @@ export default function TableauBordData({ user, isAdminView }) {
     const jour = new Date().toISOString().slice(0, 10);
     return clientsAgent.filter(c => deadlineDue(c.echeanceCode));
   }, [clientsAgent, clock]);
+
+  const supprimerLeadTest = async (demande) => {
+    const codeClient = demande.codeClientUltex || demande.client;
+    const confirmation = window.prompt(
+      `Supprimer ${codeClient} et toutes ses données de test Google Sheets ?\n\nSaisissez exactement ${codeClient} pour confirmer.`
+    );
+    if (confirmation !== codeClient) {
+      if (confirmation !== null) toast('Code de confirmation incorrect.');
+      return;
+    }
+    try {
+      const elevationToken = await demanderElevation(`Suppression du code test Google Sheets ${codeClient}`);
+      const result = await supprimerClientTestGoogleSheets(codeClient, elevationToken);
+      await chargerDonnees();
+      const total = Object.values(result.counts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+      toast(`${codeClient} et ses ${Math.max(0, total - 1)} donnée(s) liée(s) ont été supprimés.`);
+    } catch (error) {
+      if (error?.message !== 'Vérification annulée.') toast(error?.message || 'Suppression impossible.');
+    }
+  };
 
 
   return (
@@ -69,6 +96,11 @@ export default function TableauBordData({ user, isAdminView }) {
             { key: 'sourceSynchronisation', label: 'Source', render: (v, o) => pill(v || o.source || '—', 'p-gris') },
             { key: 'dataTag', label: 'Data Tag', render: (v, o) => v ? pill((o.etatVersion ? 'V' + o.etatVersion + ' · ' : '') + v, 'p-bleu') : '—' },
             { key: 'statut', label: 'État', render: (v) => pill(v || 'Nouvelle', 'p-gris') },
+            { key: 'actionsTest', label: 'Actions', render: (_, o) =>
+              peut('supprimer') && o.sourceSynchronisation === 'Google Sheets' && /^L\d+$/.test(o.codeClientUltex || o.client || '')
+                ? <button className="btn mini rouge" onClick={() => supprimerLeadTest(o)}>Supprimer le test</button>
+                : '—'
+            },
           ]}
           data={nouveauxLeads}
         />
