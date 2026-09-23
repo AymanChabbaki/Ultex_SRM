@@ -65,6 +65,17 @@ export async function fetchAuditPage(page = 1, pageSize = 500) {
   return await res.json();
 }
 
+export async function fetchDataDashboard(date, targetUser = '', fresh = false) {
+  const query = new URLSearchParams();
+  if (date) query.set('date', date);
+  if (targetUser) query.set('user', targetUser);
+  if (fresh) query.set('fresh', '1');
+  const res = await fetch(`${API_URL}/dashboard/data?${query}`, { headers: { ...authHeaders() } });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  if (!res.ok) throw new Error('Erreur lors du chargement du tableau de bord Data');
+  return await res.json();
+}
+
 export async function fetchMe() {
   const res = await fetch(`${API_URL}/auth/me`, { headers: { ...authHeaders() } });
   if (res.status === 401) throw new AuthError('Session invalide ou expirée');

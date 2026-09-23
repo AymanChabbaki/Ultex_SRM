@@ -207,16 +207,17 @@ const Router = () => {
     const wrap = (element, collections, label) => (
       <DataBoundary key={`${route}:${params || ''}`} collections={collections} label={label}>{element}</DataBoundary>
     );
+    const isDataUser = !estDirection() && (session?.services || []).includes('Data');
     const dashboardCollections = estDirection()
       ? ['leads', 'dossiers', 'paiements', 'taches', 'transits']
-      : (session?.services || []).includes('Data')
-        ? ['clients', 'demandes', 'demandeLignes', 'objectifsData', 'taches']
-        : ['dossiers', 'taches'];
+      : ['dossiers', 'taches'];
 
     switch (route) {
-      case 'dashboard': return wrap(<Dashboard />, dashboardCollections, 'Préparation de votre tableau de bord…');
+      case 'dashboard': return isDataUser
+        ? <Dashboard />
+        : wrap(<Dashboard />, dashboardCollections, 'Préparation de votre tableau de bord…');
       case 'dashUser': return wrap(<DashUserRoute identifiant={params} />, ['dossiers', 'taches'], 'Chargement du tableau de bord…');
-      case 'tableauBordData': return wrap(<TableauBordDataRoute identifiant={params} />, ['clients', 'demandes', 'demandeLignes', 'objectifsData', 'taches']);
+      case 'tableauBordData': return <TableauBordDataRoute identifiant={params} />;
       case 'monProgramme': return wrap(<PersonalPageRoute Component={MonProgrammeDuJour} identifiant={params} />, ['dossiers', 'taches', 'suivisClosing']);
       case 'mesTaches': return wrap(<PersonalPageRoute Component={MesTaches} identifiant={params} />, ['taches', 'suivisClosing']);
       case 'mesObjectifs': return wrap(<PersonalPageRoute Component={MesObjectifs} identifiant={params} />, ['audit', 'clients', 'demandeLignes', 'demandes', 'objectifsData', 'suivisClosing', 'taches']);

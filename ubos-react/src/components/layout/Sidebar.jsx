@@ -12,7 +12,7 @@ import { useSidebar } from './Layout';
 import { restaurerSecurise } from '../../services/security';
 
 const Sidebar = ({ ouvert }) => {
-  const { moduleVisible, session } = useAuth();
+  const { moduleVisible, session, estDirection } = useAuth();
   const { db, chargerCollections } = useDB();
   const { toast } = useToast();
   const { demanderElevation } = useSecurity();
@@ -82,7 +82,11 @@ const Sidebar = ({ ouvert }) => {
       </div>
       <nav id="nav">
         {ORDRE_NAV.map(([grp, ids]) => {
-          const visibles = ids.filter(id => moduleVisible(id));
+          const isDataUser = !estDirection() && (session?.services || []).includes('Data');
+          // The main Dashboard already renders the Data dashboard for Data
+          // users. Keep the dedicated hash route for Direction deep links,
+          // but never show a second dashboard entry in the sidebar.
+          const visibles = ids.filter(id => moduleVisible(id) && id !== 'tableauBordData');
           if (!visibles.length) return null;
           
           return (
@@ -92,10 +96,13 @@ const Sidebar = ({ ouvert }) => {
                 const M = MODS[id];
                 if (!M) return null;
                 const nb = nbNonLues();
+                const label = id === 'dashboard'
+                  ? (isDataUser ? 'Tableau de bord Data' : estDirection() ? M.label : 'Mon tableau de bord')
+                  : M.label;
                 return (
-                  <a key={id} href={`#${id}`} className={currentHash === id ? "on" : ""} title={M.label}>
+                  <a key={id} href={`#${id}`} className={currentHash === id ? "on" : ""} title={label}>
                     <span className="ic"><M.ic size={16} /></span>
-                    <span className="nav-text">{M.label}</span>
+                    <span className="nav-text">{label}</span>
                     {id === "notifications" && nb > 0 ? <span className="bulle">{nb}</span> : null}
                   </a>
                 );

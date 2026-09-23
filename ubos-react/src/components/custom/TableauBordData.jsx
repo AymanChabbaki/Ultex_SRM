@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useDB } from '../../context/DBContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
@@ -14,33 +13,44 @@ import {
 } from '../../utils/dataPipeline';
 import { localDay, deadlineDue } from '../../utils/dataFollowup';
 import { supprimerDemandeTestGoogleSheets } from '../../services/security';
+import { fetchDataDashboard } from '../../services/api';
 
 const TAG_PILL_CLASS = { Urgent: 'p-rouge', "Aujourd'hui": 'p-or', Nouveau: 'p-vert', 'Très chaud': 'p-or', Chaud: 'p-ambre', Normal: 'p-gris', Froid: 'p-bleu', Dormant: 'p-gris', VIP: 'p-vert' };
+const EMPTY_DASHBOARD_DB = { clients: [], demandes: [], demandeLignes: [], taches: [], objectifsData: [], audit: [] };
 
 export default function TableauBordData({ user, isAdminView }) {
-  const { db, chargerDonnees } = useDB();
   const { demanderElevation } = useSecurity();
   const { toast } = useToast();
   const [resume, setResume] = useState(null);
   const [dateObjectif, setDateObjectif] = useState(localDay());
-  const [clock, setClock] = useState(Date.now());
-  useEffect(() => {
-    const interval = setInterval(() => setClock(Date.now()), 30000);
-    return () => clearInterval(interval);
-  }, []);
+  const [dashboard, setDashboard] = useState({ db: EMPTY_DASHBOARD_DB, metrics: { sourcings: 0 } });
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const db = dashboard.db || EMPTY_DASHBOARD_DB;
 
-  const file = useMemo(() => genererFileDeTravail(db, user), [db, user, clock]);
-  const alertes = useMemo(() => genererAlertesData(db, user), [db, user, clock]);
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError('');
+    fetchDataDashboard(dateObjectif, user?.identifiant || user?.nomComplet || '', refreshKey > 0)
+      .then(result => { if (active) setDashboard(result); })
+      .catch(error => { if (active) setLoadError(error?.message || 'Chargement impossible.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [dateObjectif, user?.identifiant, user?.nomComplet, refreshKey]);
+
+  const file = useMemo(() => genererFileDeTravail(db, user), [db, user]);
+  const alertes = useMemo(() => genererAlertesData(db, user), [db, user]);
   const objectif = useMemo(() => calculerObjectifActif(db, user, new Date(dateObjectif + 'T12:00')), [db, user, dateObjectif]);
   const progression = useMemo(() => calculerProgressionJour(db, user, new Date(dateObjectif + 'T12:00')), [db, user, dateObjectif]);
-  const sourcings = useMemo(() => calculerSourcingsObtenus(db, user), [db, user]);
+  const sourcings = dashboard.metrics?.sourcings ?? calculerSourcingsObtenus(db, user);
   const clientsAgent = useMemo(() => clientsActifsData(db, user), [db, user]);
   const nouveauxLeads = useMemo(() => leadsDuJour(db, user), [db, user]);
   const sansSuiviUnMois = useMemo(() => codesSansSuiviDepuis(db, user, 7), [db, user]);
   const echeancesCodes = useMemo(() => {
-    const jour = new Date().toISOString().slice(0, 10);
     return clientsAgent.filter(c => deadlineDue(c.echeanceCode));
-  }, [clientsAgent, clock]);
+  }, [clientsAgent]);
 
   const supprimerLeadTest = async (demande) => {
     const codeClient = demande.codeClientUltex || demande.client;
@@ -54,7 +64,7 @@ export default function TableauBordData({ user, isAdminView }) {
     try {
       const elevationToken = await demanderElevation(`Suppression de la demande test Google Sheets ${demande.code}`);
       const result = await supprimerDemandeTestGoogleSheets(demande.code, elevationToken);
-      await chargerDonnees();
+      setRefreshKey(value => value + 1);
       const total = Object.values(result.counts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
       toast(`Test ${demande.code} supprimé (${total} enregistrement(s)).`);
     } catch (error) {
@@ -66,6 +76,9 @@ export default function TableauBordData({ user, isAdminView }) {
   return (
     <div>
       <Topbar titre={isAdminView ? `Tableau de bord Data — ${user.nomComplet}` : 'Mon tableau de bord Data'} />
+
+      {loading && <div className="panneau mb-lg"><div className="vide"><b>Actualisation du tableau Data…</b></div></div>}
+      {loadError && <div className="note-verrou mb-lg">{loadError}</div>}
 
       {isAdminView && (
         <div className="outils mb-lg">

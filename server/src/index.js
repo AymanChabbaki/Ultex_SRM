@@ -747,6 +747,150 @@ app.get('/api/audit', authMiddleware, async (req, res) => {
   }
 });
 
+// The Data dashboard used to hydrate five complete CRM collections in the
+// browser. This endpoint returns only the agent's actionable slice plus the
+// exact counters needed by the screen, so dashboard cost stays stable as the
+// CRM grows.
+app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
+  const requestedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || ''))
+    ? String(req.query.date)
+    : new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(new Date());
+  const requestedUser = String(req.query.user || '').trim().slice(0, 120);
+  try {
+    const target = await prisma.user.findFirst({
+      where: req.auth.role === 'ADMIN' && requestedUser
+        ? { OR: [{ identifiant: requestedUser }, { nomComplet: requestedUser }] }
+        : { id: req.auth.id }
+    });
+    if (!target || !target.actif) return res.status(404).json({ error: 'Utilisateur introuvable' });
+
+    const targetName = target.nomComplet || target.identifiant;
+    const services = Array.isArray(target.modulesAutorises?.services) ? target.modulesAutorises.services : [];
+    const isData = services.includes('Data');
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(new Date());
+    const auditDate = requestedDate.split('-').reverse().join('/');
+    const followupStart = '2026-09-18';
+    const bypassCache = req.query.fresh === '1';
+    const scopeHash = crypto.createHash('sha1').update(JSON.stringify({ target: target.id, requestedDate, today })).digest('hex');
+    const cached = bypassCache ? null : await cacheLire(`dashboard-data:${scopeHash}`);
+    if (cached) {
+      res.set('X-CRM-Cache', 'HIT');
+      res.set('Cache-Control', 'private, no-cache');
+      return res.type('application/json').send(cached);
+    }
+
+    const serviceList = services.length ? Prisma.join(services) : null;
+    const clientAssignment = services.length
+      ? Prisma.sql`(
+          data->>'responsableCommercial' = ${targetName}
+          OR data->>'responsableCommercial' IN (${serviceList})
+          OR (${isData} AND COALESCE(data->>'responsableCommercial', '') = '' AND (
+            data->>'sourceDonnees' IN ('Workflow', 'Google Sheets')
+            OR COALESCE(data->>'ultexDossierId', '') <> ''
+          ))
+        )`
+      : Prisma.sql`data->>'responsableCommercial' = ${targetName}`;
+    const demandeAssignment = services.length
+      ? Prisma.sql`(
+          data->>'responsableData' = ${targetName}
+          OR data->>'responsableData' IN (${serviceList})
+          OR (${isData} AND COALESCE(data->>'responsableData', '') = '')
+        )`
+      : Prisma.sql`data->>'responsableData' = ${targetName}`;
+
+    const [clientRows, demandeRows, lineRows, taskRows, objectiveRows, auditRows, sourcingRows] = await Promise.all([
+      prisma.$queryRaw(Prisma.sql`
+        SELECT id, code, data, "createdAt" FROM collection_items
+        WHERE collection = 'clients' AND ${clientAssignment} AND (
+          data->>'responsableCommercial' = ${targetName}
+          OR LEFT(COALESCE(data->>'dateEntreeData', ''), 10) >= ${followupStart}
+          OR LEFT(COALESCE(data->>'dateCreation', ''), 10) >= ${followupStart}
+          OR LEFT(COALESCE(data->>'datePremierContact', ''), 10) >= ${followupStart}
+        )
+        ORDER BY "createdAt" DESC
+      `),
+      prisma.$queryRaw(Prisma.sql`
+        SELECT id, code, data, "createdAt" FROM collection_items
+        WHERE collection = 'demandes' AND ${demandeAssignment} AND (
+          LEFT(COALESCE(data->>'dateHeureReception', data->>'dateDemande', ''), 10) = ${today}
+          OR (COALESCE(data->>'echeanceActionSuivante', '') <> '' AND LEFT(data->>'echeanceActionSuivante', 10) <= ${today})
+          OR (
+            LEFT(COALESCE(data->>'dateDemande', data->>'dateHeureReception', data->>'dateEntreeData', ''), 10) >= ${followupStart}
+            AND data->>'dataTag' IN ('En cours de traitement', 'Pas réponse', 'Réclamation', 'Double codage', 'Num ironné', 'Autre')
+            AND COALESCE(data->>'echeanceActionSuivante', '') = ''
+          )
+          OR code IN (
+            SELECT ligne.data->>'demande' FROM collection_items ligne
+            WHERE ligne.collection = 'demandeLignes'
+              AND ligne.data->>'statut' IN ('Brouillon', 'À compléter')
+          )
+        )
+        ORDER BY "createdAt" DESC
+      `),
+      prisma.$queryRaw(Prisma.sql`
+        SELECT ligne.id, ligne.code, ligne.data, ligne."createdAt"
+        FROM collection_items ligne
+        JOIN collection_items demande
+          ON demande.collection = 'demandes' AND demande.code = ligne.data->>'demande'
+        WHERE ligne.collection = 'demandeLignes'
+          AND ligne.data->>'statut' IN ('Brouillon', 'À compléter')
+          AND demande.data->>'responsableData' = ${targetName}
+        ORDER BY ligne."createdAt" DESC
+      `),
+      prisma.$queryRaw(Prisma.sql`
+        SELECT id, code, data, "createdAt" FROM collection_items
+        WHERE collection = 'taches'
+          AND COALESCE(data->>'statut', '') <> 'Terminée'
+          AND (data->>'assigne' = ${targetName}${services.length ? Prisma.sql` OR data->>'assigne' IN (${serviceList})` : Prisma.empty})
+          AND COALESCE(data->>'echeance', '') <> ''
+          AND LEFT(data->>'echeance', 10) <= ${today}
+        ORDER BY "createdAt" DESC
+      `),
+      prisma.$queryRaw(Prisma.sql`
+        SELECT id, code, data, "createdAt" FROM collection_items
+        WHERE collection = 'objectifsData'
+          AND COALESCE(data->>'dateDebut', '') <= ${requestedDate}
+          AND COALESCE(data->>'dateFin', '') >= ${requestedDate}
+          AND (COALESCE(data->>'utilisateur', '') = '' OR data->>'utilisateur' = ${targetName})
+        ORDER BY "createdAt" DESC
+      `),
+      prisma.auditLog.findMany({ where: { utilisateur: targetName, date: auditDate }, orderBy: { createdAt: 'desc' } }),
+      prisma.$queryRaw(Prisma.sql`
+        SELECT COUNT(*)::int AS total
+        FROM collection_items ligne
+        JOIN collection_items demande
+          ON demande.collection = 'demandes' AND demande.code = ligne.data->>'demande'
+        WHERE ligne.collection = 'demandeLignes'
+          AND demande.data->>'responsableData' = ${targetName}
+          AND ligne.data->>'statut' IN ('Fournisseur trouvé', 'Prête pour offre', 'Offre envoyée', 'Confirmée')
+      `)
+    ]);
+
+    const mapRows = rows => rows.map(item => ({ id: item.id, createdAt: item.createdAt.toISOString(), ...item.data }));
+    const payload = {
+      db: {
+        clients: mapRows(clientRows), demandes: mapRows(demandeRows), demandeLignes: mapRows(lineRows),
+        taches: mapRows(taskRows), objectifsData: mapRows(objectiveRows),
+        audit: auditRows.map(a => ({
+          id: a.id, ts: Number(a.ts), date: a.date, heure: a.heure, utilisateur: a.utilisateur,
+          module: a.module, action: a.action, objet: a.objet, champ: a.champ,
+          avant: a.avant, apres: a.apres, dossier: a.dossier
+        }))
+      },
+      metrics: { sourcings: Number(sourcingRows[0]?.total || 0) },
+      generatedAt: new Date().toISOString()
+    };
+    const json = JSON.stringify(payload);
+    await cacheEcrire(`dashboard-data:${scopeHash}`, json, 30);
+    res.set('X-CRM-Cache', 'MISS');
+    res.set('Cache-Control', 'private, no-cache');
+    res.type('application/json').send(json);
+  } catch (error) {
+    console.error('Data dashboard error:', error);
+    res.status(500).json({ error: 'Erreur lors du chargement du tableau de bord Data' });
+  }
+});
+
 // Shared by the routine sync route and the OTP-gated restore route below —
 // same full-state-replacement semantics either way, factored out so
 // "restore a backup" isn't a second, divergent implementation to keep in sync.
