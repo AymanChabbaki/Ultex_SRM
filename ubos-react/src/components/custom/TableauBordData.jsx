@@ -86,15 +86,28 @@ export default function TableauBordData({ user, isAdminView }) {
   const clientsAgent = useMemo(() => clientsActifsData(db, user), [db, user]);
   const nouveauxLeads = useMemo(() => {
     const todayLeads = leadsDuJour(db, user);
+    const todayStr = localDay();
     const yesterdayDate = new Date();
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
     const delayed = leadsDuJour(db, user, yesterdayDate)
       .filter(demande => !leadDejaTraite(demande))
       .map(demande => ({ ...demande, _retardTraitement: true }));
     const todayCodes = new Set(todayLeads.map(demande => demande.code));
-    return [...todayLeads, ...delayed.filter(demande => !todayCodes.has(demande.code))];
+    const merged = [...todayLeads, ...delayed.filter(demande => !todayCodes.has(demande.code))];
+    // leadWorkDay() rolls a lead received at/after 18:00 into the NEXT day's
+    // workload, so it lands in todayLeads even though it physically arrived
+    // yesterday, outside working hours. Flag those separately so they aren't
+    // shown as genuine same-day ("Aujourd'hui") leads.
+    return merged.map(demande => {
+      if (demande._retardTraitement) return demande;
+      const calendarDay = localDay(demande.dateHeureReception || demande.dateDemande);
+      return calendarDay && calendarDay !== todayStr
+        ? { ...demande, _hierHorsHoraires: true }
+        : demande;
+    });
   }, [db, user]);
-  const leadsAujourdhui = nouveauxLeads.filter(lead => !lead._retardTraitement);
+  const leadsAujourdhui = nouveauxLeads.filter(lead => !lead._retardTraitement && !lead._hierHorsHoraires);
+  const leadsHierHorsHoraires = nouveauxLeads.filter(lead => lead._hierHorsHoraires);
   const leadsEnRetard = nouveauxLeads.filter(lead => lead._retardTraitement);
   const sansSuiviUnMois = useMemo(() => codesSansSuiviDepuis(db, user, 7), [db, user]);
   const echeancesCodes = useMemo(() => {
@@ -141,13 +154,14 @@ export default function TableauBordData({ user, isAdminView }) {
 
       <div className="stats">
         <StatCard val={leadsAujourdhui.length} label="Leads à traiter aujourd’hui" />
+        <StatCard val={leadsHierHorsHoraires.length} label="Leads hier — hors horaires" alerte={leadsHierHorsHoraires.length > 0} />
         <StatCard val={leadsEnRetard.length} label="Leads en retard" alerte={leadsEnRetard.length > 0} />
         <StatCard val={file.length} label="Actions Data à traiter" alerte={file.some(item => item.retard)} />
         <StatCard val={echeancesCodes.length} label="Échéances code arrivées" alerte={echeancesCodes.length > 0} />
         <StatCard val={sansSuiviUnMois.length} label="Sans changement d’état depuis 1 semaine" alerte={sansSuiviUnMois.length > 0} />
       </div>
 
-      <h3 className="titre-sec mt-lg">Leads reçus aujourd'hui + hier non traités</h3>
+      <h3 className="titre-sec mt-lg">Leads reçus aujourd'hui + hier (hors horaires ou non traités)</h3>
       <div className="panneau mb-lg">
         <DataTable
           columns={[
@@ -157,7 +171,9 @@ export default function TableauBordData({ user, isAdminView }) {
             { key: 'sourceSynchronisation', label: 'Source', render: (v, o) => pill(v || o.source || '—', 'p-gris') },
             { key: 'dataTag', label: 'Data Tag', render: (v, o) => v ? pill((o.etatVersion ? 'V' + o.etatVersion + ' · ' : '') + v, 'p-bleu') : '—' },
             { key: 'statut', label: 'État', render: (v) => pill(v || 'Nouvelle', 'p-gris') },
-            { key: '_retardTraitement', label: 'Alerte', render: (v) => v ? pill('Hier — non traité', 'p-rouge') : pill("Aujourd'hui", 'p-vert') },
+            { key: '_retardTraitement', label: 'Alerte', render: (v, o) => v
+              ? pill('Hier — non traité', 'p-rouge')
+              : (o._hierHorsHoraires ? pill('Hier — hors horaires', 'p-ambre') : pill("Aujourd'hui", 'p-vert')) },
             { key: 'actionsTest', label: 'Actions', render: (_, o) =>
               (o.sourceSynchronisation === 'Google Sheets' || o.source === 'Google Sheets') && /^L\d+$/.test(o.codeClientUltex || o.client || '')
                 ? <button className="btn mini rouge" onClick={() => supprimerLeadTest(o)}>Supprimer le test</button>
