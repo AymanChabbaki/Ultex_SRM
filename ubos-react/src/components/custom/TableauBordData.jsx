@@ -18,12 +18,18 @@ import { fetchDataDashboard, subscribeDataDashboard } from '../../services/api';
 const TAG_PILL_CLASS = { Urgent: 'p-rouge', "Aujourd'hui": 'p-or', Nouveau: 'p-vert', 'Très chaud': 'p-or', Chaud: 'p-ambre', Normal: 'p-gris', Froid: 'p-bleu', Dormant: 'p-gris', VIP: 'p-vert' };
 const EMPTY_DASHBOARD_DB = { clients: [], demandes: [], demandeLignes: [], taches: [], objectifsData: [], audit: [] };
 
-function leadDejaTraite(demande) {
-  const statut = String(demande.statut || '').trim();
-  return Boolean(
+// The lead's own record (`demande`) rarely carries the follow-up fields —
+// once Data starts working a code, the state (Data Tag, étape, dernier
+// contact...) is recorded on the linked `client` via recordFollowup(), not
+// on the demande. Both are checked so a treated lead is recognized either way.
+function leadDejaTraite(demande, client) {
+  const statutDemande = String(demande.statut || '').trim();
+  if (
     demande.dataTag || demande.actionSuivante || demande.dernierContact || demande.dernierSuiviData
-    || (statut && !['Nouvelle', 'Nouveau', 'À traiter', 'Brouillon'].includes(statut))
-  );
+    || (statutDemande && !['Nouvelle', 'Nouveau', 'À traiter', 'Brouillon'].includes(statutDemande))
+  ) return true;
+  if (!client) return false;
+  return Boolean(client.dataTag || client.actionSuivante || client.dernierContact || client.dernierSuiviData);
 }
 
 export default function TableauBordData({ user, isAdminView }) {
@@ -84,6 +90,11 @@ export default function TableauBordData({ user, isAdminView }) {
   const progression = useMemo(() => calculerProgressionJour(db, user, new Date(dateObjectif + 'T12:00')), [db, user, dateObjectif]);
   const sourcings = dashboard.metrics?.sourcings ?? calculerSourcingsObtenus(db, user);
   const clientsAgent = useMemo(() => clientsActifsData(db, user), [db, user]);
+  const clientsByCode = useMemo(() => {
+    const map = new Map();
+    (db.clients || []).forEach(c => { if (c.code) map.set(c.code, c); });
+    return map;
+  }, [db]);
   const nouveauxLeads = useMemo(() => {
     const todayLeads = leadsDuJour(db, user);
     const todayStr = localDay();
@@ -96,19 +107,26 @@ export default function TableauBordData({ user, isAdminView }) {
     // leadWorkDay() rolls a lead received at/after 18:00 into the NEXT day's
     // workload, so it lands in todayLeads even though it physically arrived
     // yesterday, outside working hours — flagged separately below. Leads
-    // already worked (dataTag/statut/contact set) stay in the list but get
+    // already worked (dataTag/statut/contact set, usually on the linked
+    // client rather than the demande itself) stay in the list but get
     // marked "Traité" instead of disappearing, so the tag stays visible and
     // no one re-treats a lead that's already handled.
     return merged.map(demande => {
+      const client = clientsByCode.get(demande.client || demande.codeClientUltex);
       const patch = {};
-      if (leadDejaTraite(demande)) patch._traite = true;
+      const dataTagAffiche = demande.dataTag || client?.dataTag;
+      if (dataTagAffiche) {
+        patch._dataTagAffiche = dataTagAffiche;
+        patch._etatVersionAffiche = demande.etatVersion || client?.etatVersion;
+      }
+      if (leadDejaTraite(demande, client)) patch._traite = true;
       if (!demande._retardTraitement) {
         const calendarDay = localDay(demande.dateHeureReception || demande.dateDemande);
         if (calendarDay && calendarDay !== todayStr) patch._hierHorsHoraires = true;
       }
       return Object.keys(patch).length ? { ...demande, ...patch } : demande;
     });
-  }, [db, user]);
+  }, [db, user, clientsByCode]);
   const leadsAujourdhui = nouveauxLeads.filter(lead => !lead._retardTraitement && !lead._hierHorsHoraires && !lead._traite);
   const leadsHierHorsHoraires = nouveauxLeads.filter(lead => lead._hierHorsHoraires && !lead._traite);
   const leadsEnRetard = nouveauxLeads.filter(lead => lead._retardTraitement && !lead._traite);
@@ -172,10 +190,10 @@ export default function TableauBordData({ user, isAdminView }) {
             { key: 'objectifGeneral', label: 'Besoin / produit' },
             { key: 'dateHeureReception', label: 'Reçu le (GMT)', render: (v, o) => formatGMTDateTime(v || o.dateDemande) || '—' },
             { key: 'sourceSynchronisation', label: 'Source', render: (v, o) => pill(v || o.source || '—', 'p-gris') },
-            { key: 'dataTag', label: 'Data Tag', render: (v, o) => v ? pill((o.etatVersion ? 'V' + o.etatVersion + ' · ' : '') + v, 'p-bleu') : '—' },
+            { key: '_dataTagAffiche', label: 'Data Tag', render: (v, o) => v ? pill((o._etatVersionAffiche ? 'V' + o._etatVersionAffiche + ' · ' : '') + v, 'p-bleu') : '—' },
             { key: 'statut', label: 'État', render: (v) => pill(v || 'Nouvelle', 'p-gris') },
             { key: '_retardTraitement', label: 'Alerte', render: (v, o) => o._traite
-              ? pill(o.dataTag ? `Traité — ${o.dataTag}` : 'Traité', 'p-gris')
+              ? pill(o._dataTagAffiche ? `Traité — ${o._dataTagAffiche}` : 'Traité', 'p-gris')
               : v
                 ? pill('Hier — non traité', 'p-rouge')
                 : (o._hierHorsHoraires ? pill('Hier — hors horaires', 'p-ambre') : pill("Aujourd'hui", 'p-vert')) },
