@@ -94,6 +94,8 @@ export default function TableauBordData({ user, isAdminView }) {
     const todayCodes = new Set(todayLeads.map(demande => demande.code));
     return [...todayLeads, ...delayed.filter(demande => !todayCodes.has(demande.code))];
   }, [db, user]);
+  const leadsAujourdhui = nouveauxLeads.filter(lead => !lead._retardTraitement);
+  const leadsEnRetard = nouveauxLeads.filter(lead => lead._retardTraitement);
   const sansSuiviUnMois = useMemo(() => codesSansSuiviDepuis(db, user, 7), [db, user]);
   const echeancesCodes = useMemo(() => {
     return clientsAgent.filter(c => deadlineDue(c.echeanceCode));
@@ -138,7 +140,8 @@ export default function TableauBordData({ user, isAdminView }) {
       )}
 
       <div className="stats">
-        <StatCard val={nouveauxLeads.length} label="Leads à traiter (aujourd'hui + retards)" alerte={nouveauxLeads.some(lead => lead._retardTraitement)} />
+        <StatCard val={leadsAujourdhui.length} label="Leads à traiter aujourd’hui" />
+        <StatCard val={leadsEnRetard.length} label="Leads en retard" alerte={leadsEnRetard.length > 0} />
         <StatCard val={file.length} label="Actions Data à traiter" alerte={file.some(item => item.retard)} />
         <StatCard val={echeancesCodes.length} label="Échéances code arrivées" alerte={echeancesCodes.length > 0} />
         <StatCard val={sansSuiviUnMois.length} label="Sans changement d’état depuis 1 semaine" alerte={sansSuiviUnMois.length > 0} />
