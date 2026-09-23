@@ -76,6 +76,45 @@ export async function fetchDataDashboard(date, targetUser = '', fresh = false) {
   return await res.json();
 }
 
+// Fetch streaming is used instead of EventSource so the JWT stays in the
+// Authorization header and is never exposed in the URL. The callback only
+// receives actual change events; heartbeat and ready frames are ignored.
+export async function subscribeDataDashboard(onChange, { signal } = {}) {
+  const res = await fetch(`${API_URL}/dashboard/data/stream`, {
+    headers: { Accept: 'text/event-stream', ...authHeaders() },
+    cache: 'no-store',
+    signal
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  if (!res.ok || !res.body) throw new Error('Connexion temps réel indisponible');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    buffer = buffer.replace(/\r\n/g, '\n');
+    let boundary = buffer.indexOf('\n\n');
+    while (boundary >= 0) {
+      const frame = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const event = frame.split('\n').find(line => line.startsWith('event:'))?.slice(6).trim();
+      if (event === 'change') {
+        const data = frame.split('\n')
+          .filter(line => line.startsWith('data:'))
+          .map(line => line.slice(5).trim())
+          .join('\n');
+        let payload = null;
+        try { payload = data ? JSON.parse(data) : null; } catch {}
+        onChange?.(payload);
+      }
+      boundary = buffer.indexOf('\n\n');
+    }
+  }
+}
+
 export async function fetchMe() {
   const res = await fetch(`${API_URL}/auth/me`, { headers: { ...authHeaders() } });
   if (res.status === 401) throw new AuthError('Session invalide ou expirée');

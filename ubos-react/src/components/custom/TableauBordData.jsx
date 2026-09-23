@@ -11,9 +11,9 @@ import {
   calculerSourcingsObtenus, genererResumeJournalier, calculerPrioriteClient,
   leadsDuJour, codesSansSuiviDepuis, clientsActifsData
 } from '../../utils/dataPipeline';
-import { localDay, deadlineDue } from '../../utils/dataFollowup';
+import { localDay, deadlineDue, formatGMTDateTime } from '../../utils/dataFollowup';
 import { supprimerDemandeTestGoogleSheets } from '../../services/security';
-import { fetchDataDashboard } from '../../services/api';
+import { fetchDataDashboard, subscribeDataDashboard } from '../../services/api';
 
 const TAG_PILL_CLASS = { Urgent: 'p-rouge', "Aujourd'hui": 'p-or', Nouveau: 'p-vert', 'Très chaud': 'p-or', Chaud: 'p-ambre', Normal: 'p-gris', Froid: 'p-bleu', Dormant: 'p-gris', VIP: 'p-vert' };
 const EMPTY_DASHBOARD_DB = { clients: [], demandes: [], demandeLignes: [], taches: [], objectifsData: [], audit: [] };
@@ -47,6 +47,36 @@ export default function TableauBordData({ user, isAdminView }) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [dateObjectif, user?.identifiant, user?.nomComplet, refreshKey]);
+
+  useEffect(() => {
+    let stopped = false;
+    let controller = null;
+    let retryTimer = null;
+    let refreshTimer = null;
+
+    const connect = async () => {
+      controller = new AbortController();
+      try {
+        await subscribeDataDashboard(() => {
+          clearTimeout(refreshTimer);
+          refreshTimer = setTimeout(() => {
+            if (!stopped) setRefreshKey(value => value + 1);
+          }, 300);
+        }, { signal: controller.signal });
+      } catch (error) {
+        if (stopped || error?.name === 'AbortError') return;
+      }
+      if (!stopped) retryTimer = setTimeout(connect, 3000);
+    };
+
+    void connect();
+    return () => {
+      stopped = true;
+      controller?.abort();
+      clearTimeout(retryTimer);
+      clearTimeout(refreshTimer);
+    };
+  }, []);
 
   const file = useMemo(() => genererFileDeTravail(db, user), [db, user]);
   const alertes = useMemo(() => genererAlertesData(db, user), [db, user]);
@@ -120,7 +150,7 @@ export default function TableauBordData({ user, isAdminView }) {
           columns={[
             { key: 'codeClientUltex', label: 'Code client', render: (v, o) => <a href={`#ficheClient:${o.client}`}>{v || o.client || '—'}</a> },
             { key: 'objectifGeneral', label: 'Besoin / produit' },
-            { key: 'dateHeureReception', label: 'Reçu le', render: (v, o) => v || o.dateDemande || '—' },
+            { key: 'dateHeureReception', label: 'Reçu le (GMT)', render: (v, o) => formatGMTDateTime(v || o.dateDemande) || '—' },
             { key: 'sourceSynchronisation', label: 'Source', render: (v, o) => pill(v || o.source || '—', 'p-gris') },
             { key: 'dataTag', label: 'Data Tag', render: (v, o) => v ? pill((o.etatVersion ? 'V' + o.etatVersion + ' · ' : '') + v, 'p-bleu') : '—' },
             { key: 'statut', label: 'État', render: (v) => pill(v || 'Nouvelle', 'p-gris') },

@@ -148,6 +148,37 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 let redisClient = null;
+let redisSubscriber = null;
+const DATA_DASHBOARD_CHANNEL = 'crm:data-dashboard:changes';
+const dataDashboardStreams = new Set();
+
+function diffuserChangementData(payload) {
+  const frame = `event: change\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const response of dataDashboardStreams) {
+    try {
+      response.write(frame);
+    } catch {
+      dataDashboardStreams.delete(response);
+    }
+  }
+}
+
+async function publierChangementData(req) {
+  const payload = {
+    type: 'crm-change',
+    path: req.path,
+    at: new Date().toISOString()
+  };
+  if (redisClient?.isReady && redisSubscriber?.isReady) {
+    try {
+      await redisClient.publish(DATA_DASHBOARD_CHANNEL, JSON.stringify(payload));
+      return;
+    } catch (error) {
+      console.error('Redis realtime publish:', error.message);
+    }
+  }
+  diffuserChangementData(payload);
+}
 
 async function initialiserRedis() {
   if (!REDIS_URL) {
@@ -160,6 +191,22 @@ async function initialiserRedis() {
     await client.connect();
     redisClient = client;
     await redisClient.setNX('crm:cache:version', '1');
+    try {
+      const subscriber = client.duplicate();
+      subscriber.on('error', error => console.error('Redis realtime:', error.message));
+      await subscriber.connect();
+      await subscriber.subscribe(DATA_DASHBOARD_CHANNEL, message => {
+        try {
+          diffuserChangementData(JSON.parse(message));
+        } catch {
+          diffuserChangementData({ type: 'crm-change', at: new Date().toISOString() });
+        }
+      });
+      redisSubscriber = subscriber;
+    } catch (error) {
+      redisSubscriber = null;
+      console.error('⚠️ Redis Pub/Sub indisponible — temps réel local conservé:', error.message);
+    }
   } catch (error) {
     console.error('⚠️ Redis indisponible — PostgreSQL reste actif sans cache:', error.message);
     redisClient = null;
@@ -206,6 +253,19 @@ async function invaliderCache() {
   }
 }
 
+function mutationAffecteDashboardData(req) {
+  if (req.path.startsWith('/api/sync/sheets/lead')) return true;
+  if (req.path.startsWith('/api/sync/ultex/dossier')) return true;
+  if (req.path.startsWith('/api/security/sheet-test-')) return true;
+  if (req.path === '/api/db/sync' || req.path === '/api/security/restore') return true;
+  if (req.path !== '/api/db/patch') return false;
+
+  const collections = req.body?.collections || {};
+  const collectionsData = new Set(['clients', 'demandes', 'demandeLignes', 'taches', 'objectifsData']);
+  return (Array.isArray(req.body?.audit) && req.body.audit.length > 0)
+    || Object.entries(collections).some(([name, items]) => collectionsData.has(name) && Array.isArray(items) && items.length > 0);
+}
+
 // One monotonically increasing Redis version invalidates every cached view in
 // O(1), including when several backend instances are added behind a balancer.
 app.use((req, res, next) => {
@@ -215,7 +275,10 @@ app.use((req, res, next) => {
     || req.path === '/api/ocr/pdf';
   if (mutation && !cacheNeutral) {
     res.on('finish', () => {
-      if (res.statusCode >= 200 && res.statusCode < 400) void invaliderCache();
+      if (res.statusCode >= 200 && res.statusCode < 400) {
+        void invaliderCache();
+        if (mutationAffecteDashboardData(req)) void publierChangementData(req);
+      }
     });
   }
   next();
@@ -747,6 +810,32 @@ app.get('/api/audit', authMiddleware, async (req, res) => {
   }
 });
 
+// Authenticated live signal used by the Data dashboard. It carries no client
+// data: after a mutation the browser receives a tiny event and reloads the
+// compact dashboard endpoint. X-Accel-Buffering prevents nginx from holding
+// events until its proxy buffer fills.
+app.get('/api/dashboard/data/stream', authMiddleware, (req, res) => {
+  res.status(200);
+  res.set({
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+  res.flushHeaders?.();
+  res.write(`event: ready\ndata: ${JSON.stringify({ connected: true })}\n\n`);
+  dataDashboardStreams.add(res);
+
+  const heartbeat = setInterval(() => {
+    try { res.write(`: keepalive ${Date.now()}\n\n`); } catch {}
+  }, 20000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    dataDashboardStreams.delete(res);
+  });
+});
+
 // The Data dashboard used to hydrate five complete CRM collections in the
 // browser. This endpoint returns only the agent's actionable slice plus the
 // exact counters needed by the screen, so dashboard cost stays stable as the
@@ -754,7 +843,7 @@ app.get('/api/audit', authMiddleware, async (req, res) => {
 app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
   const requestedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || ''))
     ? String(req.query.date)
-    : new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(new Date());
+    : new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }).format(new Date());
   const requestedUser = String(req.query.user || '').trim().slice(0, 120);
   try {
     const target = await prisma.user.findFirst({
@@ -767,7 +856,7 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
     const targetName = target.nomComplet || target.identifiant;
     const services = Array.isArray(target.modulesAutorises?.services) ? target.modulesAutorises.services : [];
     const isData = services.includes('Data');
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(new Date());
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }).format(new Date());
     const yesterdayDate = new Date(`${today}T12:00:00Z`);
     yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
     const yesterday = yesterdayDate.toISOString().slice(0, 10);
@@ -803,7 +892,7 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
     const leadWorkDay = Prisma.sql`CASE
       WHEN COALESCE(data->>'dateHeureReception', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*(Z|[+-][0-9]{2}:?[0-9]{2})$'
         THEN TO_CHAR(
-          ((data->>'dateHeureReception')::timestamptz AT TIME ZONE 'Africa/Casablanca') + INTERVAL '6 hours',
+          ((data->>'dateHeureReception')::timestamptz AT TIME ZONE 'UTC') + INTERVAL '6 hours',
           'YYYY-MM-DD'
         )
       WHEN COALESCE(data->>'dateHeureReception', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ]'

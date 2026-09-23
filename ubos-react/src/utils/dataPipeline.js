@@ -1,4 +1,4 @@
-import { localDay, localDateTime, deadlineDue, leadWorkDay } from './dataFollowup.js';
+import { localDay, localDateTime, deadlineDue, leadWorkDay, formatGMTDate } from './dataFollowup.js';
 
 /**
  * Clients "belonging" to an agent: assigned via responsableCommercial (name)
@@ -26,9 +26,9 @@ export function demandesDeAgent(db, user) {
 function jourIso(value) {
   if (!value) return '';
   const texte = String(value);
-  if (/^\d{4}-\d{2}-\d{2}/.test(texte)) return texte.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texte)) return texte;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+  return Number.isNaN(date.getTime()) ? '' : localDay(date);
 }
 
 // Date de mise en service du nouveau tableau Data. Les clients historiques ne
@@ -289,7 +289,7 @@ export function calculerObjectifActif(db, user, date = new Date()) {
 export function calculerProgressionJour(db, user, date = new Date()) {
   const nom = user?.nomComplet || user?.identifiant;
   const ajd = new Date().toISOString().slice(0, 10);
-  const dateAuditAjd = date.toLocaleDateString('fr-FR');
+  const dateAuditAjd = formatGMTDate(date);
   const auditAujourdhui = (db.audit || []).filter(a => a.utilisateur === nom && a.date === dateAuditAjd);
   const clientsAgent = clientsDeAgent(db, user);
 

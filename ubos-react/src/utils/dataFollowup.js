@@ -1,5 +1,7 @@
 export function localDay(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const parsed = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}-${String(parsed.getUTCDate()).padStart(2, '0')}`;
 }
 
 // The Data workday closes at 18:00. A lead received at 18:00 or later is
@@ -10,14 +12,31 @@ export function leadWorkDay(value) {
   const text = String(value);
   const date = value instanceof Date ? new Date(value.getTime()) : new Date(value);
   if (Number.isNaN(date.getTime())) return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : '';
-  if (date.getHours() >= 18) date.setDate(date.getDate() + 1);
+  if (date.getUTCHours() >= 18) date.setUTCDate(date.getUTCDate() + 1);
   return localDay(date);
 }
 
 export function localDateTime(value) {
   if (!value) return '';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : `${localDay(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  return Number.isNaN(date.getTime()) ? '' : `${localDay(date)}T${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+export function formatGMTDate(value) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('fr-FR', { timeZone: 'UTC' });
+}
+
+export function formatGMTDateTime(value) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('fr-FR', {
+    timeZone: 'UTC',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hourCycle: 'h23'
+  });
 }
 
 export function deadlineDue(value, now = new Date()) {
