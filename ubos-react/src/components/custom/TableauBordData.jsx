@@ -127,9 +127,15 @@ export default function TableauBordData({ user, isAdminView }) {
       return Object.keys(patch).length ? { ...demande, ...patch } : demande;
     });
   }, [db, user, clientsByCode]);
-  const leadsAujourdhui = nouveauxLeads.filter(lead => !lead._retardTraitement && !lead._hierHorsHoraires && !lead._traite);
-  const leadsHierHorsHoraires = nouveauxLeads.filter(lead => lead._hierHorsHoraires && !lead._traite);
-  const leadsEnRetard = nouveauxLeads.filter(lead => lead._retardTraitement && !lead._traite);
+  const leadsAujourdhuiTous = nouveauxLeads.filter(lead => !lead._retardTraitement && !lead._hierHorsHoraires);
+  const leadsAujourdhui = leadsAujourdhuiTous.filter(lead => !lead._traite);
+  const leadsAujourdhuiTraites = leadsAujourdhuiTous.filter(lead => lead._traite);
+  const leadsHierHorsHorairesTous = nouveauxLeads.filter(lead => lead._hierHorsHoraires);
+  const leadsHierHorsHoraires = leadsHierHorsHorairesTous.filter(lead => !lead._traite);
+  const leadsHierHorsHorairesTraites = leadsHierHorsHorairesTous.filter(lead => lead._traite);
+  const leadsEnRetardTous = nouveauxLeads.filter(lead => lead._retardTraitement);
+  const leadsEnRetard = leadsEnRetardTous.filter(lead => !lead._traite);
+  const leadsEnRetardTraites = leadsEnRetardTous.filter(lead => lead._traite);
   const sansSuiviUnMois = useMemo(() => codesSansSuiviDepuis(db, user, 7), [db, user]);
   const echeancesCodes = useMemo(() => {
     return clientsAgent.filter(c => deadlineDue(c.echeanceCode));
@@ -174,9 +180,9 @@ export default function TableauBordData({ user, isAdminView }) {
       )}
 
       <div className="stats">
-        <StatCard val={leadsAujourdhui.length} label="Leads à traiter aujourd’hui" />
-        <StatCard val={leadsHierHorsHoraires.length} label="Leads hier — hors horaires" alerte={leadsHierHorsHoraires.length > 0} />
-        <StatCard val={leadsEnRetard.length} label="Leads en retard" alerte={leadsEnRetard.length > 0} />
+        <StatCard splitVal={{ traite: leadsAujourdhuiTraites.length, nonTraite: leadsAujourdhui.length }} label="Leads à traiter aujourd’hui" alerte={leadsAujourdhui.length > 0} />
+        <StatCard splitVal={{ traite: leadsHierHorsHorairesTraites.length, nonTraite: leadsHierHorsHoraires.length }} label="Leads hier — hors horaires" alerte={leadsHierHorsHoraires.length > 0} />
+        <StatCard splitVal={{ traite: leadsEnRetardTraites.length, nonTraite: leadsEnRetard.length }} label="Leads en retard" alerte={leadsEnRetard.length > 0} />
         <StatCard val={file.length} label="Actions Data à traiter" alerte={file.some(item => item.retard)} />
         <StatCard val={echeancesCodes.length} label="Échéances code arrivées" alerte={echeancesCodes.length > 0} />
         <StatCard val={sansSuiviUnMois.length} label="Sans changement d’état depuis 1 semaine" alerte={sansSuiviUnMois.length > 0} />

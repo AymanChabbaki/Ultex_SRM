@@ -333,6 +333,18 @@ nav a.on {
   background: linear-gradient(90deg, var(--rouge), #f87171);
 }
 .alerte-border .stat-val { color: var(--rouge); }
+.stat-val-split {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.stat-val-split .traite { color: var(--vert); }
+.stat-val-split .nonTraite { color: var(--rouge); }
+.stat-val-split .stat-val-sep { color: var(--gris); font-weight: 500; font-size: 20px; }
 
 /* ---------- Chemin du dossier (signature) ---------- */
 .chemin{background:var(--carte);border:1px solid var(--bord);border-radius:var(--rayon);padding:18px;box-shadow:var(--ombre);margin-bottom:18px;overflow-x:auto}

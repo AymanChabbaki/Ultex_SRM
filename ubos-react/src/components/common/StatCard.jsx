@@ -1,8 +1,8 @@
 import React from 'react';
 
-export default function StatCard({ value, val, label, alerte, trend }) {
+export default function StatCard({ value, val, label, alerte, trend, splitVal }) {
   const displayVal = value !== undefined ? value : val;
-  
+
   return (
     <div className={`stat-card-modern ${alerte ? 'alerte-border' : ''}`}>
       <div className="stat-card-top">
@@ -14,7 +14,15 @@ export default function StatCard({ value, val, label, alerte, trend }) {
         )}
       </div>
       <div className="stat-card-val-wrap">
-        <span className="stat-val">{displayVal ?? 0}</span>
+        {splitVal ? (
+          <span className="stat-val-split">
+            <span className="stat-val-part traite" title="Traités">{splitVal.traite ?? 0}</span>
+            <span className="stat-val-sep">/</span>
+            <span className="stat-val-part nonTraite" title="Non traités">{splitVal.nonTraite ?? 0}</span>
+          </span>
+        ) : (
+          <span className="stat-val">{displayVal ?? 0}</span>
+        )}
         {trend && <span className="stat-trend">{trend}</span>}
       </div>
       <div className="stat-card-bar"></div>
