@@ -2522,6 +2522,7 @@ app.post('/api/sync/ultex/document', ultexSyncAuth, async (req, res) => {
         type: categorie,
         typeFichier,
         url,
+        ultexDossierId: ultexDossierId || existingData.ultexDossierId,
         client: client ? client.code : existingData.client,
         demande: demande ? demande.code : existingData.demande,
       };
@@ -2532,7 +2533,7 @@ app.post('/api/sync/ultex/document', ultexSyncAuth, async (req, res) => {
     } else {
       const code = await genererCodeAtomique('DOC');
       const data = {
-        ultexDocumentId, id: code, code,
+        ultexDocumentId, ultexDossierId, id: code, code,
         nom: nom || clientNom || 'Document ULTEX',
         type: categorie,
         typeFichier,
