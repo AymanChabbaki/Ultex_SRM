@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import { normalizeLeadPhone, validateSheetLead } from '../src/sheetsLLeads.js';
+import { firstAvailableLNumber, normalizeLeadPhone, validateSheetLead } from '../src/sheetsLLeads.js';
 
 const indexSource = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
 
@@ -90,4 +90,19 @@ test('validateSheetLead: rejects an oversized field (basic payload hardening)', 
 
 test('validateSheetLead: rejects a non-string/number field type', () => {
   assert.throws(() => validateSheetLead(baseLead({ nom: { evil: true } })), /invalide/);
+});
+
+test('L allocation reuses a deleted gap before advancing the series', () => {
+  const existing = [
+    'L6913', 'L6914', 'L6915', 'L6916', 'L6917', 'L6918', 'L6919', 'L6921',
+  ];
+  assert.equal(firstAvailableLNumber(existing, 6912), 6920);
+});
+
+test('L allocation advances when there is no gap', () => {
+  assert.equal(firstAvailableLNumber(['L6913', 'L6914', 'L6915'], 6912), 6916);
+});
+
+test('L allocation ignores unrelated and malformed codes', () => {
+  assert.equal(firstAvailableLNumber(['A6913', 'Lx', '', null, 'L6914'], 6912), 6913);
 });

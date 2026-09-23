@@ -31,23 +31,53 @@ export function validateSheetLead(body = {}) {
   return data;
 }
 
+export function firstAvailableLNumber(codes, minimum = 0) {
+  const occupied = new Set();
+  for (const value of codes || []) {
+    const code = String(value || '').trim().toUpperCase();
+    if (/^L\d+$/.test(code)) occupied.add(Number(code.slice(1)));
+  }
+  let candidate = Number(minimum) + 1;
+  while (occupied.has(candidate)) candidate += 1;
+  return candidate;
+}
+
 async function nextCode(tx, prefix, minimum = 0) {
-  // Serialize allocation across these two sources, and skip imported codes.
+  // L codes intentionally fill the first free number after the reserved
+  // range. SequenceCounter is a high-water mark only: deleting a complete
+  // test lead releases its L code, so the next lead must reuse that gap.
+  // The caller holds a PostgreSQL advisory transaction lock, keeping this
+  // scan-and-create allocation safe across processes and both Sheets.
   if (prefix === 'L') {
     const clients = await tx.collectionItem.findMany({ where: { collection: 'clients' }, select: { id: true, code: true, data: true } });
+    const occupiedCodes = [];
     for (const client of clients) {
       for (const code of [client.id, client.code, client.data?.codeClientUltex]) {
-        if (/^L\d+$/.test(code || '')) minimum = Math.max(minimum, Number(code.slice(1)));
+        if (/^L\d+$/.test(code || '')) occupiedCodes.push(code);
       }
     }
-    const current = await tx.sequenceCounter.findUnique({ where: { key: 'L' } });
-    await tx.sequenceCounter.upsert({ where: { key: 'L' },
-      create: { key: 'L', val: minimum }, update: { val: Math.max(minimum, current?.val || 0) } });
+    for (let attempt = 0; attempt < 10000; attempt++) {
+      const number = firstAvailableLNumber(occupiedCodes, minimum);
+      const code = `L${number}`;
+      const used = await tx.collectionItem.findFirst({ where: { OR: [{ id: code }, { code }] } });
+      if (used) {
+        occupiedCodes.push(code);
+        continue;
+      }
+      const current = await tx.sequenceCounter.findUnique({ where: { key: 'L' } });
+      await tx.sequenceCounter.upsert({
+        where: { key: 'L' },
+        create: { key: 'L', val: number },
+        update: { val: Math.max(number, current?.val || 0) },
+      });
+      return code;
+    }
+    throw new Error('Aucun code L disponible');
   }
   for (let attempt = 0; attempt < 10000; attempt++) {
     const seq = await tx.sequenceCounter.upsert({ where: { key: prefix },
       create: { key: prefix, val: 1 }, update: { val: { increment: 1 } } });
-    const code = prefix + (prefix === 'L' ? seq.val : String(seq.val).padStart(6, '0'));
+    const code = prefix + String(seq.val).padStart(6, '0');
     const used = await tx.collectionItem.findFirst({ where: { OR: [{ id: code }, { code }] } });
     if (!used) return code;
   }
