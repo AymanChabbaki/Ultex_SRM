@@ -90,25 +90,28 @@ export default function TableauBordData({ user, isAdminView }) {
     const yesterdayDate = new Date();
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
     const delayed = leadsDuJour(db, user, yesterdayDate)
-      .filter(demande => !leadDejaTraite(demande))
       .map(demande => ({ ...demande, _retardTraitement: true }));
     const todayCodes = new Set(todayLeads.map(demande => demande.code));
     const merged = [...todayLeads, ...delayed.filter(demande => !todayCodes.has(demande.code))];
     // leadWorkDay() rolls a lead received at/after 18:00 into the NEXT day's
     // workload, so it lands in todayLeads even though it physically arrived
-    // yesterday, outside working hours. Flag those separately so they aren't
-    // shown as genuine same-day ("Aujourd'hui") leads.
+    // yesterday, outside working hours — flagged separately below. Leads
+    // already worked (dataTag/statut/contact set) stay in the list but get
+    // marked "Traité" instead of disappearing, so the tag stays visible and
+    // no one re-treats a lead that's already handled.
     return merged.map(demande => {
-      if (demande._retardTraitement) return demande;
-      const calendarDay = localDay(demande.dateHeureReception || demande.dateDemande);
-      return calendarDay && calendarDay !== todayStr
-        ? { ...demande, _hierHorsHoraires: true }
-        : demande;
+      const patch = {};
+      if (leadDejaTraite(demande)) patch._traite = true;
+      if (!demande._retardTraitement) {
+        const calendarDay = localDay(demande.dateHeureReception || demande.dateDemande);
+        if (calendarDay && calendarDay !== todayStr) patch._hierHorsHoraires = true;
+      }
+      return Object.keys(patch).length ? { ...demande, ...patch } : demande;
     });
   }, [db, user]);
-  const leadsAujourdhui = nouveauxLeads.filter(lead => !lead._retardTraitement && !lead._hierHorsHoraires);
-  const leadsHierHorsHoraires = nouveauxLeads.filter(lead => lead._hierHorsHoraires);
-  const leadsEnRetard = nouveauxLeads.filter(lead => lead._retardTraitement);
+  const leadsAujourdhui = nouveauxLeads.filter(lead => !lead._retardTraitement && !lead._hierHorsHoraires && !lead._traite);
+  const leadsHierHorsHoraires = nouveauxLeads.filter(lead => lead._hierHorsHoraires && !lead._traite);
+  const leadsEnRetard = nouveauxLeads.filter(lead => lead._retardTraitement && !lead._traite);
   const sansSuiviUnMois = useMemo(() => codesSansSuiviDepuis(db, user, 7), [db, user]);
   const echeancesCodes = useMemo(() => {
     return clientsAgent.filter(c => deadlineDue(c.echeanceCode));
@@ -171,9 +174,11 @@ export default function TableauBordData({ user, isAdminView }) {
             { key: 'sourceSynchronisation', label: 'Source', render: (v, o) => pill(v || o.source || '—', 'p-gris') },
             { key: 'dataTag', label: 'Data Tag', render: (v, o) => v ? pill((o.etatVersion ? 'V' + o.etatVersion + ' · ' : '') + v, 'p-bleu') : '—' },
             { key: 'statut', label: 'État', render: (v) => pill(v || 'Nouvelle', 'p-gris') },
-            { key: '_retardTraitement', label: 'Alerte', render: (v, o) => v
-              ? pill('Hier — non traité', 'p-rouge')
-              : (o._hierHorsHoraires ? pill('Hier — hors horaires', 'p-ambre') : pill("Aujourd'hui", 'p-vert')) },
+            { key: '_retardTraitement', label: 'Alerte', render: (v, o) => o._traite
+              ? pill(o.dataTag ? `Traité — ${o.dataTag}` : 'Traité', 'p-gris')
+              : v
+                ? pill('Hier — non traité', 'p-rouge')
+                : (o._hierHorsHoraires ? pill('Hier — hors horaires', 'p-ambre') : pill("Aujourd'hui", 'p-vert')) },
             { key: 'actionsTest', label: 'Actions', render: (_, o) =>
               (o.sourceSynchronisation === 'Google Sheets' || o.source === 'Google Sheets') && /^L\d+$/.test(o.codeClientUltex || o.client || '')
                 ? <button className="btn mini rouge" onClick={() => supprimerLeadTest(o)}>Supprimer le test</button>
