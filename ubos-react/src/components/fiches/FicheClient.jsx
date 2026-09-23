@@ -18,6 +18,7 @@ import { recordFollowup, localDateTime } from '../../utils/dataFollowup';
 import { pill } from '../../utils/format';
 import { categorieDepuisFichier, lireFichierDataUrl } from '../../utils/fileData';
 import { supprimerClientTestGoogleSheets } from '../../services/security';
+import { codeClientAffiche } from '../../utils/clientCodeGroups';
 
 const ONGLETS_360 = [
   ["identite", "1. Identité"],
@@ -233,7 +234,7 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
       <Topbar titre="Profil Client 360°" />
       <div className="panneau">
         <div className="outils">
-          <span className="pill p-or" style={{fontSize:'14px', padding:'6px 14px'}}>{client.code}</span>
+          <span className="pill p-or" style={{fontSize:'14px', padding:'6px 14px'}}>{codeClientAffiche(client)}</span>
           <b className="titre-fiche">{client.nom}</b>
           <Pill type={client.segment} texte={client.segment} />
           <span className="spacer"></span>

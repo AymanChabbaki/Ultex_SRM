@@ -768,6 +768,9 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
     const services = Array.isArray(target.modulesAutorises?.services) ? target.modulesAutorises.services : [];
     const isData = services.includes('Data');
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(new Date());
+    const yesterdayDate = new Date(`${today}T12:00:00Z`);
+    yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+    const yesterday = yesterdayDate.toISOString().slice(0, 10);
     const auditDate = requestedDate.split('-').reverse().join('/');
     const followupStart = '2026-09-18';
     const bypassCache = req.query.fresh === '1';
@@ -813,6 +816,14 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
         SELECT id, code, data, "createdAt" FROM collection_items
         WHERE collection = 'demandes' AND ${demandeAssignment} AND (
           LEFT(COALESCE(data->>'dateHeureReception', data->>'dateDemande', ''), 10) = ${today}
+          OR (
+            LEFT(COALESCE(data->>'dateHeureReception', data->>'dateDemande', ''), 10) = ${yesterday}
+            AND COALESCE(data->>'dataTag', '') = ''
+            AND COALESCE(data->>'actionSuivante', '') = ''
+            AND COALESCE(data->>'dernierContact', '') = ''
+            AND COALESCE(data->>'dernierSuiviData', '') = ''
+            AND COALESCE(data->>'statut', 'Nouvelle') IN ('', 'Nouvelle', 'Nouveau', 'À traiter', 'Brouillon')
+          )
           OR (COALESCE(data->>'echeanceActionSuivante', '') <> '' AND LEFT(data->>'echeanceActionSuivante', 10) <= ${today})
           OR (
             LEFT(COALESCE(data->>'dateDemande', data->>'dateHeureReception', data->>'dateEntreeData', ''), 10) >= ${followupStart}

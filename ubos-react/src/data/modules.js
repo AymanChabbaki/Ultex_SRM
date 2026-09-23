@@ -64,7 +64,7 @@ clients:{label:"Clients", ic:Building2, grp:"Commercial", coll:"clients", pfx:"C
   {k:"dateCreation",l:"Date de création",t:"date",groupe:"Identité"},
   {k:"responsableCommercial",l:"Responsable commercial",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB),groupe:"Identité"},
   {k:"representantLegal",l:"Représentant légal",t:"text",groupe:"Identité"},
-  {k:"codeClientUltex",l:"Code client ULTEX",t:"text",aide:"Code global attribué par ULTEX à ce client (ex. A201), partagé par tous ses dossiers. Synchronisé automatiquement, ne pas modifier manuellement.",groupe:"Identité"},
+  {k:"codeClientUltex",l:"Code client ULTEX",t:"text",aide:"Lors d’une création manuelle, ce code devient le code principal du client (ex. 9593, L6913 ou A201).",groupe:"Identité"},
   // Profil commercial -- "2. Profil commercial"
   {k:"secteurActivite",l:"Secteur d'activité",t:"text",groupe:"Profil commercial"},
   {k:"metier",l:"Métier",t:"text",groupe:"Profil commercial"},

@@ -18,6 +18,14 @@ import { fetchDataDashboard } from '../../services/api';
 const TAG_PILL_CLASS = { Urgent: 'p-rouge', "Aujourd'hui": 'p-or', Nouveau: 'p-vert', 'Très chaud': 'p-or', Chaud: 'p-ambre', Normal: 'p-gris', Froid: 'p-bleu', Dormant: 'p-gris', VIP: 'p-vert' };
 const EMPTY_DASHBOARD_DB = { clients: [], demandes: [], demandeLignes: [], taches: [], objectifsData: [], audit: [] };
 
+function leadDejaTraite(demande) {
+  const statut = String(demande.statut || '').trim();
+  return Boolean(
+    demande.dataTag || demande.actionSuivante || demande.dernierContact || demande.dernierSuiviData
+    || (statut && !['Nouvelle', 'Nouveau', 'À traiter', 'Brouillon'].includes(statut))
+  );
+}
+
 export default function TableauBordData({ user, isAdminView }) {
   const { demanderElevation } = useSecurity();
   const { toast } = useToast();
@@ -46,7 +54,16 @@ export default function TableauBordData({ user, isAdminView }) {
   const progression = useMemo(() => calculerProgressionJour(db, user, new Date(dateObjectif + 'T12:00')), [db, user, dateObjectif]);
   const sourcings = dashboard.metrics?.sourcings ?? calculerSourcingsObtenus(db, user);
   const clientsAgent = useMemo(() => clientsActifsData(db, user), [db, user]);
-  const nouveauxLeads = useMemo(() => leadsDuJour(db, user), [db, user]);
+  const nouveauxLeads = useMemo(() => {
+    const todayLeads = leadsDuJour(db, user);
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const delayed = leadsDuJour(db, user, yesterdayDate)
+      .filter(demande => !leadDejaTraite(demande))
+      .map(demande => ({ ...demande, _retardTraitement: true }));
+    const todayCodes = new Set(todayLeads.map(demande => demande.code));
+    return [...todayLeads, ...delayed.filter(demande => !todayCodes.has(demande.code))];
+  }, [db, user]);
   const sansSuiviUnMois = useMemo(() => codesSansSuiviDepuis(db, user, 7), [db, user]);
   const echeancesCodes = useMemo(() => {
     return clientsAgent.filter(c => deadlineDue(c.echeanceCode));
@@ -91,13 +108,13 @@ export default function TableauBordData({ user, isAdminView }) {
       )}
 
       <div className="stats">
-        <StatCard val={nouveauxLeads.length} label="Leads reçus aujourd'hui" />
+        <StatCard val={nouveauxLeads.length} label="Leads à traiter (aujourd'hui + retards)" alerte={nouveauxLeads.some(lead => lead._retardTraitement)} />
         <StatCard val={file.length} label="Actions Data à traiter" alerte={file.some(item => item.retard)} />
         <StatCard val={echeancesCodes.length} label="Échéances code arrivées" alerte={echeancesCodes.length > 0} />
         <StatCard val={sansSuiviUnMois.length} label="Sans changement d’état depuis 1 semaine" alerte={sansSuiviUnMois.length > 0} />
       </div>
 
-      <h3 className="titre-sec mt-lg">Leads reçus aujourd'hui</h3>
+      <h3 className="titre-sec mt-lg">Leads reçus aujourd'hui + hier non traités</h3>
       <div className="panneau mb-lg">
         <DataTable
           columns={[
@@ -107,6 +124,7 @@ export default function TableauBordData({ user, isAdminView }) {
             { key: 'sourceSynchronisation', label: 'Source', render: (v, o) => pill(v || o.source || '—', 'p-gris') },
             { key: 'dataTag', label: 'Data Tag', render: (v, o) => v ? pill((o.etatVersion ? 'V' + o.etatVersion + ' · ' : '') + v, 'p-bleu') : '—' },
             { key: 'statut', label: 'État', render: (v) => pill(v || 'Nouvelle', 'p-gris') },
+            { key: '_retardTraitement', label: 'Alerte', render: (v) => v ? pill('Hier — non traité', 'p-rouge') : pill("Aujourd'hui", 'p-vert') },
             { key: 'actionsTest', label: 'Actions', render: (_, o) =>
               (o.sourceSynchronisation === 'Google Sheets' || o.source === 'Google Sheets') && /^L\d+$/.test(o.codeClientUltex || o.client || '')
                 ? <button className="btn mini rouge" onClick={() => supprimerLeadTest(o)}>Supprimer le test</button>

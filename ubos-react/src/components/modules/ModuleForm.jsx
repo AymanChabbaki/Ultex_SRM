@@ -10,6 +10,10 @@ import { USERS } from '../../data/constants';
 import { recordFollowup } from '../../utils/dataFollowup';
 import { prochaineReferenceDemande, prochaineReferenceProduit, prochaineReferenceCommande, lignesCommandeDepuisDemande } from '../../utils/workflowArchitecture';
 
+function normaliserCodeClient(value) {
+  return String(value || '').trim().replace(/\s+/g, '').toUpperCase();
+}
+
 export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, initialData, onClose }) {
   const { db, updateDB, genCode, audit, notifier } = useDB();
   const { userCourant } = useAuth();
@@ -102,11 +106,23 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
         toast(`${obj.code} mis à jour`);
       }
     } else {
-      const newCode = genCode(M.pfx || "REC");
+      const codeClientSaisi = moduleId === 'clients' ? normaliserCodeClient(propre.codeClientUltex) : '';
+      if (codeClientSaisi) {
+        const doublon = collection.find(client =>
+          normaliserCodeClient(client.code) === codeClientSaisi
+          || normaliserCodeClient(client.codeClientUltex) === codeClientSaisi
+        );
+        if (doublon) {
+          toast(`Le code client ${codeClientSaisi} existe déjà (${doublon.nom || doublon.code}).`);
+          return;
+        }
+      }
+      const newCode = codeClientSaisi || genCode(M.pfx || "REC");
       propre.code = newCode;
       propre.ts = Date.now();
       propre.par = userCourant;
       if (moduleId === 'clients') {
+        propre.codeClientUltex = newCode;
         propre.dateEntreeData = propre.dateEntreeData || new Date().toISOString().slice(0, 10);
         propre.dateCreation = propre.dateCreation || propre.dateEntreeData;
       }
