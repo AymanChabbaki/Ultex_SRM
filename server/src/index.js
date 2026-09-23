@@ -1830,10 +1830,19 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   }
 
   try {
+    const referenceWorkflow = String(referenceCode || '').trim();
+    const suffixeDemande = referenceWorkflow.match(/^(.*)\/(\d+)$/);
+    const demandeSupplementaire = Boolean(suffixeDemande && Number(suffixeDemande[2]) >= 2);
+    const referenceClientBase = suffixeDemande ? suffixeDemande[1].trim() : referenceWorkflow;
+    // The visible Workflow reference is authoritative when present; the
+    // payload client code remains the fallback for older/non-coded dossiers.
+    const codeClientSynchronise = String(referenceClientBase || codeClientUltex || '')
+      .trim()
+      .replace(/\/\d+$/, '');
     const dateDemandeSource = dateIsoJour(dateReception);
     const dataTagRecu = Object.prototype.hasOwnProperty.call(req.body || {}, 'dataTag');
     const dataTagLisible = normaliserDataTag(dataTag);
-    const origineRemarque = `Créé automatiquement depuis ULTEX${referenceCode ? ` (réf. ${referenceCode})` : ''}.`;
+    const origineRemarque = `Créé automatiquement depuis ULTEX${referenceWorkflow ? ` (réf. ${referenceWorkflow})` : ''}.`;
 
     // 1. Client — upsert by IDENTITY (codeClientUltex, falling back to
     // phone), not by ultexDossierId -- see trouverClientExistant above for
@@ -1849,7 +1858,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     // a second, meaningless one just to display "C000123" in the grid was
     // exactly the "shit code" complaint. Falls back to the internal counter
     // only if ULTEX hasn't assigned this client a code yet.
-    let client = await trouverClientExistant(codeClientUltex, telephone);
+    let client = await trouverClientExistant(codeClientSynchronise, telephone);
     if (client) {
       const sourceEstLaPlusRecente = !client.data.dateDerniereDemande || dateDemandeSource >= client.data.dateDerniereDemande;
       const merged = {
@@ -1858,18 +1867,18 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         telephone: telephone || client.data.telephone,
         email: email || client.data.email,
         ville: ville || client.data.ville,
-        codeClientUltex: codeClientUltex || client.data.codeClientUltex,
+        codeClientUltex: codeClientSynchronise || client.data.codeClientUltex,
         sourceDonnees: 'Workflow',
         dateDerniereDemande: sourceEstLaPlusRecente ? dateDemandeSource : client.data.dateDerniereDemande,
         ...(dataTagRecu && sourceEstLaPlusRecente ? { dataTag: dataTagLisible } : {})
       };
       versionnerEtatSynchronise(client.data, merged, merged.sourceDonnees);
-      if (codeClientUltex && client.code !== codeClientUltex) {
+      if (codeClientSynchronise && client.code !== codeClientSynchronise) {
         // ULTEX is authoritative for the cross-system client code. This also
         // repairs legacy cases where the CRM kept an obsolete A-code (not
         // only temporary C000xxx codes) while Workflow had restored the
         // client's original L/R/numeric code.
-        client = await adopterCodeUltex(client, codeClientUltex, merged);
+        client = await adopterCodeUltex(client, codeClientSynchronise, merged);
       } else {
         client = await prisma.collectionItem.update({
           where: { collection_id: { collection: 'clients', id: client.id } },
@@ -1877,11 +1886,11 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         });
       }
     } else {
-      let code = codeClientUltex || await genererCodeAtomique('C');
+      let code = codeClientSynchronise || await genererCodeAtomique('C');
       const data = {
         ultexDossierId, id: code, code, nom,
         telephone: telephone || '', email: email || '', ville: ville || '',
-        codeClientUltex: codeClientUltex || '',
+        codeClientUltex: codeClientSynchronise || '',
         segment: 'Prospect', nbRelances: 0,
         sourceDonnees: 'Workflow', datePremierContact: dateDemandeSource,
         dateEntreeData: new Date().toISOString().slice(0, 10),
@@ -1953,18 +1962,38 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       });
     }
 
-    // 3. Demande — upsert by ultexDossierId. demandes.client is a
+    // 3. Demande — exact Workflow dossier identity wins. For the bare client
+    // reference (L6419), reuse the existing CRM demande for that client so a
+    // Sheets/CRM lead becomes the same business request. Numbered Workflow
+    // references (L6419/2, /3...) are separate requests and never collapse
+    // into that base demande. Their saved referenceCode keeps retries
+    // idempotent even if a historical internal Workflow id changes.
     // {t:"ref", coll:"clients", cle:"nom"} field -- `cle` is only the
     // display key (see refLabel()/SearchableSelect.jsx), the stored value
     // is always the referenced record's CODE. statut is only ever set on
     // first creation ("Nouvelle") -- once sales starts working it in the
     // CRM, a later sync must never reset their progress.
     let demande = await trouverParUltexId('demandes', ultexDossierId);
+    if (!demande) {
+      const demandesClient = await prisma.collectionItem.findMany({
+        where: { collection: 'demandes', data: { path: ['client'], equals: client.code } },
+        orderBy: { createdAt: 'asc' }
+      });
+      if (referenceWorkflow) {
+        demande = demandesClient.find(item => String(item.data?.referenceCode || '').trim() === referenceWorkflow) || null;
+      }
+      if (!demande && !demandeSupplementaire) {
+        const demandesBase = demandesClient.filter(item => !/\/\d+$/.test(String(item.data?.referenceCode || '').trim()));
+        demande = demandesBase.find(item => !item.data?.ultexDossierId) || demandesBase[0] || null;
+      }
+    }
     if (demande) {
       const merged = {
         ...demande.data,
+        ultexDossierId,
+        referenceCode: referenceWorkflow || demande.data.referenceCode,
         client: client.code,
-        codeClientUltex: codeClientUltex || demande.data.codeClientUltex,
+        codeClientUltex: codeClientSynchronise || demande.data.codeClientUltex,
         typeDemande: typeDemande || demande.data.typeDemande,
         sensOperation: sensOperation || demande.data.sensOperation,
         etapeUltex: etape || demande.data.etapeUltex,
@@ -1995,8 +2024,9 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     } else {
       const code = await genererCodeAtomique('DMD');
       const data = {
-        ultexDossierId, id: code, code, client: client.code,
-        codeClientUltex: codeClientUltex || '',
+        ultexDossierId, referenceCode: referenceWorkflow || undefined,
+        id: code, code, client: client.code,
+        codeClientUltex: codeClientSynchronise || '',
         typeDemande: typeDemande || undefined, sensOperation: sensOperation || undefined,
         etapeUltex: etape || undefined, tagsPipeline: tagsPipeline || undefined,
         modeTransport: modeTransport || undefined,
@@ -2092,6 +2122,23 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
           data: { path: ['ultexProductId'], equals: productData.ultexProductId }
         }
       });
+      if (!line) {
+        const lignesDemande = await prisma.collectionItem.findMany({
+          where: { collection: 'demandeLignes', data: { path: ['demande'], equals: demande.code } },
+          orderBy: { createdAt: 'asc' }
+        });
+        const lignesNonLiees = lignesDemande.filter(item => !item.data?.ultexProductId);
+        const normaliserProduit = value => String(value || '')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        const nomEntrant = normaliserProduit(productData.nomProduit);
+        line = lignesNonLiees.find(item => nomEntrant && normaliserProduit(
+          item.data?.nomProduit || item.data?.designation || item.data?.produit
+        ) === nomEntrant) || null;
+        // A single placeholder line created with the original lead is the
+        // same product once its first Workflow dossier arrives.
+        if (!line && products.length === 1 && lignesNonLiees.length === 1) line = lignesNonLiees[0];
+      }
       const syncedFields = Object.fromEntries(
         Object.entries(productData).filter(([, value]) => value !== undefined && value !== null && value !== '')
       );
@@ -2105,6 +2152,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
               ...syncedFields,
               demande: demande.code,
               ultexDossierId,
+              sourceSynchronisation: 'Workflow',
               referenceMetier: line.data.referenceMetier || `P${index + 1}-${client.code}`,
             }
           }
@@ -2117,6 +2165,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
           id: code,
           code,
           demande: demande.code,
+          sourceSynchronisation: 'Workflow',
           referenceMetier: `P${index + 1}-${client.code}`,
           statut: 'Brouillon',
           ts: Date.now(),
