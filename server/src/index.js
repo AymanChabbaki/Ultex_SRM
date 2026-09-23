@@ -800,6 +800,16 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
           OR (${isData} AND COALESCE(data->>'responsableData', '') = '')
         )`
       : Prisma.sql`data->>'responsableData' = ${targetName}`;
+    const leadWorkDay = Prisma.sql`CASE
+      WHEN COALESCE(data->>'dateHeureReception', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*(Z|[+-][0-9]{2}:?[0-9]{2})$'
+        THEN TO_CHAR(
+          ((data->>'dateHeureReception')::timestamptz AT TIME ZONE 'Africa/Casablanca') + INTERVAL '6 hours',
+          'YYYY-MM-DD'
+        )
+      WHEN COALESCE(data->>'dateHeureReception', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ]'
+        THEN TO_CHAR((data->>'dateHeureReception')::timestamp + INTERVAL '6 hours', 'YYYY-MM-DD')
+      ELSE LEFT(COALESCE(data->>'dateDemande', data->>'dateHeureReception', ''), 10)
+    END`;
 
     const [clientRows, demandeRows, lineRows, taskRows, objectiveRows, auditRows, sourcingRows] = await Promise.all([
       prisma.$queryRaw(Prisma.sql`
@@ -815,9 +825,9 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
       prisma.$queryRaw(Prisma.sql`
         SELECT id, code, data, "createdAt" FROM collection_items
         WHERE collection = 'demandes' AND ${demandeAssignment} AND (
-          LEFT(COALESCE(data->>'dateHeureReception', data->>'dateDemande', ''), 10) = ${today}
+          ${leadWorkDay} = ${today}
           OR (
-            LEFT(COALESCE(data->>'dateHeureReception', data->>'dateDemande', ''), 10) = ${yesterday}
+            ${leadWorkDay} = ${yesterday}
             AND COALESCE(data->>'dataTag', '') = ''
             AND COALESCE(data->>'actionSuivante', '') = ''
             AND COALESCE(data->>'dernierContact', '') = ''

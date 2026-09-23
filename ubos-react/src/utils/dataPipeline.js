@@ -1,4 +1,4 @@
-import { localDay, localDateTime, deadlineDue } from './dataFollowup.js';
+import { localDay, localDateTime, deadlineDue, leadWorkDay } from './dataFollowup.js';
 
 /**
  * Clients "belonging" to an agent: assigned via responsableCommercial (name)
@@ -61,7 +61,7 @@ export function leadsDuJour(db, user, date = new Date()) {
   const jour = localDay(date);
   return demandesDeAgent(db, user)
     .filter(d => d.createdManually !== true && d.created_manually !== true && d.source !== 'Saisie manuelle')
-    .filter(d => (d.dateHeureReception ? localDay(new Date(d.dateHeureReception)) : d.dateDemande) === jour)
+    .filter(d => leadWorkDay(d.dateHeureReception || d.dateDemande) === jour)
     .sort((a, b) => String(b.dateHeureReception || b.ts || '').localeCompare(String(a.dateHeureReception || a.ts || '')));
 }
 
