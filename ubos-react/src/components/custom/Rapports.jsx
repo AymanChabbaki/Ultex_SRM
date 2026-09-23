@@ -50,10 +50,15 @@ export default function Rapports() {
 
       <div className="panneau">
         <div className="defile">
-          <FilterTable>
+          <FilterTable className="rapports-table">
+            <colgroup>
+              <col className="rapport-date-col" />
+              <col className="rapport-service-col" />
+              <col className="rapport-auteur-col" />
+              <col className="rapport-contenu-col" />
+            </colgroup>
             <thead>
               <tr>
-                <th>Code</th>
                 <th>Date</th>
                 <th>Service</th>
                 <th>Auteur</th>
@@ -63,18 +68,17 @@ export default function Rapports() {
             <tbody>
               {!rapports.length ? (
                 <tr>
-                  <td colSpan="5" style={{ textAlign: "center", padding: "16px", color: "var(--gris)" }}>
+                  <td colSpan="4" style={{ textAlign: "center", padding: "16px", color: "var(--gris)" }}>
                     Aucun rapport déposé
                   </td>
                 </tr>
               ) : (
                 rapports.map(r => (
                   <tr key={r.code}>
-                    <td className="code">{r.code}</td>
-                    <td>{r.date}</td>
-                    <td>{pill(r.service || "Général", "p-gris")}</td>
-                    <td><b>{esc(r.par)}</b></td>
-                    <td>{esc(r.remarque)}</td>
+                    <td className="rapport-date">{r.date}</td>
+                    <td className="rapport-service">{pill(r.service || "Général", "p-gris")}</td>
+                    <td className="rapport-auteur"><b>{esc(r.par)}</b></td>
+                    <td className="rapport-text">{esc(r.remarque)}</td>
                   </tr>
                 ))
               )}

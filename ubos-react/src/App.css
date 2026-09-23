@@ -421,6 +421,14 @@ td .acts{display:flex;gap:6px;flex-wrap:wrap}
 .filter-table-table .table-cell-truncate>a,.filter-table-table .table-cell-truncate>span:not(.pill){display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;white-space:nowrap}
 .filter-table-table .table-actions-cell{overflow:visible;white-space:normal}
 .filter-table-table .table-actions-cell .btn{margin:2px 4px 2px 0}
+.filter-table-table.rapports-table{width:100%;min-width:640px;table-layout:fixed}
+.rapports-table .rapport-date-col{width:108px}
+.rapports-table .rapport-service-col{width:112px}
+.rapports-table .rapport-auteur-col{width:158px}
+.rapports-table .rapport-contenu-col{width:auto}
+.filter-table-table.rapports-table th,.filter-table-table.rapports-table td{padding-left:10px;padding-right:10px}
+.filter-table-table.rapports-table .rapport-text{max-width:none;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;word-break:normal;line-height:1.5;vertical-align:top}
+.filter-table-table.rapports-table .rapport-text>span{display:inline;max-width:none;overflow:visible;text-overflow:clip;white-space:normal}
 .table-sort-button{display:flex;align-items:center;justify-content:space-between;gap:7px;width:100%;min-width:0;padding:0;border:0;background:transparent;color:inherit;font:inherit;font-weight:inherit;letter-spacing:inherit;text-align:left;text-transform:inherit;cursor:pointer}
 .table-sort-button:hover{color:#fff;text-decoration:underline;text-underline-offset:3px}
 .table-column-filter{display:block;width:100%;min-width:0;margin-top:7px;padding:6px 8px;border:1px solid rgba(255,255,255,.38);border-radius:7px;background:rgba(255,255,255,.14);color:#fff;font-size:11.5px;font-weight:500;text-transform:none;letter-spacing:0}
