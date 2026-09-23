@@ -25,6 +25,12 @@ export default function StatCard({ value, val, label, alerte, trend, splitVal })
         )}
         {trend && <span className="stat-trend">{trend}</span>}
       </div>
+      {splitVal && (
+        <div className="stat-val-legend">
+          <span className="stat-val-legend-item"><span className="stat-val-dot traite"></span>Traité</span>
+          <span className="stat-val-legend-item"><span className="stat-val-dot nonTraite"></span>Non traité</span>
+        </div>
+      )}
       <div className="stat-card-bar"></div>
     </div>
   );

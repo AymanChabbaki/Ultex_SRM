@@ -345,6 +345,27 @@ nav a.on {
 .stat-val-split .traite { color: var(--vert); }
 .stat-val-split .nonTraite { color: var(--rouge); }
 .stat-val-split .stat-val-sep { color: var(--gris); font-weight: 500; font-size: 20px; }
+.stat-val-legend {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+.stat-val-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--gris);
+  font-weight: 600;
+}
+.stat-val-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.stat-val-dot.traite { background: var(--vert); }
+.stat-val-dot.nonTraite { background: var(--rouge); }
 
 /* ---------- Chemin du dossier (signature) ---------- */
 .chemin{background:var(--carte);border:1px solid var(--bord);border-radius:var(--rayon);padding:18px;box-shadow:var(--ombre);margin-bottom:18px;overflow-x:auto}
