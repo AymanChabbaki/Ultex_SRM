@@ -9,6 +9,7 @@ import { detecterMentions } from '../../data/db';
 import { USERS } from '../../data/constants';
 import { recordFollowup } from '../../utils/dataFollowup';
 import { prochaineReferenceDemande, prochaineReferenceProduit, prochaineReferenceCommande, lignesCommandeDepuisDemande } from '../../utils/workflowArchitecture';
+import { reserveNumericClientCode } from '../../services/api';
 
 function normaliserCodeClient(value) {
   return String(value || '').trim().replace(/\s+/g, '').toUpperCase();
@@ -75,7 +76,7 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const propre = { ...formData };
 
     if (M.avantSauve && M.avantSauve(db, propre) === false) return;
@@ -117,7 +118,17 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
           return;
         }
       }
-      const newCode = codeClientSaisi || genCode(M.pfx || "REC");
+      let newCode = codeClientSaisi;
+      if (!newCode) {
+        try {
+          newCode = moduleId === 'clients'
+            ? await reserveNumericClientCode()
+            : genCode(M.pfx || "REC");
+        } catch (error) {
+          toast(error?.message || 'Impossible de générer le code client.');
+          return;
+        }
+      }
       propre.code = newCode;
       propre.ts = Date.now();
       propre.par = userCourant;

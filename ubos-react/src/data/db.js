@@ -29,6 +29,18 @@ export function codeExiste(code, DB) {
 }
 
 export function genCode(pfx, DB) {
+  if (pfx === 'C') {
+    let highest = 9599;
+    for (const client of (DB.clients || [])) {
+      for (const value of [client.code, client.codeClientUltex]) {
+        const code = String(value || '').trim();
+        if (/^\d+$/.test(code)) highest = Math.max(highest, Number(code));
+      }
+    }
+    let code = String(highest + 1);
+    while (codeExiste(code, DB)) code = String(Number(code) + 1);
+    return code;
+  }
   const annee = new Date().getFullYear();
   const avecAnnee = PFX_ANNEE.includes(pfx);
   const cle = avecAnnee ? pfx + annee : pfx;

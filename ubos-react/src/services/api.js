@@ -57,6 +57,19 @@ export async function fetchCollectionPage(collection, params = {}) {
   return await res.json();
 }
 
+export async function reserveNumericClientCode() {
+  const res = await fetch(`${API_URL}/clients/next-numeric-code`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !/^\d+$/.test(String(body.code || ''))) {
+    throw new Error(body.error || 'Impossible de générer le code client');
+  }
+  return String(body.code);
+}
+
 export async function fetchAuditPage(page = 1, pageSize = 500) {
   const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
   const res = await fetch(`${API_URL}/audit?${query}`, { headers: { ...authHeaders() } });

@@ -12,6 +12,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { createClient } from 'redis';
 import { createRequire } from 'module';
 import { lLeadHandler } from './sheetsLLeads.js';
+import { reserveNextNumericClientCode } from './clientCodes.js';
 
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
@@ -1526,6 +1527,19 @@ app.post('/api/genCode', authMiddleware, async (req, res) => {
   }
 });
 
+// CRM-created clients use the historical plain-numeric client series. The
+// browser reserves the number before saving so concurrent users cannot both
+// receive the same identity. Explicit ULTEX/L/A/R codes bypass this endpoint.
+app.post('/api/clients/next-numeric-code', authMiddleware, async (_req, res) => {
+  try {
+    const code = await reserveNextNumericClientCode(prisma);
+    res.json({ code });
+  } catch (error) {
+    console.error('Numeric client code generation error:', error);
+    res.status(500).json({ error: 'Erreur génération du code client numérique' });
+  }
+});
+
 // Real PDF Text Extraction & OCR Parsing Endpoint
 app.post('/api/ocr/pdf', authMiddleware, async (req, res) => {
   try {
@@ -1886,7 +1900,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         });
       }
     } else {
-      let code = codeClientSynchronise || await genererCodeAtomique('C');
+      let code = codeClientSynchronise || await reserveNextNumericClientCode(prisma);
       const data = {
         ultexDossierId, id: code, code, nom,
         telephone: telephone || '', email: email || '', ville: ville || '',
@@ -1906,7 +1920,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         // unrelated pre-existing record's id) -- fall back to an internal
         // code rather than fail the whole sync.
         if (creationError.code === 'P2002') {
-          code = await genererCodeAtomique('C');
+          code = await reserveNextNumericClientCode(prisma);
           client = await prisma.collectionItem.create({
             data: { collection: 'clients', id: code, code, data: { ...data, id: code, code } }
           });
@@ -2264,7 +2278,7 @@ app.post('/api/sync/sheets/lead', ultexSyncAuth, async (req, res) => {
         });
       }
     } else {
-      let code = codeClientUltex || await genererCodeAtomique('C');
+      let code = codeClientUltex || await reserveNextNumericClientCode(prisma);
       const data = {
         id: code, code, nom, telephone: telephone || '', email: email || '', ville: ville || '',
         codeClientUltex: codeClientUltex || '', segment: 'Prospect', nbRelances: 0,
@@ -2278,7 +2292,7 @@ app.post('/api/sync/sheets/lead', ultexSyncAuth, async (req, res) => {
         client = await prisma.collectionItem.create({ data: { collection: 'clients', id: code, code, data } });
       } catch (creationError) {
         if (creationError.code !== 'P2002') throw creationError;
-        code = await genererCodeAtomique('C');
+        code = await reserveNextNumericClientCode(prisma);
         client = await prisma.collectionItem.create({
           data: { collection: 'clients', id: code, code, data: { ...data, id: code, code } },
         });
