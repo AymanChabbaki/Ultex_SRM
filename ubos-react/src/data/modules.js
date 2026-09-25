@@ -19,6 +19,9 @@ import { genererControlesDossier } from '../utils/limex';
 import { construireMessageTache } from '../utils/tachesPilotage';
 import { construireMessageSuiviClosing, enregistrerCalculTermine } from '../utils/closingCoordination';
 import {
+  destinataireImane, initialiserRevueArrivage, notificationsNouvelleCommande
+} from '../utils/arrivageWorkflow';
+import {
   LayoutDashboard, Contact2, Building2, Archive, ClipboardEdit, ShoppingCart, FolderKanban,
   PackageSearch, Calculator, FileSignature, Wallet, ClipboardCheck, Ship, Scale, Award,
   Anchor, Truck, Landmark, AlertTriangle, Receipt, Handshake, Factory, Flag, Warehouse,
@@ -372,6 +375,12 @@ commandes:{label:"Commandes", ic:ShoppingCart, grp:"Commercial", coll:"commandes
   if(!paiement||paiement.statut!=="Payé"){ window.alert("Un paiement ou une avance au statut « Payé » est obligatoire avant de créer la commande."); return false; }
   o.source_demande_id=o.source_demande_id||o.demande;
  },
+ apresSauve:(DB,o,ancien,ctx)=>{
+  if(ancien) return;
+  notificationsNouvelleCommande(DB,o).forEach(notification => {
+   ctx.notifier(notification.dest, notification.message, notification.module);
+  });
+ },
  fiche:"ficheCommande",
  cols:[["referenceMetier","Référence"],["client","Client",(v,o,DB)=>esc(refLabel(DB, "clients",v,"nom"))],["demande","Demande",(v,o,DB)=>{const d=(DB.demandes||[]).find(x=>x.code===v);return v?`<span class="pill p-gris">${esc(d?.referenceMetier||v)}</span>`:"—";}],["formuleUltex","Formule",v=>pill(v||"—","p-or")],["statut","Statut",v=>pillStatut(v)]],
  actions:[{txt:"Fiche", cls:"btn mini or", fn:"ouvrirFicheCommande"}]},
@@ -640,8 +649,14 @@ arrivages:{label:"Arrivages", ic:Anchor, grp:"LIMEX", coll:"arrivages", pfx:"ARR
   {k:"remarques",l:"Remarques",t:"textarea",large:1}
  ],
  avantSauve: (DB, o) => { if(!o.statut) o.statut = STATUTS_ARRIVAGE[0]; },
+ apresSauve: (DB, o, ancien, ctx) => {
+  if (ancien) return;
+  Object.assign(o, initialiserRevueArrivage(o, ctx.userCourant));
+  const imane = destinataireImane(DB);
+  ctx.notifier(imane, `Nouvel arrivage ${o.code} créé. Il attend votre examen LIMEX.\nLien : #ficheArrivage:${o.code}`, 'Arrivages / LIMEX');
+ },
  fiche:"ficheArrivage",
- cols:[["nomInterne","Nom"],["ancienNumero","Ancien n°",v=>v?pill(v,"p-gris"):"—"],["statut","Statut",v=>pillStatut(v)],["etaPrevue","ETA"],["responsableLimex","Responsable"]],
+ cols:[["nomInterne","Nom"],["ancienNumero","Ancien n°",v=>v?pill(v,"p-gris"):"—"],["statut","Statut",v=>pillStatut(v)],["circuitValidation","Revue LIMEX",v=>pill(v||"Non démarré",v==="Validé par Imane"?"p-vert":"p-ambre")],["etaPrevue","ETA"],["responsableLimex","Responsable"]],
  actions:[{txt:"Fiche", cls:"btn mini or", fn:"ouvrirFicheArrivage"}]},
 
 transportsNat:{label:"Transport national", ic:Truck, grp:"Opérations", coll:"transportsNat", pfx:"TN", statut:"statut",

@@ -9,6 +9,11 @@ import Modal from '../common/Modal';
 import LigneModal from '../common/LigneModal';
 import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
+import { pill } from '../../utils/format';
+import {
+  ACTIONS_REVUE_ARRIVAGE, actionsRevueArrivage, destinataireImane, destinataireYasser,
+  ETATS_REVUE_ARRIVAGE, roleRevueArrivage, transitionRevueArrivage
+} from '../../utils/arrivageWorkflow';
 
 const FRAIS_CHAMPS = [
   {k: 'typeFrais', l: 'Type de frais', t: 'select', opts: ['Transit portuaire', 'Magasinage', 'Manutention', 'Douane / Liquidation', 'Transport', 'Assurance', 'Documentation', 'Autre'], req: 1},
@@ -18,8 +23,8 @@ const FRAIS_CHAMPS = [
 ];
 
 const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
-  const { db, updateDB, audit } = useDB();
-  const { peut } = useAuth();
+  const { db, updateDB, audit, notifier, userCourant } = useDB();
+  const { peut, session } = useAuth();
   const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
@@ -28,6 +33,7 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   const [commandeChoisie, setCommandeChoisie] = useState('');
   const [showAjouterFrais, setShowAjouterFrais] = useState(false);
   const [showLierDocument, setShowLierDocument] = useState(false);
+  const [noteCircuit, setNoteCircuit] = useState('');
 
   useEffect(() => {
     const c = codeProp || codeFromProp;
@@ -90,6 +96,9 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   const commandes = db.commandes?.filter(c => arrivage.commandes?.includes(c.code)) || [];
   const commandesDisponibles = db.commandes?.filter(c => !arrivage.commandes?.includes(c.code) && c.statut !== 'Annulée') || [];
   const documents = db.documents?.filter(d => d.arrivage === code) || [];
+  const roleCircuit = roleRevueArrivage(session);
+  const actionsCircuit = actionsRevueArrivage(arrivage, roleCircuit);
+  const historiqueCircuit = arrivage.circuitHistorique || [];
 
   const sauverArrivage = (patch, message) => {
     const nextArrivage = { ...arrivage, ...patch };
@@ -131,6 +140,36 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
     setShowAjouterFrais(false);
   };
 
+  const handleTransitionCircuit = (action) => {
+    try {
+      const result = transitionRevueArrivage(arrivage, action, {
+        role: roleCircuit,
+        auteur: userCourant,
+        note: noteCircuit,
+      });
+      updateDB({
+        ...db,
+        arrivages: (db.arrivages || []).map(item => item.code === code ? result.arrivage : item),
+      });
+      audit('Arrivages / LIMEX', result.entree.libelle, code, 'circuitValidation', result.entree.avant, result.entree.apres);
+
+      const cible = result.cible === 'Imane'
+        ? destinataireImane(db)
+        : result.cible === 'Yasser'
+          ? destinataireYasser(db)
+          : result.cible;
+      if (cible) {
+        const commandesTexte = (result.arrivage.commandes || []).join(', ') || 'aucune commande';
+        const noteTexte = result.entree.note ? `\nNote : ${result.entree.note}` : '';
+        notifier(cible, `${result.entree.libelle} — ${code}\nCommandes : ${commandesTexte}${noteTexte}\nLien : #ficheArrivage:${code}`, 'Arrivages / LIMEX');
+      }
+      setNoteCircuit('');
+      toast(result.entree.libelle);
+    } catch (error) {
+      toast(error.message || "Impossible d'effectuer cette action.");
+    }
+  };
+
   return (
     <div>
       <Topbar titre={`Arrivage : ${code}`} />
@@ -158,6 +197,65 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
         <div className="bloc-fiche large" style={{background:'var(--fond-jaune)'}}>
           <h4>Action suivante</h4>
           <p>{arrivage.actionSuivante || 'Aucune action définie'}</p>
+        </div>
+
+        <div className="bloc-fiche large" style={{ border: '1px solid var(--or)' }}>
+          <h4>Circuit de validation LIMEX</h4>
+          <div className="stats" style={{ marginBottom: '14px' }}>
+            <div><small>État</small><br />{pill(arrivage.circuitValidation || ETATS_REVUE_ARRIVAGE.NON_DEMARRE, arrivage.circuitValidation === ETATS_REVUE_ARRIVAGE.VALIDE ? 'p-vert' : 'p-ambre')}</div>
+            <div><small>Responsable actuel</small><br /><b>{arrivage.circuitDestinataire || '—'}</b></div>
+            <div><small>Dernière action</small><br /><b>{arrivage.circuitDerniereActionPar || '—'}</b><br /><small>{arrivage.circuitDerniereActionLe ? new Date(arrivage.circuitDerniereActionLe).toLocaleString('fr-FR') : '—'}</small></div>
+          </div>
+
+          {actionsCircuit.length > 0 && (
+            <div className="panneau" style={{ padding: '14px', marginBottom: '14px' }}>
+              <div className="champ large">
+                <label>Note / instruction pour le prochain intervenant</label>
+                <textarea
+                  value={noteCircuit}
+                  onChange={event => setNoteCircuit(event.target.value)}
+                  placeholder={roleCircuit === 'Direction'
+                    ? "Écrivez l'analyse et les corrections demandées à Imane…"
+                    : roleCircuit === 'Yasser'
+                      ? 'Décrivez les analyses, suivis ou documents terminés…'
+                      : 'Écrivez les instructions, contre-notes ou le motif de validation…'}
+                />
+              </div>
+              <div className="outils" style={{ marginBottom: 0, flexWrap: 'wrap' }}>
+                {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.DEMARRER) && (
+                  <button className="btn or" onClick={() => handleTransitionCircuit(ACTIONS_REVUE_ARRIVAGE.DEMARRER)}>Envoyer à Imane</button>
+                )}
+                {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.ENVOYER_DIRECTION) && (
+                  <button className="btn or" onClick={() => handleTransitionCircuit(ACTIONS_REVUE_ARRIVAGE.ENVOYER_DIRECTION)}>Envoyer à la Direction pour analyse</button>
+                )}
+                {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.ENVOYER_YASSER) && (
+                  <button className="btn doux" onClick={() => handleTransitionCircuit(ACTIONS_REVUE_ARRIVAGE.ENVOYER_YASSER)}>Envoyer à Yasser — analyse / suivi / documents</button>
+                )}
+                {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.RETOUR_IMANE) && (
+                  <button className="btn or" onClick={() => handleTransitionCircuit(ACTIONS_REVUE_ARRIVAGE.RETOUR_IMANE)}>Travail terminé — retourner à Imane</button>
+                )}
+                {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.VALIDER) && (
+                  <button className="btn vert" onClick={() => handleTransitionCircuit(ACTIONS_REVUE_ARRIVAGE.VALIDER)}>Valider l'arrivage</button>
+                )}
+              </div>
+            </div>
+          )}
+
+          <h4>Historique des échanges</h4>
+          {historiqueCircuit.length ? (
+            <div className="liste-notif">
+              {historiqueCircuit.map(entree => (
+                <div className="notif" key={entree.id || `${entree.date}-${entree.action}`}>
+                  <div className="pt-n"></div>
+                  <div className="spacer">
+                    <div><b>{entree.libelle}</b></div>
+                    {entree.note && <div style={{ whiteSpace: 'pre-wrap' }}>{entree.note}</div>}
+                    <div className="qui">{entree.auteur || '—'} · {entree.date ? new Date(entree.date).toLocaleString('fr-FR') : '—'} · {entree.avant || '—'} → {entree.apres || '—'}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <div className="vide"><b>Aucun échange</b>Le circuit n'a pas encore démarré.</div>}
         </div>
 
         <div className="bloc-fiche large">

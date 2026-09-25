@@ -78,6 +78,10 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
 
   const handleSave = async () => {
     const propre = { ...formData };
+    const notificationsApresSauve = [];
+    const contexteApresSauve = {
+      userCourant, notifier: (...args) => notificationsApresSauve.push(args), audit,
+    };
 
     if (M.avantSauve && M.avantSauve(db, propre) === false) return;
 
@@ -132,10 +136,11 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
         const nextDb = { ...workingDb, [M.coll]: workingCollection };
 
         if (M.apresSauve) {
-          M.apresSauve(nextDb, obj, ancien, { userCourant, notifier });
+          M.apresSauve(nextDb, obj, ancien, contexteApresSauve);
         }
 
         await updateDB(nextDb);
+        notificationsApresSauve.forEach(args => notifier(...args));
         toast(`${obj.code} mis à jour`);
         if (renamedClientCode && window.location.hash.startsWith(`#ficheClient:${recordCode}`)) {
           window.location.hash = `#ficheClient:${renamedClientCode}`;
@@ -188,10 +193,11 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
       audit(M.label, "Création", propre.code, "—", "—", propre[M.champs?.[0]?.k] || propre.code);
 
       if (M.apresSauve) {
-        M.apresSauve(nextDb, propre, null, { userCourant, notifier });
+        M.apresSauve(nextDb, propre, null, contexteApresSauve);
       }
 
-      updateDB(nextDb);
+      await updateDB(nextDb);
+      notificationsApresSauve.forEach(args => notifier(...args));
       toast(`${propre.code} créé`);
     }
 

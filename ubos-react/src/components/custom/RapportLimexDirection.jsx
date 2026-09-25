@@ -6,6 +6,7 @@ import Topbar from '../layout/Topbar';
 import StatCard from '../common/StatCard';
 import { pillStatut, pill } from '../../utils/format';
 import { PrinterIcon } from '../common/Icons';
+import { ETATS_REVUE_ARRIVAGE } from '../../utils/arrivageWorkflow';
 
 export default function RapportLimexDirection() {
   const { db } = useDB();
@@ -28,6 +29,9 @@ export default function RapportLimexDirection() {
   const deports = (db.arrivages || []).filter(a => a.statut === "Départ confirmé" || a.statut === "En transit").length;
   const arrivees = (db.arrivages || []).filter(a => a.statut === "Arrivé au port").length;
   const bloques = (db.dossiers || []).filter(d => d.statut === "Bloqué").length;
+  const aAnalyser = arrivagesActifs.filter(a => a.circuitValidation === ETATS_REVUE_ARRIVAGE.DIRECTION).length;
+  const arrivagesTries = [...arrivagesActifs].sort((a, b) =>
+    Number(b.circuitValidation === ETATS_REVUE_ARRIVAGE.DIRECTION) - Number(a.circuitValidation === ETATS_REVUE_ARRIVAGE.DIRECTION));
 
   return (
     <>
@@ -44,6 +48,7 @@ export default function RapportLimexDirection() {
         <StatCard label="Départs" value={deports} />
         <StatCard label="Arrivées" value={arrivees} />
         <StatCard label="Dossiers bloqués" value={bloques} alerte={bloques > 0} />
+        <StatCard label="À analyser par Direction" value={aAnalyser} alerte={aAnalyser > 0} />
       </div>
 
       <div className="panneau">
@@ -53,18 +58,24 @@ export default function RapportLimexDirection() {
               <tr>
                 <th>Code</th>
                 <th>Statut</th>
+                <th>Revue LIMEX</th>
+                <th>Chez</th>
+                <th>Commandes</th>
                 <th>ETA</th>
                 <th>Responsable</th>
               </tr>
             </thead>
             <tbody>
               {!arrivagesActifs.length ? (
-                <tr><td colSpan="4" style={{ textAlign: "center", padding: "16px" }}>Aucun arrivage actif</td></tr>
+                <tr><td colSpan="7" style={{ textAlign: "center", padding: "16px" }}>Aucun arrivage actif</td></tr>
               ) : (
-                arrivagesActifs.map(a => (
+                arrivagesTries.map(a => (
                   <tr key={a.code}>
                     <td className="code"><a href={`#ficheArrivage:${a.code}`}>{a.code}</a></td>
                     <td>{pillStatut(a.statut)}</td>
+                    <td>{pill(a.circuitValidation || ETATS_REVUE_ARRIVAGE.NON_DEMARRE, a.circuitValidation === ETATS_REVUE_ARRIVAGE.DIRECTION ? 'p-rouge' : a.circuitValidation === ETATS_REVUE_ARRIVAGE.VALIDE ? 'p-vert' : 'p-ambre')}</td>
+                    <td>{a.circuitDestinataire || '—'}</td>
+                    <td>{(a.commandes || []).length}</td>
                     <td>{a.etaPrevue || "—"}</td>
                     <td>{a.responsableLimex || "—"}</td>
                   </tr>

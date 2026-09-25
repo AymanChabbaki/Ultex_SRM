@@ -14,6 +14,7 @@ import { STATUTS_LIGNE_DEMANDE } from '../../data/constants';
 import LigneModal from '../common/LigneModal';
 import { prochaineReferenceCommande, lignesCommandeDepuisDemande } from '../../utils/workflowArchitecture';
 import { syncPaymentToWorkflow } from '../../services/api';
+import { notificationsNouvelleCommande } from '../../utils/arrivageWorkflow';
 
 const CONFIRMATION_COMMANDE = [
   { k: 'condition', l: 'Condition de confirmation', t: 'select', opts: ['Devis accepté','Bon de commande signé','Contrat signé','Acompte reçu','Preuve de paiement reçue','Validation exceptionnelle de la Direction'], req: 1 },
@@ -29,7 +30,7 @@ const CONFIRMATION_COMMANDE = [
 ];
 
 const FicheDemande = ({ codeProp, code: codeFromProp }) => {
-  const { db, updateDB, genCode, audit, userCourant } = useDB();
+  const { db, updateDB, genCode, audit, notifier, userCourant } = useDB();
   const { peut } = useAuth();
   const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
@@ -198,6 +199,9 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
     }
     audit('Commandes', 'Conversion depuis demande confirmée', commande.code, 'source_demande_id', '—', demande.code, demande.code);
     audit('Paiements', 'Paiement de confirmation créé', paiement.code, 'montant', '—', `${paiement.montant} MAD`, demande.code);
+    notificationsNouvelleCommande(db, commande).forEach(notification => {
+      notifier(notification.dest, notification.message, notification.module);
+    });
     setShowConversion(false);
     window.location.hash = `ficheCommande:${commande.code}`;
     toast(`Commande ${commande.referenceMetier} créée.${workflowSynced ? ' Paiement synchronisé avec le Reliquat Workflow.' : ' Paiement à resynchroniser avec Workflow.'}`);

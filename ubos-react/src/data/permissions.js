@@ -61,6 +61,12 @@ export function moduleVisible(session, id) {
     if (MODULES_COMMERCIAL.includes(id)) {
         return estDirection(session) || session.departement === 'Commercial' || (session.services || []).includes('Commercial');
     }
+    if (id === 'arrivages') {
+        const identite = `${session.identifiant || ''} ${session.nomComplet || ''}`.toLowerCase();
+        return estDirection(session) || (session.services || []).includes('LIMEX')
+            || (session.services || []).includes('Sourcing')
+            || identite.includes('imane') || identite.includes('yasser') || identite.includes('yassir');
+    }
     if (estCoordinateurClosing(session) && MODULES_FUSIONNES_CLOSING.includes(id)) return false;
     if (estCoordinateurLimex(session) && MODULES_FUSIONNES_LIMEX.includes(id)) return false;
     if (MODULES_LIBRES.includes(id)) return true;
