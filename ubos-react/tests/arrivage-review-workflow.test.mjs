@@ -120,3 +120,34 @@ test('Direction LIMEX report exposes the arrival review queue', () => {
   assert.match(report, /circuitDestinataire/);
   assert.match(report, /\(a\.commandes \|\| \[\]\)\.length/);
 });
+
+test('Arrivage creation is a five-step wizard with a required multi-commande selector', () => {
+  const modules = fs.readFileSync(new URL('../src/data/modules.js', import.meta.url), 'utf8');
+  const form = fs.readFileSync(new URL('../src/components/modules/ModuleForm.jsx', import.meta.url), 'utf8');
+  const fields = fs.readFileSync(new URL('../src/components/common/FormField.jsx', import.meta.url), 'utf8');
+  assert.match(modules, /"Commandes liées":\["commandes"\]/);
+  assert.match(modules, /"Suivi LIMEX":\[/);
+  assert.match(modules, /t:"multiref",coll:"commandes"/);
+  assert.match(modules, /Sélectionnez au moins une commande/);
+  assert.match(modules, /statut: "En arrivage"/);
+  assert.match(form, /Étape \{activeStep \+ 1\} sur \{groupNames\.length\}/);
+  assert.match(form, /Suivant →/);
+  assert.match(form, /← Précédent/);
+  assert.match(fields, /fieldType === "multiref"/);
+});
+
+test('only one Ma journée link remains for Direction and LIMEX coordination', () => {
+  const permissions = fs.readFileSync(new URL('../src/data/permissions.js', import.meta.url), 'utf8');
+  assert.match(permissions, /id === 'maJourneeClosing'.*estDirection\(session\).*estCoordinateurLimex\(session\)/);
+  assert.match(permissions, /id === 'maJourneeImane'.*estDirection\(session\).*estCoordinateurLimex\(session\)/);
+});
+
+test('the remaining Ma journée page exposes Imane, Direction and Yasser arrival queues', () => {
+  const page = fs.readFileSync(new URL('../src/components/custom/MaJourneeImane.jsx', import.meta.url), 'utf8');
+  const app = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+  assert.match(page, /Arrivages à examiner/);
+  assert.match(page, /En analyse Direction/);
+  assert.match(page, /Chez Yasser/);
+  assert.match(page, /#ficheArrivage:/);
+  assert.match(app, /\['actionsLimex', 'arrivages', 'commandes', 'suivisLimex'\]/);
+});

@@ -32,7 +32,12 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
   // ungrouped list -- no visual change for the ~30 smaller modules that
   // don't opt in. Group order follows first-appearance order in `champs`.
   const champsList = M?.champs || [];
-  const groupNames = [...new Set(champsList.map(f => f.groupe || 'Général'))];
+  const groupeDuChamp = field => {
+    if (field.groupe) return field.groupe;
+    const groupeConfigure = Object.entries(M?.etapes || {}).find(([, keys]) => keys.includes(field.k));
+    return groupeConfigure?.[0] || 'Général';
+  };
+  const groupNames = [...new Set(champsList.map(groupeDuChamp))];
   const hasSteps = groupNames.length > 1;
   const [activeStep, setActiveStep] = useState(0);
 
@@ -41,7 +46,7 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
   }, [moduleId, recordCode]);
 
   const visibleChamps = hasSteps
-    ? champsList.filter(f => (f.groupe || 'Général') === groupNames[activeStep])
+    ? champsList.filter(f => groupeDuChamp(f) === groupNames[activeStep])
     : champsList;
 
   useEffect(() => {
@@ -76,6 +81,20 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
     });
   };
 
+  const champEstVide = (field) => {
+    const value = formData[field.k];
+    return Array.isArray(value) ? value.length === 0 : String(value ?? '').trim() === '';
+  };
+
+  const allerEtapeSuivante = () => {
+    const manquant = visibleChamps.find(field => field.req && champEstVide(field));
+    if (manquant) {
+      toast(`${manquant.l} est obligatoire avant de continuer.`);
+      return;
+    }
+    setActiveStep(step => Math.min(step + 1, groupNames.length - 1));
+  };
+
   const handleSave = async () => {
     const propre = { ...formData };
     const notificationsApresSauve = [];
@@ -83,7 +102,7 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
       userCourant, notifier: (...args) => notificationsApresSauve.push(args), audit,
     };
 
-    if (M.avantSauve && M.avantSauve(db, propre) === false) return;
+    if (M.avantSauve && M.avantSauve(db, propre, { toast, genCode, audit, userCourant }) === false) return;
 
     const collection = db[M.coll] ? [...db[M.coll]] : [];
 
@@ -218,12 +237,20 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
       footer={
         <>
           <button className="btn doux" onClick={onClose}>Annuler</button>
-          <button className="btn" onClick={handleSave}>Enregistrer</button>
+          {hasSteps && activeStep > 0 && (
+            <button className="btn doux" onClick={() => setActiveStep(step => Math.max(0, step - 1))}>← Précédent</button>
+          )}
+          {hasSteps && activeStep < groupNames.length - 1 ? (
+            <button className="btn or" onClick={allerEtapeSuivante}>Suivant →</button>
+          ) : (
+            <button className="btn" onClick={handleSave}>Enregistrer</button>
+          )}
         </>
       }
     >
       {hasSteps && (
         <div className="onglets" style={{ padding: '0 20px', flexWrap: 'wrap' }}>
+          <span style={{ width: '100%', color: 'var(--gris)', marginBottom: '8px' }}>Étape {activeStep + 1} sur {groupNames.length}</span>
           {groupNames.map((g, i) => (
             <button
               type="button"

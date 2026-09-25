@@ -61,6 +61,11 @@ export function moduleVisible(session, id) {
     if (MODULES_COMMERCIAL.includes(id)) {
         return estDirection(session) || session.departement === 'Commercial' || (session.services || []).includes('Commercial');
     }
+    // Never show two links named "Ma journée". Direction and the LIMEX
+    // coordinator use the operational LIMEX page; Closing keeps its own page.
+    if (id === 'maJourneeClosing' && (estDirection(session) || estCoordinateurLimex(session))) return false;
+    if (id === 'maJourneeImane') return estDirection(session) || estCoordinateurLimex(session);
+
     if (id === 'arrivages') {
         const identite = `${session.identifiant || ''} ${session.nomComplet || ''}`.toLowerCase();
         return estDirection(session) || (session.services || []).includes('LIMEX')

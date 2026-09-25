@@ -10,6 +10,7 @@ import {
   genererProgrammeImane, genererAlertesLimex, suivisLimexDeCoordinateur, estSuiviLimexOuvert,
   compterCalculsAValider, compterPaiementsProches, trouverSuiviLimexExistant, enregistrerActionRapide, actionsDuSuivi
 } from '../../utils/limexCoordination';
+import { ETATS_REVUE_ARRIVAGE } from '../../utils/arrivageWorkflow';
 
 const ACTIONS_RAPIDES = ['Fait', 'Relancé', 'Réponse reçue', 'En cours', 'Attente fournisseur', 'Attente collègue', 'Bloqué'];
 
@@ -32,6 +33,10 @@ export default function MaJourneeImane({ user }) {
   const alertes = genererAlertesLimex(db, cible);
   const calculsAValider = compterCalculsAValider(db, cible);
   const paiementsProches = compterPaiementsProches(db, cible);
+  const arrivagesActifs = (db.arrivages || []).filter(item => !['Clôturé', 'Annulé'].includes(item.statut));
+  const arrivagesImane = arrivagesActifs.filter(item => item.circuitValidation === ETATS_REVUE_ARRIVAGE.IMANE);
+  const arrivagesDirection = arrivagesActifs.filter(item => item.circuitValidation === ETATS_REVUE_ARRIVAGE.DIRECTION);
+  const arrivagesYasser = arrivagesActifs.filter(item => item.circuitValidation === ETATS_REVUE_ARRIVAGE.YASSER);
 
   const retoursAttendusListe = [];
   suivisOuverts.forEach(s => {
@@ -41,6 +46,9 @@ export default function MaJourneeImane({ user }) {
   });
 
   const CARTES = [
+    { id: 'arrivagesImane', label: 'Arrivages à examiner', liste: arrivagesImane, type: 'arrivages', alerte: true },
+    { id: 'arrivagesDirection', label: 'En analyse Direction', liste: arrivagesDirection, type: 'arrivages' },
+    { id: 'arrivagesYasser', label: 'Chez Yasser', liste: arrivagesYasser, type: 'arrivages' },
     { id: 'actions', label: "Actions aujourd'hui", liste: programme },
     { id: 'urgentes', label: 'Urgentes', liste: programme.filter(p => ['Critique', 'Urgente'].includes(p.priorite)), alerte: true },
     { id: 'retard', label: 'En retard', liste: programme.filter(p => p.priorite === 'Retard'), alerte: true },
@@ -104,7 +112,36 @@ export default function MaJourneeImane({ user }) {
         ))}
       </div>
 
-      {carteActive && carteActive.id !== 'calculs' && carteActive.id !== 'paiements' && (
+      {carteActive?.type === 'arrivages' && (
+        <div className="panneau">
+          <div className="outils">
+            <b>{carteActive.label}</b>
+            <span className="spacer"></span>
+            <button className="btn mini doux" onClick={() => setFiltreActif(null)}>✕ Retirer le filtre</button>
+          </div>
+          <div className="defile">
+            <FilterTable>
+              <thead><tr><th>Arrivage</th><th>Nom</th><th>Commandes</th><th>État</th><th>Dernière note</th><th></th></tr></thead>
+              <tbody>
+                {carteActive.liste.length ? carteActive.liste.map(arrivage => (
+                  <tr key={arrivage.code}>
+                    <td className="code">{arrivage.code}</td>
+                    <td>{arrivage.nomInterne || '—'}</td>
+                    <td>{(arrivage.commandes || []).length}</td>
+                    <td>{pill(arrivage.circuitValidation, arrivage.circuitValidation === ETATS_REVUE_ARRIVAGE.DIRECTION ? 'p-rouge' : 'p-ambre')}</td>
+                    <td style={{ maxWidth: '320px', whiteSpace: 'normal' }}>{arrivage.circuitDerniereNote || '—'}</td>
+                    <td><a className="btn mini or" href={`#ficheArrivage:${arrivage.code}`}>TRAITER</a></td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan="6"><div className="vide">Aucun arrivage dans cette étape.</div></td></tr>
+                )}
+              </tbody>
+            </FilterTable>
+          </div>
+        </div>
+      )}
+
+      {carteActive && carteActive.type !== 'arrivages' && carteActive.id !== 'calculs' && carteActive.id !== 'paiements' && (
         <div className="panneau">
           <div className="outils">
             <b>{carteActive.label}</b>

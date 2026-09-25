@@ -231,7 +231,7 @@ const Router = () => {
       case 'coordinationMansouri': return wrap(<PersonalPageRoute Component={CoordinationMansouri} identifiant={params} />, ['suivisClosing', 'taches']);
       case 'monPortefeuilleClosing': return wrap(<PersonalPageRoute Component={MonPortefeuilleClosing} identifiant={params} />, ['clients', 'suivisClosing']);
       case 'aQualifierClosing': return wrap(<PersonalPageRoute Component={AQualifierClosing} identifiant={params} />, ['suivisClosing']);
-      case 'maJourneeImane': return wrap(<PersonalPageRoute Component={MaJourneeImane} identifiant={params} />, ['actionsLimex', 'suivisLimex']);
+      case 'maJourneeImane': return wrap(<PersonalPageRoute Component={MaJourneeImane} identifiant={params} />, ['actionsLimex', 'arrivages', 'commandes', 'suivisLimex']);
       case 'suiviLimex': return wrap(<PersonalPageRoute Component={SuiviLimex} identifiant={params} />, ['suivisLimex', 'paiements']);
       case 'etudesCalcul': return wrap(<EtudesCalcul />, ['taches']);
       case 'paiementsEcheances': return wrap(<PaiementsEcheances />, ['paiements', 'documentsComptablesCasa']);

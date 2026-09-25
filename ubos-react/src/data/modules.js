@@ -608,7 +608,15 @@ certifs:{label:"Certification & Organismes", ic:Award, grp:"Opérations", coll:"
  cols:[["dossier","Dossier",v=>`<span class="pill p-gris">${esc(v||"—")}</span>`],["organisme","Organisme",v=>pill(v||"—","p-or")],["responsable","Responsable"],["echeance","Échéance",(v,o)=>{if(!v)return "—";const j=Math.ceil((new Date(v)-Date.now())/864e5);return esc(v)+" "+(j<0&&o.statut!=="Obtenue"?pill("Dépassée","p-rouge"):j<=7&&o.statut!=="Obtenue"?pill(j+" j","p-ambre"):"")}],["statut","Statut",v=>pillStatut(v==="Obtenue"?"Validé":v==="Refusée"?"Rejeté":v)]]},
 
 arrivages:{label:"Arrivages", ic:Anchor, grp:"LIMEX", coll:"arrivages", pfx:"ARR", statut:"statut",
+ etapes:{
+  "Commandes liées":["commandes"],
+  "Identification & source":["ancienNumero","nomInterne","codeClientSource","nomClientSource","produitSource","incotermSource","serviceSource","dateConfirmationSource","totalImporteSource","dateEngagementSource","datePaiementSource","modePaiementSource","numeroProformaSource","volumePoidsSource"],
+  "Transport & dates":["responsableLimex","type","formuleDominante","modeTransport","paysOrigine","villeEnlevement","portDepart","portArrivee","dateDepartPrevue","dateDepartReelle","etaPrevue","etaActualisee","dateArriveeReelle","compagnieSource","offreTransportSource","trackingSource","dateSortieSource"],
+  "Partenaires & références":["compagnie","transitaire","transporteur","agentDestination","numReservation","numBLMaitre","numBLHouse","numAWB","numConteneur","typeConteneur","numPlomb","camionImmat"],
+  "Suivi LIMEX":["statut","niveauRisque","actionSuivante","respActionSuivante","echeanceActionSuivante","remarques"]
+ },
  champs:[
+  {k:"commandes",l:"Commandes à rattacher à cet arrivage",t:"multiref",coll:"commandes",cle:"referenceMetier",req:1,large:1,aide:"Sélectionnez une ou plusieurs commandes. Une commande déjà liée à un autre arrivage est masquée.",filterOptions:(commande,formData,DB)=>commande.statut!=="Annulée"&&!(DB.arrivages||[]).some(arrivage=>arrivage.code!==formData.code&&(arrivage.commandes||[]).includes(commande.code)),formatOption:(commande,DB)=>{const client=(DB.clients||[]).find(item=>item.code===commande.client);return `${commande.referenceMetier||commande.code} · ${client?.nom||commande.client||"Client non renseigné"}`;}},
   {k:"ancienNumero",l:"Ancien numéro d'arrivage",t:"text",aide:"Recherchable — ex. Arrivage 39, Arrivage 120."},
   {k:"nomInterne",l:"Nom interne de l'arrivage",t:"text"},
   {k:"codeClientSource",l:"Code client source",t:"text"},
@@ -648,8 +656,18 @@ arrivages:{label:"Arrivages", ic:Anchor, grp:"LIMEX", coll:"arrivages", pfx:"ARR
   {k:"echeanceActionSuivante",l:"Échéance",t:"date"},
   {k:"remarques",l:"Remarques",t:"textarea",large:1}
  ],
- avantSauve: (DB, o) => { if(!o.statut) o.statut = STATUTS_ARRIVAGE[0]; },
+ avantSauve: (DB, o, ctx) => {
+  if (!(o.commandes || []).length) { ctx?.toast("Sélectionnez au moins une commande pour créer l'arrivage."); return false; }
+  if(!o.statut) o.statut = STATUTS_ARRIVAGE[0];
+ },
  apresSauve: (DB, o, ancien, ctx) => {
+  const avant = ancien?.commandes || [];
+  const apres = o.commandes || [];
+  DB.commandes = (DB.commandes || []).map(commande => {
+   if (apres.includes(commande.code)) return { ...commande, statut: "En arrivage" };
+   if (avant.includes(commande.code) && commande.statut === "En arrivage") return { ...commande, statut: "En traitement" };
+   return commande;
+  });
   if (ancien) return;
   Object.assign(o, initialiserRevueArrivage(o, ctx.userCourant));
   const imane = destinataireImane(DB);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import { INCOTERMS_2020, PAYS_MONDE, PORTS_MONDE, AEROPORTS_MONDE } from '../../data/constants';
 import SearchableSelect from './SearchableSelect';
@@ -25,6 +25,7 @@ const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, opt
   };
 
   const val = value ?? '';
+  const [refSearch, setRefSearch] = useState('');
 
   const handleChange = (e) => {
     const v = e && e.target !== undefined ? e.target.value : e;
@@ -91,6 +92,47 @@ const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, opt
           {listData.map((p, i) => <option key={(typeof p === 'string' ? p : (p.l || p.i)) || i} value={typeof p === 'string' ? p : p.n} />)}
         </datalist>
       </>
+    );
+  } else if (fieldType === "multiref") {
+    const allOptions = db && fieldDef.coll && db[fieldDef.coll] ? db[fieldDef.coll] : [];
+    const options = typeof fieldDef.filterOptions === 'function'
+      ? allOptions.filter(item => fieldDef.filterOptions(item, formData, db))
+      : allOptions;
+    const selected = Array.isArray(value) ? value : [];
+    const optionLabel = item => typeof fieldDef.formatOption === 'function'
+      ? fieldDef.formatOption(item, db)
+      : item[fieldDef.cle] || item.code;
+    const recherche = refSearch.trim().toLocaleLowerCase('fr');
+    const visibles = options.filter(item => !recherche || `${item.code} ${optionLabel(item)} ${item.statut || ''}`.toLocaleLowerCase('fr').includes(recherche));
+    const toggle = (code, checked) => {
+      handleChange(checked ? [...new Set([...selected, code])] : selected.filter(item => item !== code));
+    };
+    inputEl = (
+      <div style={{ border: '1px solid var(--bord)', borderRadius: '10px', padding: '12px', background: 'var(--fond)' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
+          <input
+            type="search"
+            value={refSearch}
+            onChange={event => setRefSearch(event.target.value)}
+            placeholder="Rechercher une commande, un client ou un statut…"
+            disabled={disabled}
+            style={{ flex: 1 }}
+          />
+          <span className="pill p-or">{selected.length} sélectionnée(s)</span>
+        </div>
+        <div style={{ display: 'grid', gap: '7px', maxHeight: '240px', overflowY: 'auto' }}>
+          {visibles.length ? visibles.map(item => (
+            <div key={item.code} style={{ display: 'flex', gap: '10px', alignItems: 'center', padding: '9px 10px', border: '1px solid var(--bord)', borderRadius: '8px', background: selected.includes(item.code) ? 'var(--fond-jaune)' : 'white' }}>
+              <input type="checkbox" checked={selected.includes(item.code)} onChange={event => toggle(item.code, event.target.checked)} disabled={disabled} />
+              <button type="button" onClick={() => toggle(item.code, !selected.includes(item.code))} disabled={disabled} style={{ flex: 1, border: 0, background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
+                <b>{optionLabel(item)}</b>
+                <small style={{ display: 'block', color: 'var(--gris)', marginTop: '2px' }}>{item.statut || 'Statut non défini'}</small>
+              </button>
+              {fieldDef.coll === 'commandes' && <a className="btn mini doux" href={`#ficheCommande:${item.code}`}>Ouvrir</a>}
+            </div>
+          )) : <div className="vide">Aucune commande disponible.</div>}
+        </div>
+      </div>
     );
   } else if (fieldType === "ref") {
     const allOptions = db && fieldDef.coll && db[fieldDef.coll] ? db[fieldDef.coll] : [];
