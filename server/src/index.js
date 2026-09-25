@@ -258,6 +258,7 @@ function mutationAffecteDashboardData(req) {
   if (req.path.startsWith('/api/sync/sheets/lead')) return true;
   if (req.path.startsWith('/api/sync/ultex/dossier')) return true;
   if (req.path.startsWith('/api/security/sheet-test-')) return true;
+  if (req.path.startsWith('/api/clients/')) return true;
   if (req.path === '/api/db/sync' || req.path === '/api/security/restore') return true;
   if (req.path !== '/api/db/patch') return false;
 
@@ -1540,6 +1541,54 @@ app.post('/api/clients/next-numeric-code', authMiddleware, async (_req, res) => 
   }
 });
 
+// A client code is an identity key, not an editable label. Renaming it must
+// therefore replace the client's CollectionItem key and every live reference
+// in one transaction. This prevents dashboards from displaying an old demande
+// snapshot whose link points at a client that no longer exists.
+app.patch('/api/clients/:currentCode/code', authMiddleware, async (req, res) => {
+  const currentCode = String(req.params.currentCode || '').trim();
+  const newCode = String(req.body?.code || '').trim().replace(/\s+/g, '').toUpperCase();
+  if (!currentCode || !/^[A-Z0-9][A-Z0-9_-]{0,31}$/.test(newCode)) {
+    return res.status(400).json({ error: 'Code client invalide' });
+  }
+
+  try {
+    const client = await prisma.collectionItem.findFirst({
+      where: {
+        collection: 'clients',
+        OR: [
+          { id: currentCode },
+          { code: currentCode },
+          { data: { path: ['codeClientUltex'], equals: currentCode } }
+        ]
+      }
+    });
+    if (!client) return res.status(404).json({ error: 'Client introuvable' });
+
+    if (newCode !== client.code) {
+      const conflict = await prisma.collectionItem.findFirst({
+        where: {
+          collection: 'clients',
+          OR: [
+            { id: newCode },
+            { code: newCode },
+            { data: { path: ['codeClientUltex'], equals: newCode } }
+          ]
+        }
+      });
+      if (conflict && conflict.id !== client.id) {
+        return res.status(409).json({ error: `Le code client ${newCode} existe déjà.` });
+      }
+    }
+
+    const renamed = await adopterCodeUltex(client, newCode, client.data, { throwOnFailure: true });
+    res.json({ client: { id: renamed.id, createdAt: renamed.createdAt.toISOString(), ...renamed.data } });
+  } catch (error) {
+    console.error('Client code rename error:', error);
+    res.status(500).json({ error: 'Impossible de modifier le code client' });
+  }
+});
+
 // Real PDF Text Extraction & OCR Parsing Endpoint
 app.post('/api/ocr/pdf', authMiddleware, async (req, res) => {
   try {
@@ -1703,7 +1752,7 @@ async function trouverClientExistant(codeClientUltex, telephone) {
 // preserved) rather than an update, plus a repoint of everything that
 // referenced the old code. Falls back to a plain data update if the target
 // code is somehow already taken, so a sync is never lost over this.
-async function adopterCodeUltex(client, nouveauCode, mergedData) {
+async function adopterCodeUltex(client, nouveauCode, mergedData, { throwOnFailure = false } = {}) {
   const ancienCode = client.code;
   const data = { ...mergedData, id: nouveauCode, code: nouveauCode, codeClientUltex: nouveauCode };
   try {
@@ -1749,6 +1798,7 @@ async function adopterCodeUltex(client, nouveauCode, mergedData) {
       return cree;
     });
   } catch (error) {
+    if (throwOnFailure) throw error;
     console.error(`Impossible d'adopter le code ULTEX ${nouveauCode} pour ${ancienCode}:`, error);
     return prisma.collectionItem.update({
       where: { collection_id: { collection: 'clients', id: client.id } },
@@ -1759,7 +1809,7 @@ async function adopterCodeUltex(client, nouveauCode, mergedData) {
 
 async function repointerReferencesClient(tx, anciensCodes, nouveauCode) {
   if (!anciensCodes.length) return;
-  for (const champ of ['client', 'codeClientAssocie']) {
+  for (const champ of ['client', 'codeClientAssocie', 'codeClient', 'codeClientUltex']) {
     for (const ancienCode of anciensCodes) {
       const lies = await tx.collectionItem.findMany({
         where: { data: { path: [champ], equals: ancienCode } }

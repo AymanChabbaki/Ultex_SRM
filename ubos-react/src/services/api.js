@@ -70,6 +70,22 @@ export async function reserveNumericClientCode() {
   return String(body.code);
 }
 
+export async function renameClientCode(currentCode, newCode) {
+  const res = await fetch(`${API_URL}/clients/${encodeURIComponent(currentCode)}/code`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ code: newCode }),
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const error = new Error(body.error || 'Impossible de modifier le code client');
+    error.status = res.status;
+    throw error;
+  }
+  return body;
+}
+
 export async function fetchAuditPage(page = 1, pageSize = 500) {
   const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
   const res = await fetch(`${API_URL}/audit?${query}`, { headers: { ...authHeaders() } });

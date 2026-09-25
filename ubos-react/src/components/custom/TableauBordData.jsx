@@ -92,7 +92,12 @@ export default function TableauBordData({ user, isAdminView }) {
   const clientsAgent = useMemo(() => clientsActifsData(db, user), [db, user]);
   const clientsByCode = useMemo(() => {
     const map = new Map();
-    (db.clients || []).forEach(c => { if (c.code) map.set(c.code, c); });
+    (db.clients || []).forEach(client => {
+      [client.id, client.code, client.codeClientUltex].forEach(value => {
+        const alias = String(value || '').trim();
+        if (alias) map.set(alias, client);
+      });
+    });
     return map;
   }, [db]);
   const nouveauxLeads = useMemo(() => {
@@ -112,8 +117,14 @@ export default function TableauBordData({ user, isAdminView }) {
     // marked "Traité" instead of disappearing, so the tag stays visible and
     // no one re-treats a lead that's already handled.
     return merged.map(demande => {
-      const client = clientsByCode.get(demande.client || demande.codeClientUltex);
-      const patch = {};
+      const client = clientsByCode.get(String(demande.client || '').trim())
+        || clientsByCode.get(String(demande.codeClientUltex || '').trim());
+      const canonicalCode = String(client?.codeClientUltex || client?.code || '').trim();
+      const clientLinkCode = String(client?.code || '').trim();
+      const patch = {
+        _clientCodeAffiche: canonicalCode || demande.codeClientUltex || demande.client || '—',
+        _clientLienCode: clientLinkCode,
+      };
       const dataTagAffiche = demande.dataTag || client?.dataTag;
       if (dataTagAffiche) {
         patch._dataTagAffiche = dataTagAffiche;
@@ -124,7 +135,7 @@ export default function TableauBordData({ user, isAdminView }) {
         const calendarDay = localDay(demande.dateHeureReception || demande.dateDemande);
         if (calendarDay && calendarDay !== todayStr) patch._hierHorsHoraires = true;
       }
-      return Object.keys(patch).length ? { ...demande, ...patch } : demande;
+      return { ...demande, ...patch };
     });
   }, [db, user, clientsByCode]);
   const leadsAujourdhuiTous = nouveauxLeads.filter(lead => !lead._retardTraitement && !lead._hierHorsHoraires);
@@ -192,7 +203,10 @@ export default function TableauBordData({ user, isAdminView }) {
       <div className="panneau mb-lg">
         <DataTable
           columns={[
-            { key: 'codeClientUltex', label: 'Code client', render: (v, o) => <a href={`#ficheClient:${o.client}`}>{v || o.client || '—'}</a> },
+            { key: '_clientCodeAffiche', label: 'Code client', render: (v, o) => o._clientLienCode
+              ? <a href={`#ficheClient:${o._clientLienCode}`}>{v}</a>
+              : <span title="La fiche client liée est absente">{v}</span>
+            },
             { key: 'objectifGeneral', label: 'Besoin / produit' },
             { key: 'dateHeureReception', label: 'Reçu le (GMT)', render: (v, o) => formatGMTDateTime(v || o.dateDemande) || '—' },
             { key: 'sourceSynchronisation', label: 'Source', render: (v, o) => pill(v || o.source || '—', 'p-gris') },

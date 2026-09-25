@@ -1,4 +1,4 @@
-import { PFX_ANNEE, COLLS } from './constants';
+import { PFX_ANNEE, COLLS } from './constants.js';
 
 export function baseVide() {
   return {
@@ -68,6 +68,49 @@ export function changerCode(ancien, nouveau, DB, auditFn) {
       }
     }
   }
+}
+
+const CLIENT_REFERENCE_FIELDS = ['client', 'codeClientAssocie', 'codeClient', 'codeClientUltex'];
+
+/**
+ * Mirrors the server's atomic client-code rename in the current browser state.
+ * The client key and every live foreign-reference snapshot move together, so
+ * a dashboard link can never keep pointing at the obsolete code.
+ */
+export function renommerCodeClient(DB, ancienCode, nouveauCode) {
+  if (!ancienCode || !nouveauCode || ancienCode === nouveauCode) return { db: DB, count: 0 };
+  const next = { ...DB };
+  let count = 0;
+
+  for (const collection of COLLS) {
+    const records = DB[collection];
+    if (!Array.isArray(records) || !records.length) continue;
+    let collectionChanged = false;
+    const renamed = records.map(record => {
+      let changed = false;
+      const updated = { ...record };
+
+      if (collection === 'clients' && record.code === ancienCode) {
+        updated.id = nouveauCode;
+        updated.code = nouveauCode;
+        updated.codeClientUltex = nouveauCode;
+        changed = true;
+        count += 1;
+      }
+      for (const field of CLIENT_REFERENCE_FIELDS) {
+        if (updated[field] === ancienCode) {
+          updated[field] = nouveauCode;
+          changed = true;
+          count += 1;
+        }
+      }
+      if (changed) collectionChanged = true;
+      return changed ? updated : record;
+    });
+    if (collectionChanged) next[collection] = renamed;
+  }
+
+  return { db: next, count };
 }
 
 /**

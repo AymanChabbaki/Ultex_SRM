@@ -29,3 +29,13 @@ test('server exposes the authenticated numeric client-code allocator', () => {
 test('server-side client fallbacks no longer generate generic C codes', () => {
   assert.doesNotMatch(server, /genererCodeAtomique\('C'\)/);
 });
+
+test('editing a client code uses an authenticated atomic rename endpoint', () => {
+  assert.match(server, /app\.patch\('\/api\/clients\/:currentCode\/code', authMiddleware/);
+  assert.match(server, /adopterCodeUltex\(client, newCode, client\.data, \{ throwOnFailure: true \}\)/);
+});
+
+test('client renames repoint demande snapshots and all primary client links', () => {
+  assert.match(server, /\['client', 'codeClientAssocie', 'codeClient', 'codeClientUltex'\]/);
+  assert.match(server, /req\.path\.startsWith\('\/api\/clients\/'\)/);
+});

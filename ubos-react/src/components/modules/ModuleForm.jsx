@@ -5,11 +5,11 @@ import { useToast } from '../../context/ToastContext';
 import Modal from '../common/Modal';
 import FormField from '../common/FormField';
 import { MODS as MODS_DATA } from '../../data/modules';
-import { detecterMentions } from '../../data/db';
+import { detecterMentions, renommerCodeClient } from '../../data/db';
 import { USERS } from '../../data/constants';
 import { recordFollowup } from '../../utils/dataFollowup';
 import { prochaineReferenceDemande, prochaineReferenceProduit, prochaineReferenceCommande, lignesCommandeDepuisDemande } from '../../utils/workflowArchitecture';
-import { reserveNumericClientCode } from '../../services/api';
+import { renameClientCode, reserveNumericClientCode } from '../../services/api';
 
 function normaliserCodeClient(value) {
   return String(value || '').trim().replace(/\s+/g, '').toUpperCase();
@@ -84,27 +84,62 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
     const collection = db[M.coll] ? [...db[M.coll]] : [];
 
     if (isEdit) {
-      const idx = collection.findIndex(x => x.code === recordCode);
+      let workingDb = db;
+      let workingCollection = collection;
+      let workingCode = recordCode;
+      let renamedClientCode = '';
+      const originalIndex = collection.findIndex(x => x.code === recordCode);
+      const original = originalIndex > -1 ? { ...collection[originalIndex] } : null;
+
+      if (moduleId === 'clients' && original) {
+        const requestedCode = normaliserCodeClient(propre.codeClientUltex) || normaliserCodeClient(original.code);
+        const duplicate = collection.find(client => client.code !== original.code && (
+          normaliserCodeClient(client.code) === requestedCode
+          || normaliserCodeClient(client.codeClientUltex) === requestedCode
+        ));
+        if (duplicate) {
+          toast(`Le code client ${requestedCode} existe déjà (${duplicate.nom || duplicate.code}).`);
+          return;
+        }
+        if (requestedCode !== normaliserCodeClient(original.code)) {
+          try {
+            await renameClientCode(original.code, requestedCode);
+          } catch (error) {
+            toast(error?.message || 'Impossible de modifier le code client.');
+            return;
+          }
+          workingDb = renommerCodeClient(db, original.code, requestedCode).db;
+          workingCollection = [...(workingDb[M.coll] || [])];
+          workingCode = requestedCode;
+          renamedClientCode = requestedCode;
+          propre.codeClientUltex = requestedCode;
+        }
+      }
+
+      const idx = workingCollection.findIndex(x => x.code === workingCode);
       if (idx > -1) {
-        const obj = { ...collection[idx] };
-        const ancien = { ...obj };
+        const obj = { ...workingCollection[idx] };
+        const ancien = original || { ...obj };
 
         (M.champs || []).forEach(f => {
-          if (String(obj[f.k] ?? "") !== String(propre[f.k] ?? "")) {
-            audit(M.label, "Modification", obj.code, f.k, obj[f.k], propre[f.k]);
+          if (String(ancien[f.k] ?? "") !== String(propre[f.k] ?? "")) {
+            audit(M.label, "Modification", obj.code, f.k, ancien[f.k], propre[f.k]);
             obj[f.k] = propre[f.k];
           }
         });
 
-        collection[idx] = moduleId === 'clients' ? recordFollowup(ancien, obj, { actor: userCourant, notes: propre.remarque || '', action: 'Modification de la fiche' }) : obj;
-        const nextDb = { ...db, [M.coll]: collection };
+        workingCollection[idx] = moduleId === 'clients' ? recordFollowup(ancien, obj, { actor: userCourant, notes: propre.remarque || '', action: 'Modification de la fiche' }) : obj;
+        const nextDb = { ...workingDb, [M.coll]: workingCollection };
 
         if (M.apresSauve) {
           M.apresSauve(nextDb, obj, ancien, { userCourant, notifier });
         }
 
-        updateDB(nextDb);
+        await updateDB(nextDb);
         toast(`${obj.code} mis à jour`);
+        if (renamedClientCode && window.location.hash.startsWith(`#ficheClient:${recordCode}`)) {
+          window.location.hash = `#ficheClient:${renamedClientCode}`;
+        }
       }
     } else {
       const codeClientSaisi = moduleId === 'clients' ? normaliserCodeClient(propre.codeClientUltex) : '';
