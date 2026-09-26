@@ -53,3 +53,16 @@ test('Workflow cleanup preserves a client that still has demandes or business re
   assert.match(server, /else if \(protectedRefs\.length\) clientPreservedReason/);
   assert.match(server, /collection: \{ notIn: \['clients', 'contacts', 'documents', 'demandes', 'demandeLignes'\] \}/);
 });
+
+test('returning L leads normalize stale JSON identity to the canonical row code', () => {
+  assert.match(sheetLeads, /data\.id = client\.code/);
+  assert.match(sheetLeads, /data\.code = client\.code/);
+  assert.match(sheetLeads, /data\.codeClientUltex = client\.code/);
+});
+
+test('server startup repairs existing Google Sheets L identity mismatches', () => {
+  assert.match(server, /async function reparerIdentitesClientsLGoogleSheets/);
+  assert.match(server, /SET data = data \|\| jsonb_build_object\('id', code, 'code', code, 'codeClientUltex', code\)/);
+  assert.match(server, /COALESCE\(NULLIF\(code, ''\), NULLIF\(data->>'codeClientUltex', ''\), id\)/);
+  assert.match(server, /await reparerIdentitesClientsLGoogleSheets\(\)/);
+});

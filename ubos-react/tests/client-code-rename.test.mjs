@@ -30,6 +30,7 @@ test('renaming a client code updates its identity and every live reference', () 
 test('Data dashboard displays the canonical client code and links through the real client key', () => {
   const source = fs.readFileSync(new URL('../src/components/custom/TableauBordData.jsx', import.meta.url), 'utf8');
   assert.match(source, /\[client\.id, client\.code, client\.codeClientUltex\]/);
+  assert.match(source, /client\?\.code \|\| client\?\.codeClientUltex/);
   assert.match(source, /_clientCodeAffiche: canonicalCode/);
   assert.match(source, /#ficheClient:\$\{o\._clientLienCode\}/);
 });

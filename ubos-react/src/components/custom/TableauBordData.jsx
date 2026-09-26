@@ -35,7 +35,7 @@ function leadDejaTraite(demande, client) {
 function enrichirLead(demande, clientsByCode, extra = {}) {
   const client = clientsByCode.get(String(demande.client || '').trim())
     || clientsByCode.get(String(demande.codeClientUltex || '').trim());
-  const canonicalCode = String(client?.codeClientUltex || client?.code || '').trim();
+  const canonicalCode = String(client?.code || client?.codeClientUltex || '').trim();
   // `demande.client` is the persisted canonical reference. It remains a
   // valid fiche link even when the compact dashboard query omitted the
   // client object (notably for a returning historical client).

@@ -311,7 +311,31 @@ const BOOTSTRAP_COLLECTIONS = [];
 const COLLECTION_FILTER_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 
 function collectionCodeExpression() {
-  return Prisma.sql`COALESCE(NULLIF(data->>'codeClientUltex', ''), NULLIF(code, ''), id)`;
+  return Prisma.sql`COALESCE(NULLIF(code, ''), NULLIF(data->>'codeClientUltex', ''), id)`;
+}
+
+async function reparerIdentitesClientsLGoogleSheets() {
+  // The CollectionItem `code` column is the canonical CRM identity. Older
+  // browser snapshots could overwrite only JSON metadata and produce rows
+  // such as code=L6947 with codeClientUltex=L1635. Normalize those fields at
+  // startup so allocation, links, lists and fiches all agree permanently.
+  const repaired = await prisma.$executeRaw`
+    UPDATE collection_items
+    SET data = data || jsonb_build_object('id', code, 'code', code, 'codeClientUltex', code)
+    WHERE collection = 'clients'
+      AND code ~ '^L[0-9]+$'
+      AND COALESCE(data->>'sourceDonnees', '') = 'Google Sheets'
+      AND (
+        COALESCE(data->>'id', '') IS DISTINCT FROM code
+        OR COALESCE(data->>'code', '') IS DISTINCT FROM code
+        OR COALESCE(data->>'codeClientUltex', '') IS DISTINCT FROM code
+      )
+  `;
+  if (repaired) {
+    console.log(`✅ Identités clients Google Sheets réparées: ${repaired}`);
+    await invaliderCache();
+  }
+  return repaired;
 }
 
 async function creerIndexPerformance() {
@@ -2813,6 +2837,7 @@ app.listen(PORT, async () => {
     console.log('✅ Connexion PostgreSQL établie.');
     await initialiserRedis();
     if (redisClient?.isReady) console.log('✅ Cache Redis connecté.');
+    await reparerIdentitesClientsLGoogleSheets();
     await creerIndexPerformance();
     console.log('✅ Index de performance CRM vérifiés.');
   } catch (e) {

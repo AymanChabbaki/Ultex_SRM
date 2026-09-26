@@ -118,6 +118,11 @@ export async function syncLLead(prisma, body) {
     } else {
       // A returning lead must not replace CRM-owned tags, deadlines or identity.
       const data = { ...client.data };
+      // The row's actual code is canonical. Never carry forward stale JSON
+      // identity left by an old import/browser snapshot.
+      data.id = client.code;
+      data.code = client.code;
+      data.codeClientUltex = client.code;
       for (const field of ['email', 'societe', 'pays']) if (!data[field] && lead[field]) data[field] = lead[field];
       data.dateDerniereDemande = [data.dateDerniereDemande || '', date].sort().at(-1);
       client = await tx.collectionItem.update({ where: { id: client.id }, data: { data } });
