@@ -13,7 +13,7 @@ import {
 } from '../../utils/dataPipeline';
 import { localDay, deadlineDue, formatGMTDateTime } from '../../utils/dataFollowup';
 import { supprimerDemandeTestGoogleSheets } from '../../services/security';
-import { fetchDataDashboard, subscribeDataDashboard } from '../../services/api';
+import { fetchDataDashboard, fetchDataDashboardLeads, subscribeDataDashboard } from '../../services/api';
 
 const TAG_PILL_CLASS = { Urgent: 'p-rouge', "Aujourd'hui": 'p-or', Nouveau: 'p-vert', 'Très chaud': 'p-or', Chaud: 'p-ambre', Normal: 'p-gris', Froid: 'p-bleu', Dormant: 'p-gris', VIP: 'p-vert' };
 const EMPTY_DASHBOARD_DB = { clients: [], demandes: [], demandeLignes: [], taches: [], objectifsData: [], audit: [] };
@@ -32,6 +32,25 @@ function leadDejaTraite(demande, client) {
   return Boolean(client.dataTag || client.actionSuivante || client.dernierContact || client.dernierSuiviData);
 }
 
+function enrichirLead(demande, clientsByCode, extra = {}) {
+  const client = clientsByCode.get(String(demande.client || '').trim())
+    || clientsByCode.get(String(demande.codeClientUltex || '').trim());
+  const canonicalCode = String(client?.codeClientUltex || client?.code || '').trim();
+  const clientLinkCode = String(client?.code || '').trim();
+  const patch = {
+    _clientCodeAffiche: canonicalCode || demande.codeClientUltex || demande.client || '—',
+    _clientLienCode: clientLinkCode,
+    ...extra,
+  };
+  const dataTagAffiche = demande.dataTag || client?.dataTag;
+  if (dataTagAffiche) {
+    patch._dataTagAffiche = dataTagAffiche;
+    patch._etatVersionAffiche = demande.etatVersion || client?.etatVersion;
+  }
+  if (leadDejaTraite(demande, client)) patch._traite = true;
+  return { ...demande, ...patch };
+}
+
 export default function TableauBordData({ user, isAdminView }) {
   const { demanderElevation } = useSecurity();
   const { toast } = useToast();
@@ -41,6 +60,11 @@ export default function TableauBordData({ user, isAdminView }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [leadView, setLeadView] = useState('queue');
+  const [leadDate, setLeadDate] = useState(localDay());
+  const [leadHistory, setLeadHistory] = useState({ items: [], clients: [] });
+  const [leadHistoryLoading, setLeadHistoryLoading] = useState(false);
+  const [leadHistoryError, setLeadHistoryError] = useState('');
   const db = dashboard.db || EMPTY_DASHBOARD_DB;
 
   useEffect(() => {
@@ -53,6 +77,23 @@ export default function TableauBordData({ user, isAdminView }) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [dateObjectif, user?.identifiant, user?.nomComplet, refreshKey]);
+
+  useEffect(() => {
+    if (leadView === 'queue') return undefined;
+    let active = true;
+    setLeadHistoryLoading(true);
+    setLeadHistoryError('');
+    fetchDataDashboardLeads(
+      leadView,
+      leadView === 'date' ? leadDate : '',
+      user?.identifiant || user?.nomComplet || '',
+      refreshKey > 0
+    )
+      .then(result => { if (active) setLeadHistory(result); })
+      .catch(error => { if (active) setLeadHistoryError(error?.message || 'Chargement impossible.'); })
+      .finally(() => { if (active) setLeadHistoryLoading(false); });
+    return () => { active = false; };
+  }, [leadView, leadDate, user?.identifiant, user?.nomComplet, refreshKey]);
 
   useEffect(() => {
     let stopped = false;
@@ -92,14 +133,14 @@ export default function TableauBordData({ user, isAdminView }) {
   const clientsAgent = useMemo(() => clientsActifsData(db, user), [db, user]);
   const clientsByCode = useMemo(() => {
     const map = new Map();
-    (db.clients || []).forEach(client => {
+    [...(db.clients || []), ...(leadHistory.clients || [])].forEach(client => {
       [client.id, client.code, client.codeClientUltex].forEach(value => {
         const alias = String(value || '').trim();
         if (alias) map.set(alias, client);
       });
     });
     return map;
-  }, [db]);
+  }, [db, leadHistory.clients]);
   const nouveauxLeads = useMemo(() => {
     const todayLeads = leadsDuJour(db, user);
     const todayStr = localDay();
@@ -117,27 +158,23 @@ export default function TableauBordData({ user, isAdminView }) {
     // marked "Traité" instead of disappearing, so the tag stays visible and
     // no one re-treats a lead that's already handled.
     return merged.map(demande => {
-      const client = clientsByCode.get(String(demande.client || '').trim())
-        || clientsByCode.get(String(demande.codeClientUltex || '').trim());
-      const canonicalCode = String(client?.codeClientUltex || client?.code || '').trim();
-      const clientLinkCode = String(client?.code || '').trim();
-      const patch = {
-        _clientCodeAffiche: canonicalCode || demande.codeClientUltex || demande.client || '—',
-        _clientLienCode: clientLinkCode,
-      };
-      const dataTagAffiche = demande.dataTag || client?.dataTag;
-      if (dataTagAffiche) {
-        patch._dataTagAffiche = dataTagAffiche;
-        patch._etatVersionAffiche = demande.etatVersion || client?.etatVersion;
-      }
-      if (leadDejaTraite(demande, client)) patch._traite = true;
+      const patch = {};
       if (!demande._retardTraitement) {
         const calendarDay = localDay(demande.dateHeureReception || demande.dateDemande);
         if (calendarDay && calendarDay !== todayStr) patch._hierHorsHoraires = true;
       }
-      return { ...demande, ...patch };
+      return enrichirLead(demande, clientsByCode, patch);
     });
   }, [db, user, clientsByCode]);
+  const leadsHistorique = useMemo(() => (
+    (leadHistory.items || []).map(demande => enrichirLead(demande, clientsByCode, { _vueHistorique: true }))
+  ), [leadHistory.items, clientsByCode]);
+  const leadsAffiches = leadView === 'queue' ? nouveauxLeads : leadsHistorique;
+  const titreLeads = leadView === 'all'
+    ? 'Tous les leads reçus'
+    : leadView === 'date'
+      ? `Leads reçus le ${leadDate.split('-').reverse().join('/')}`
+      : "Leads reçus aujourd'hui + hier (hors horaires ou non traités)";
   const leadsAujourdhuiTous = nouveauxLeads.filter(lead => !lead._retardTraitement && !lead._hierHorsHoraires);
   const leadsAujourdhui = leadsAujourdhuiTous.filter(lead => !lead._traite);
   const leadsAujourdhuiTraites = leadsAujourdhuiTous.filter(lead => lead._traite);
@@ -199,7 +236,36 @@ export default function TableauBordData({ user, isAdminView }) {
         <StatCard val={sansSuiviUnMois.length} label="Sans changement d’état depuis 1 semaine" alerte={sansSuiviUnMois.length > 0} />
       </div>
 
-      <h3 className="titre-sec mt-lg">Leads reçus aujourd'hui + hier (hors horaires ou non traités)</h3>
+      <div className="outils mt-lg" style={{ alignItems: 'end', gap: '8px', flexWrap: 'wrap' }}>
+        <div className="spacer">
+          <h3 className="titre-sec" style={{ margin: 0 }}>{titreLeads} ({leadsAffiches.length})</h3>
+        </div>
+        <button
+          type="button"
+          className={`btn mini ${leadView === 'queue' ? 'or' : 'doux'}`}
+          aria-pressed={leadView === 'queue'}
+          onClick={() => setLeadView('queue')}
+        >À traiter</button>
+        <button
+          type="button"
+          className={`btn mini ${leadView === 'all' ? 'or' : 'doux'}`}
+          aria-pressed={leadView === 'all'}
+          onClick={() => setLeadView('all')}
+        >Voir tous</button>
+        <label style={{ display: 'grid', gap: '3px', fontSize: '12px' }}>
+          <span>Date précise (GMT)</span>
+          <input type="date" value={leadDate} onChange={event => setLeadDate(event.target.value)} />
+        </label>
+        <button
+          type="button"
+          className={`btn mini ${leadView === 'date' ? 'or' : 'doux'}`}
+          aria-pressed={leadView === 'date'}
+          disabled={!leadDate}
+          onClick={() => setLeadView('date')}
+        >Afficher la date</button>
+      </div>
+      {leadHistoryLoading && <div className="vide"><b>Chargement des leads…</b></div>}
+      {leadHistoryError && <div className="note-verrou mb-lg">{leadHistoryError}</div>}
       <div className="panneau mb-lg">
         <DataTable
           columns={[
@@ -214,6 +280,10 @@ export default function TableauBordData({ user, isAdminView }) {
             { key: 'statut', label: 'État', render: (v) => pill(v || 'Nouvelle', 'p-gris') },
             { key: '_retardTraitement', label: 'Alerte', render: (v, o) => o._traite
               ? pill(o._dataTagAffiche ? `Traité — ${o._dataTagAffiche}` : 'Traité', 'p-gris')
+              : o._vueHistorique
+                ? (localDay(o.dateHeureReception || o.dateDemande) < localDay()
+                  ? pill('Non traité', 'p-rouge')
+                  : pill("Aujourd'hui", 'p-vert'))
               : v
                 ? pill('Hier — non traité', 'p-rouge')
                 : (o._hierHorsHoraires ? pill('Hier — hors horaires', 'p-ambre') : pill("Aujourd'hui", 'p-vert')) },
@@ -223,7 +293,7 @@ export default function TableauBordData({ user, isAdminView }) {
                 : '—'
             },
           ]}
-          data={nouveauxLeads}
+          data={leadHistoryLoading ? [] : leadsAffiches}
         />
       </div>
 

@@ -1003,6 +1003,101 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
   }
 });
 
+// Loaded only when Data explicitly asks for the lifetime history or one
+// calendar day. Keeping this separate preserves the small, fast operational
+// dashboard payload used on every normal page load.
+app.get('/api/dashboard/data/leads', authMiddleware, async (req, res) => {
+  const scope = req.query.scope === 'date' ? 'date' : 'all';
+  const requestedDate = String(req.query.date || '');
+  if (scope === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+    return res.status(400).json({ error: 'Date de leads invalide' });
+  }
+  const requestedUser = String(req.query.user || '').trim().slice(0, 120);
+  try {
+    const target = await prisma.user.findFirst({
+      where: req.auth.role === 'ADMIN' && requestedUser
+        ? { OR: [{ identifiant: requestedUser }, { nomComplet: requestedUser }] }
+        : { id: req.auth.id }
+    });
+    if (!target || !target.actif) return res.status(404).json({ error: 'Utilisateur introuvable' });
+
+    const targetName = target.nomComplet || target.identifiant;
+    const services = Array.isArray(target.modulesAutorises?.services) ? target.modulesAutorises.services : [];
+    const isData = services.includes('Data');
+    const bypassCache = req.query.fresh === '1';
+    const scopeHash = crypto.createHash('sha1').update(JSON.stringify({
+      target: target.id, scope, requestedDate: scope === 'date' ? requestedDate : ''
+    })).digest('hex');
+    const cacheKey = `dashboard-data-leads:${scopeHash}`;
+    const cached = bypassCache ? null : await cacheLire(cacheKey);
+    if (cached) {
+      res.set('X-CRM-Cache', 'HIT');
+      res.set('Cache-Control', 'private, no-cache');
+      return res.type('application/json').send(cached);
+    }
+
+    const serviceList = services.length ? Prisma.join(services) : null;
+    const demandeAssignment = services.length
+      ? Prisma.sql`(
+          data->>'responsableData' = ${targetName}
+          OR data->>'responsableData' IN (${serviceList})
+          OR (${isData} AND COALESCE(data->>'responsableData', '') = '')
+        )`
+      : Prisma.sql`data->>'responsableData' = ${targetName}`;
+    const calendarDay = Prisma.sql`CASE
+      WHEN COALESCE(data->>'dateHeureReception', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*(Z|[+-][0-9]{2}:?[0-9]{2})$'
+        THEN TO_CHAR((data->>'dateHeureReception')::timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD')
+      WHEN COALESCE(data->>'dateHeureReception', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ]'
+        THEN TO_CHAR((data->>'dateHeureReception')::timestamp, 'YYYY-MM-DD')
+      ELSE LEFT(COALESCE(data->>'dateDemande', data->>'dateHeureReception', ''), 10)
+    END`;
+    const dateFilter = scope === 'date' ? Prisma.sql`AND ${calendarDay} = ${requestedDate}` : Prisma.empty;
+
+    const demandeRows = await prisma.$queryRaw(Prisma.sql`
+      SELECT id, code, data, "createdAt" FROM collection_items
+      WHERE collection = 'demandes'
+        AND ${demandeAssignment}
+        AND COALESCE(data->>'createdManually', 'false') <> 'true'
+        AND COALESCE(data->>'created_manually', 'false') <> 'true'
+        AND COALESCE(data->>'source', '') <> 'Saisie manuelle'
+        ${dateFilter}
+      ORDER BY COALESCE(data->>'dateHeureReception', data->>'dateDemande', "createdAt"::text) DESC
+    `);
+
+    const clientRefs = [...new Set(demandeRows.flatMap(item => [
+      item.data?.client,
+      item.data?.codeClientUltex,
+    ]).map(value => String(value || '').trim()).filter(Boolean))];
+    const clientRows = clientRefs.length ? await prisma.$queryRaw(Prisma.sql`
+      SELECT id, code, data, "createdAt" FROM collection_items
+      WHERE collection = 'clients' AND (
+        code IN (${Prisma.join(clientRefs)})
+        OR data->>'code' IN (${Prisma.join(clientRefs)})
+        OR data->>'codeClientUltex' IN (${Prisma.join(clientRefs)})
+      )
+      ORDER BY "createdAt" DESC
+    `) : [];
+
+    const mapRows = rows => rows.map(item => ({ id: item.id, createdAt: item.createdAt.toISOString(), ...item.data }));
+    const payload = {
+      items: mapRows(demandeRows),
+      clients: mapRows(clientRows),
+      total: demandeRows.length,
+      scope,
+      date: scope === 'date' ? requestedDate : null,
+      generatedAt: new Date().toISOString()
+    };
+    const json = JSON.stringify(payload);
+    await cacheEcrire(cacheKey, json, 60);
+    res.set('X-CRM-Cache', 'MISS');
+    res.set('Cache-Control', 'private, no-cache');
+    res.type('application/json').send(json);
+  } catch (error) {
+    console.error('Data dashboard leads error:', error);
+    res.status(500).json({ error: 'Erreur lors du chargement des leads' });
+  }
+});
+
 // Shared by the routine sync route and the OTP-gated restore route below —
 // same full-state-replacement semantics either way, factored out so
 // "restore a backup" isn't a second, divergent implementation to keep in sync.

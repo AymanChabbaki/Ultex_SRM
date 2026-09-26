@@ -105,6 +105,18 @@ export async function fetchDataDashboard(date, targetUser = '', fresh = false) {
   return await res.json();
 }
 
+export async function fetchDataDashboardLeads(scope = 'all', date = '', targetUser = '', fresh = false) {
+  const query = new URLSearchParams({ scope: scope === 'date' ? 'date' : 'all' });
+  if (scope === 'date' && date) query.set('date', date);
+  if (targetUser) query.set('user', targetUser);
+  if (fresh) query.set('fresh', '1');
+  const res = await fetch(`${API_URL}/dashboard/data/leads?${query}`, { headers: { ...authHeaders() } });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'Erreur lors du chargement des leads');
+  return body;
+}
+
 // Fetch streaming is used instead of EventSource so the JWT stays in the
 // Authorization header and is never exposed in the URL. The callback only
 // receives actual change events; heartbeat and ready frames are ignored.
