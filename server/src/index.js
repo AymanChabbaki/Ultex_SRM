@@ -257,7 +257,7 @@ async function invaliderCache() {
 function mutationAffecteDashboardData(req) {
   if (req.path.startsWith('/api/sync/sheets/lead')) return true;
   if (req.path.startsWith('/api/sync/ultex/dossier')) return true;
-  if (req.path.startsWith('/api/security/sheet-test-')) return true;
+  if (req.path.startsWith('/api/security/sheet-test-') || req.path.startsWith('/api/security/workflow-test-')) return true;
   if (req.path.startsWith('/api/clients/')) return true;
   if (req.path === '/api/db/sync' || req.path === '/api/security/restore') return true;
   if (req.path !== '/api/db/patch') return false;
@@ -1498,6 +1498,97 @@ app.delete('/api/security/sheet-test-demandes/:demandeCode', authMiddleware, req
     console.error('Sheet test demande delete error:', error);
     const status = error.status || 500;
     res.status(status).json({ error: status < 500 ? error.message : 'Erreur lors de la suppression de la demande test.' });
+  }
+});
+
+// Deletes one explicitly-confirmed Workflow test lead. The demande is the
+// deletion root so an accidentally reused/displayed client code cannot remove
+// somebody else's data. Client-level records are removed only when the client
+// is Workflow-owned, has no other demande, and has no business records left.
+app.delete('/api/security/workflow-test-demandes/:demandeCode', authMiddleware, requireElevation, async (req, res) => {
+  const demandeCode = String(req.params.demandeCode || '').trim();
+  const confirmationClient = String(req.body?.confirmationClient || '').trim();
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const demande = await tx.collectionItem.findFirst({ where: { collection: 'demandes', code: demandeCode } });
+      if (!demande) throw Object.assign(new Error('Demande test introuvable.'), { status: 404 });
+      if (demande.data?.sourceSynchronisation !== 'Workflow') {
+        throw Object.assign(new Error("Cette demande ne vient pas du Workflow."), { status: 409 });
+      }
+
+      const clientCode = String(demande.data?.client || demande.data?.codeClientUltex || '').trim();
+      if (!clientCode || confirmationClient !== clientCode) {
+        throw Object.assign(new Error('Le code client de confirmation est incorrect.'), { status: 400 });
+      }
+
+      const lines = (await tx.collectionItem.findMany({ where: { collection: 'demandeLignes' } }))
+        .filter(item => item.data?.demande === demande.code);
+      const demandeDocuments = (await tx.collectionItem.findMany({ where: { collection: 'documents' } }))
+        .filter(item => item.data?.demande === demande.code);
+      if (lines.length) await tx.collectionItem.deleteMany({ where: { collection: 'demandeLignes', id: { in: lines.map(item => item.id) } } });
+      if (demandeDocuments.length) await tx.collectionItem.deleteMany({ where: { collection: 'documents', id: { in: demandeDocuments.map(item => item.id) } } });
+      await tx.collectionItem.deleteMany({ where: { collection: 'demandes', id: demande.id } });
+
+      let deletedClient = 0;
+      let deletedContacts = 0;
+      let deletedClientDocuments = 0;
+      let clientPreservedReason = '';
+      const remainingDemandes = await tx.collectionItem.findMany({
+        where: { collection: 'demandes', OR: [
+          { data: { path: ['client'], equals: clientCode } },
+          { data: { path: ['codeClientUltex'], equals: clientCode } },
+        ] }
+      });
+      const client = await tx.collectionItem.findFirst({
+        where: { collection: 'clients', OR: [
+          { code: clientCode },
+          { data: { path: ['codeClientUltex'], equals: clientCode } },
+        ] }
+      });
+      const protectedRefs = await tx.collectionItem.findMany({
+        where: {
+          collection: { notIn: ['clients', 'contacts', 'documents', 'demandes', 'demandeLignes'] },
+          OR: [
+            { data: { path: ['client'], equals: clientCode } },
+            { data: { path: ['codeClient'], equals: clientCode } },
+            { data: { path: ['codeClientUltex'], equals: clientCode } },
+          ]
+        },
+        select: { collection: true, code: true }
+      });
+
+      if (!client) clientPreservedReason = 'Fiche client déjà absente';
+      else if (client.data?.sourceDonnees !== 'Workflow') clientPreservedReason = 'Fiche client non créée par Workflow';
+      else if (remainingDemandes.length) clientPreservedReason = `${remainingDemandes.length} autre(s) demande(s)`;
+      else if (protectedRefs.length) clientPreservedReason = `${protectedRefs.length} dossier(s) métier lié(s)`;
+      else {
+        const contacts = await tx.collectionItem.findMany({
+          where: { collection: 'contacts', data: { path: ['codeClientAssocie'], equals: clientCode } }
+        });
+        const clientDocuments = (await tx.collectionItem.findMany({ where: { collection: 'documents' } }))
+          .filter(item => item.data?.client === clientCode);
+        if (contacts.length) deletedContacts = (await tx.collectionItem.deleteMany({ where: { collection: 'contacts', id: { in: contacts.map(item => item.id) } } })).count;
+        if (clientDocuments.length) deletedClientDocuments = (await tx.collectionItem.deleteMany({ where: { collection: 'documents', id: { in: clientDocuments.map(item => item.id) } } })).count;
+        deletedClient = (await tx.collectionItem.deleteMany({ where: { collection: 'clients', id: client.id } })).count;
+      }
+
+      return { clientCode, clientPreservedReason, counts: {
+        demandes: 1,
+        demandeLignes: lines.length,
+        documents: demandeDocuments.length + deletedClientDocuments,
+        contacts: deletedContacts,
+        clients: deletedClient,
+      } };
+    });
+    const auteur = req.auth.nomComplet || req.auth.identifiant;
+    const detail = Object.entries(result.counts).map(([name, count]) => `${name}:${count}`).join(', ');
+    await ecrireJournalSecurite({ action: 'Suppression demande test Workflow', utilisateur: auteur, module: 'demandes', resultat: `${demandeCode} — ${result.clientCode} — ${detail}`, ip: req.ip });
+    await alerterDirection(`${auteur} a supprimé la demande test Workflow ${demandeCode} du client ${result.clientCode}.`);
+    res.json({ status: 'deleted', demandeCode, ...result });
+  } catch (error) {
+    console.error('Workflow test demande delete error:', error);
+    const status = error.status || 500;
+    res.status(status).json({ error: status < 500 ? error.message : 'Erreur lors de la suppression du test Workflow.' });
   }
 });
 

@@ -12,7 +12,7 @@ import {
   leadsDuJour, codesSansSuiviDepuis, clientsActifsData, demandesDeAgent
 } from '../../utils/dataPipeline';
 import { localDay, deadlineDue, formatGMTDateTime } from '../../utils/dataFollowup';
-import { supprimerDemandeTestGoogleSheets } from '../../services/security';
+import { supprimerDemandeTestGoogleSheets, supprimerDemandeTestWorkflow } from '../../services/security';
 import { fetchDataDashboard, fetchDataDashboardLeads, subscribeDataDashboard } from '../../services/api';
 
 const TAG_PILL_CLASS = { Urgent: 'p-rouge', "Aujourd'hui": 'p-or', Nouveau: 'p-vert', 'Très chaud': 'p-or', Chaud: 'p-ambre', Normal: 'p-gris', Froid: 'p-bleu', Dormant: 'p-gris', VIP: 'p-vert' };
@@ -203,19 +203,24 @@ export default function TableauBordData({ user, isAdminView }) {
 
   const supprimerLeadTest = async (demande) => {
     const codeClient = demande.codeClientUltex || demande.client;
+    const estWorkflow = demande.sourceSynchronisation === 'Workflow';
+    const origine = estWorkflow ? 'Workflow' : 'Google Sheets';
     const confirmation = window.prompt(
-      `Supprimer ${codeClient} et toutes ses données de test Google Sheets ?\n\nSaisissez exactement ${codeClient} pour confirmer.`
+      `Supprimer la demande test ${demande.code} (${codeClient}) et ses données liées ${origine} ?\n\nSaisissez exactement ${codeClient} pour confirmer.`
     );
     if (confirmation !== codeClient) {
       if (confirmation !== null) toast('Code de confirmation incorrect.');
       return;
     }
     try {
-      const elevationToken = await demanderElevation(`Suppression de la demande test Google Sheets ${demande.code}`);
-      const result = await supprimerDemandeTestGoogleSheets(demande.code, elevationToken);
+      const elevationToken = await demanderElevation(`Suppression de la demande test ${origine} ${demande.code}`);
+      const result = estWorkflow
+        ? await supprimerDemandeTestWorkflow(demande.code, confirmation, elevationToken)
+        : await supprimerDemandeTestGoogleSheets(demande.code, elevationToken);
       setRefreshKey(value => value + 1);
       const total = Object.values(result.counts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
-      toast(`Test ${demande.code} supprimé (${total} enregistrement(s)).`);
+      const preserve = result.clientPreservedReason ? ` Client conservé : ${result.clientPreservedReason}.` : '';
+      toast(`Test ${demande.code} supprimé (${total} enregistrement(s)).${preserve}`);
     } catch (error) {
       if (error?.message !== 'Vérification annulée.') toast(error?.message || 'Suppression impossible.');
     }
@@ -299,11 +304,14 @@ export default function TableauBordData({ user, isAdminView }) {
               : v
                 ? pill('Hier — non traité', 'p-rouge')
                 : (o._hierHorsHoraires ? pill('Hier — hors horaires', 'p-ambre') : pill("Aujourd'hui", 'p-vert')) },
-            { key: 'actionsTest', label: 'Actions', render: (_, o) =>
-              (o.sourceSynchronisation === 'Google Sheets' || o.source === 'Google Sheets') && /^L\d+$/.test(o.codeClientUltex || o.client || '')
+            { key: 'actionsTest', label: 'Actions', render: (_, o) => {
+              const codeClient = o.codeClientUltex || o.client || '';
+              const estTestSheets = (o.sourceSynchronisation === 'Google Sheets' || o.source === 'Google Sheets') && /^L\d+$/.test(codeClient);
+              const estTestWorkflow = o.sourceSynchronisation === 'Workflow' && /^\d+$/.test(codeClient);
+              return estTestSheets || estTestWorkflow
                 ? <button className="btn mini rouge" onClick={() => supprimerLeadTest(o)}>Supprimer le test</button>
-                : '—'
-            },
+                : '—';
+            } },
           ]}
           data={leadHistoryLoading ? [] : leadsAffiches}
         />

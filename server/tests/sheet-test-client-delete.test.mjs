@@ -40,3 +40,16 @@ test('dashboard cleanup deletes by demande code and preserves a real client that
   assert.match(server, /if \(client && sheetClient && remainingDemandes\.length === 0\)/);
   assert.match(server, /Suppression demande test Google Sheets/);
 });
+
+test('numeric Workflow test cleanup is elevation-gated and rooted at the demande', () => {
+  assert.match(server, /app\.delete\('\/api\/security\/workflow-test-demandes\/:demandeCode', authMiddleware, requireElevation/);
+  assert.match(server, /demande\.data\?\.sourceSynchronisation !== 'Workflow'/);
+  assert.match(server, /confirmationClient !== clientCode/);
+  assert.match(server, /Suppression demande test Workflow/);
+});
+
+test('Workflow cleanup preserves a client that still has demandes or business references', () => {
+  assert.match(server, /else if \(remainingDemandes\.length\) clientPreservedReason/);
+  assert.match(server, /else if \(protectedRefs\.length\) clientPreservedReason/);
+  assert.match(server, /collection: \{ notIn: \['clients', 'contacts', 'documents', 'demandes', 'demandeLignes'\] \}/);
+});
