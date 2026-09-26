@@ -9,7 +9,7 @@ import { pill } from '../../utils/format';
 import {
   genererFileDeTravail, genererAlertesData, calculerObjectifActif, calculerProgressionJour,
   calculerSourcingsObtenus, genererResumeJournalier, calculerPrioriteClient,
-  leadsDuJour, codesSansSuiviDepuis, clientsActifsData
+  leadsDuJour, codesSansSuiviDepuis, clientsActifsData, demandesDeAgent
 } from '../../utils/dataPipeline';
 import { localDay, deadlineDue, formatGMTDateTime } from '../../utils/dataFollowup';
 import { supprimerDemandeTestGoogleSheets } from '../../services/security';
@@ -36,7 +36,10 @@ function enrichirLead(demande, clientsByCode, extra = {}) {
   const client = clientsByCode.get(String(demande.client || '').trim())
     || clientsByCode.get(String(demande.codeClientUltex || '').trim());
   const canonicalCode = String(client?.codeClientUltex || client?.code || '').trim();
-  const clientLinkCode = String(client?.code || '').trim();
+  // `demande.client` is the persisted canonical reference. It remains a
+  // valid fiche link even when the compact dashboard query omitted the
+  // client object (notably for a returning historical client).
+  const clientLinkCode = String(client?.code || demande.client || '').trim();
   const patch = {
     _clientCodeAffiche: canonicalCode || demande.codeClientUltex || demande.client || '—',
     _clientLienCode: clientLinkCode,
@@ -166,9 +169,18 @@ export default function TableauBordData({ user, isAdminView }) {
       return enrichirLead(demande, clientsByCode, patch);
     });
   }, [db, user, clientsByCode]);
-  const leadsHistorique = useMemo(() => (
-    (leadHistory.items || []).map(demande => enrichirLead(demande, clientsByCode, { _vueHistorique: true }))
-  ), [leadHistory.items, clientsByCode]);
+  const leadsHistorique = useMemo(() => {
+    let items = demandesDeAgent({ demandes: leadHistory.items || [] }, user)
+      .filter(demande => demande.createdManually !== true
+        && demande.created_manually !== true
+        && demande.source !== 'Saisie manuelle');
+    if (leadView === 'date') {
+      items = items.filter(demande => localDay(demande.dateHeureReception || demande.dateDemande) === leadDate);
+    }
+    return items
+      .sort((a, b) => String(b.dateHeureReception || b.dateDemande || b.createdAt || '').localeCompare(String(a.dateHeureReception || a.dateDemande || a.createdAt || '')))
+      .map(demande => enrichirLead(demande, clientsByCode, { _vueHistorique: true }));
+  }, [leadHistory.items, clientsByCode, user, leadView, leadDate]);
   const leadsAffiches = leadView === 'queue' ? nouveauxLeads : leadsHistorique;
   const titreLeads = leadView === 'all'
     ? 'Tous les leads reçus'

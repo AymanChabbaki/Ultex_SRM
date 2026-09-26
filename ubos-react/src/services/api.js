@@ -105,6 +105,25 @@ export async function fetchDataDashboard(date, targetUser = '', fresh = false) {
   return await res.json();
 }
 
+async function fetchCompleteCollection(collection) {
+  const items = [];
+  let page = 1;
+  let totalPages = 1;
+  do {
+    const query = new URLSearchParams({ page: String(page), pageSize: '500' });
+    const response = await fetch(`${API_URL}/collections/${encodeURIComponent(collection)}?${query}`, {
+      headers: { ...authHeaders() }
+    });
+    if (response.status === 401) throw new AuthError('Session invalide ou expirée');
+    if (!response.ok) throw new Error(`Erreur lors du chargement de ${collection}`);
+    const payload = await response.json();
+    items.push(...(payload.items || []));
+    totalPages = Math.max(1, Number(payload.totalPages) || 1);
+    page += 1;
+  } while (page <= totalPages);
+  return items;
+}
+
 export async function fetchDataDashboardLeads(scope = 'all', date = '', targetUser = '', fresh = false) {
   const query = new URLSearchParams({ scope: scope === 'date' ? 'date' : 'all' });
   if (scope === 'date' && date) query.set('date', date);
@@ -113,8 +132,21 @@ export async function fetchDataDashboardLeads(scope = 'all', date = '', targetUs
   const res = await fetch(`${API_URL}/dashboard/data/leads?${query}`, { headers: { ...authHeaders() } });
   if (res.status === 401) throw new AuthError('Session invalide ou expirée');
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || 'Erreur lors du chargement des leads');
-  return body;
+  if (res.ok) return body;
+
+  // Compatibility path for a rolling deployment (new frontend while an old
+  // backend is still running) and a safe recovery path if the optimized
+  // endpoint is temporarily unavailable. It runs only after the user opens
+  // history, never during the normal dashboard load.
+  try {
+    const [items, clients] = await Promise.all([
+      fetchCompleteCollection('demandes'),
+      fetchCompleteCollection('clients'),
+    ]);
+    return { items, clients, total: items.length, scope, date: scope === 'date' ? date : null, fallback: true };
+  } catch (fallbackError) {
+    throw new Error(body.error || fallbackError?.message || 'Erreur lors du chargement des leads');
+  }
 }
 
 // Fetch streaming is used instead of EventSource so the JWT stays in the

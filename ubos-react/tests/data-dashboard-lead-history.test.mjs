@@ -16,6 +16,8 @@ test('Data lead table exposes queue, lifetime, and exact GMT date views', () => 
 test('lead history is loaded lazily through its own API instead of bloating the dashboard payload', () => {
   assert.match(apiSource, /dashboard\/data\/leads/);
   assert.match(dashboardSource, /if \(leadView === 'queue'\) return undefined/);
+  assert.match(apiSource, /fetchCompleteCollection\('demandes'\)/);
+  assert.match(apiSource, /fetchCompleteCollection\('clients'\)/);
   assert.match(serverSource, /app\.get\('\/api\/dashboard\/data\/leads'/);
   assert.match(serverSource, /dashboard-data-leads:/);
 });
@@ -26,4 +28,10 @@ test('lead history excludes manual dossiers and exact-date lookup uses the GMT r
   assert.match(serverSource, /Saisie manuelle/);
   assert.match(serverSource, /AT TIME ZONE 'UTC'/);
   assert.match(serverSource, /const dateFilter = scope === 'date'/);
+});
+
+test('a lead remains linked through its persisted client reference when compact client data is absent', () => {
+  assert.match(dashboardSource, /client\?\.code \|\| demande\.client/);
+  assert.match(dashboardSource, /demandesDeAgent\(\{ demandes: leadHistory\.items \|\| \[\] \}, user\)/);
+  assert.match(dashboardSource, /localDay\(demande\.dateHeureReception \|\| demande\.dateDemande\) === leadDate/);
 });
