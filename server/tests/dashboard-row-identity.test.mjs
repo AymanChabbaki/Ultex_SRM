@@ -30,6 +30,9 @@ test('data dashboard explicitly loads clients referenced by returned demandes', 
   assert.match(source, /item\.data\?\.client, item\.data\?\.codeClientUltex/);
   assert.match(source, /const completeClientRows =/);
   assert.match(source, /clients: serializeCollectionRows\(completeClientRows\)/);
+  assert.match(source, /jsonb_array_elements_text\(\$\{missingClientRefsJson\}::jsonb\)/);
+  assert.match(source, /WITH refs AS MATERIALIZED/);
+  assert.doesNotMatch(source, /Prisma\.join\(missingClientRefs\)/);
 });
 
 test('lifetime lead history also uses canonical database identity', () => {

@@ -1014,15 +1014,23 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
       item.data?.client, item.data?.codeClientUltex,
     ]).map(value => String(value || '').trim()).filter(Boolean))]
       .filter(code => !loadedClientAliases.has(code));
+    // A large Data workload can reference tens of thousands of clients.
+    // Repeating the reference list four times creates one bind variable per
+    // code per comparison and exceeds PostgreSQL's 32767 parameter limit.
+    // Send the list once as JSON and expand it in a materialized CTE instead.
+    const missingClientRefsJson = JSON.stringify(missingClientRefs);
     const referencedClientRows = missingClientRefs.length ? await prisma.$queryRaw(Prisma.sql`
-      SELECT id, code, data, "createdAt" FROM collection_items
-      WHERE collection = 'clients' AND (
-        id IN (${Prisma.join(missingClientRefs)})
-        OR code IN (${Prisma.join(missingClientRefs)})
-        OR data->>'code' IN (${Prisma.join(missingClientRefs)})
-        OR data->>'codeClientUltex' IN (${Prisma.join(missingClientRefs)})
+      WITH refs AS MATERIALIZED (
+        SELECT jsonb_array_elements_text(${missingClientRefsJson}::jsonb) AS code
       )
-      ORDER BY "createdAt" DESC
+      SELECT id, code, data, "createdAt" FROM collection_items client
+      WHERE collection = 'clients' AND (
+        client.id IN (SELECT code FROM refs)
+        OR client.code IN (SELECT code FROM refs)
+        OR client.data->>'code' IN (SELECT code FROM refs)
+        OR client.data->>'codeClientUltex' IN (SELECT code FROM refs)
+      )
+      ORDER BY client."createdAt" DESC
     `) : [];
     const completeClientRows = [...clientRows];
     const completeClientIds = new Set(clientRows.map(item => item.id));
