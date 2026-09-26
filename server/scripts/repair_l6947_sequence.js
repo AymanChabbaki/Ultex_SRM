@@ -41,6 +41,18 @@ function phoneKey(value) {
   return digits.length >= 9 ? digits.slice(-9) : digits;
 }
 
+async function demandeIdentityBridgeCount(db) {
+  return db.collectionItem.count({
+    where: {
+      collection: 'demandes',
+      AND: [
+        { data: { path: ['client'], equals: MERGE_FROM } },
+        { data: { path: ['codeClientUltex'], equals: MERGE_INTO } },
+      ],
+    },
+  });
+}
+
 async function clientByCode(db, code) {
   return db.collectionItem.findFirst({
     where: { collection: 'clients', OR: [{ id: code }, { code }] }
@@ -144,10 +156,21 @@ async function inspectPlan() {
   const sourcePhone = phoneKey(source.data?.telephone);
   const canonicalPhone = phoneKey(canonical.data?.telephone);
   const identityPointsToCanonical = String(source.data?.codeClientUltex || '') === MERGE_INTO;
-  if (!identityPointsToCanonical && (!sourcePhone || sourcePhone !== canonicalPhone)) {
-    throw new Error(`Sécurité: ${MERGE_FROM} et ${MERGE_INTO} n'ont ni le même téléphone ni une identité JSON concordante.`);
+  // This is the exact stale state visible on the dashboard as
+  // [L1635](#ficheClient:L6947): the demande's persisted link is L6947,
+  // while its ULTEX identity already says L1635. It is stronger evidence
+  // than a phone match because phones may be absent or edited later.
+  const demandeIdentityBridges = await demandeIdentityBridgeCount(prisma);
+  const samePhone = Boolean(sourcePhone && sourcePhone === canonicalPhone);
+  if (!identityPointsToCanonical && !samePhone && demandeIdentityBridges === 0) {
+    throw new Error(
+      `Sécurité: fusion ${MERGE_FROM} -> ${MERGE_INTO} non prouvée. `
+      + `Source=${source.data?.nom || '—'} (${sourcePhone || 'sans téléphone'}), `
+      + `cible=${canonical.data?.nom || '—'} (${canonicalPhone || 'sans téléphone'}), `
+      + 'aucune demande client/codeClientUltex concordante.'
+    );
   }
-  return { alreadyApplied: false, merge: `${MERGE_FROM} -> ${MERGE_INTO}`, shift: SHIFT, clients: rows };
+  return { alreadyApplied: false, merge: `${MERGE_FROM} -> ${MERGE_INTO}`, proof: { identityPointsToCanonical, samePhone, demandeIdentityBridges }, shift: SHIFT, clients: rows };
 }
 
 async function main() {

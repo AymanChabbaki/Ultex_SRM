@@ -15,8 +15,16 @@ test('repair merges accidental L6947 into established L1635 then shifts L6948-L6
 test('repair preserves demandes and repoints all structured client references', () => {
   assert.match(source, /REFERENCE_FIELDS = \['client', 'codeClientAssocie', 'codeClient', 'clientCode', 'codeClientUltex'\]/);
   assert.match(source, /referenceMetier/);
-  assert.doesNotMatch(source, /collection: 'demandes'.*delete/s);
+  assert.doesNotMatch(source, /collectionItem\.(?:delete|deleteMany)\(\{[\s\S]{0,200}collection:\s*'demandes'/);
+  assert.match(source, /collectionItem\.delete\(\{\s*where: \{ collection_id: \{ collection: 'clients'/);
   assert.match(source, /Toutes les demandes historiques ont été conservées/);
+});
+
+test('repair accepts the exact stale demande identity bridge shown by the dashboard', () => {
+  assert.match(source, /async function demandeIdentityBridgeCount/);
+  assert.match(source, /path: \['client'\], equals: MERGE_FROM/);
+  assert.match(source, /path: \['codeClientUltex'\], equals: MERGE_INTO/);
+  assert.match(source, /demandeIdentityBridges === 0/);
 });
 
 test('repair is preview-only by default, atomic, guarded, and idempotent', () => {
