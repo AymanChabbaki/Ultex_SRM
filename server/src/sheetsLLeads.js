@@ -42,6 +42,69 @@ export function firstAvailableLNumber(codes, minimum = 0) {
   return candidate;
 }
 
+function datedClient(client) {
+  const values = [client.data?.dateCreation, client.data?.datePremierContact, client.createdAt]
+    .map(value => value ? new Date(value).getTime() : NaN)
+    .filter(Number.isFinite);
+  return values.length ? Math.min(...values) : Number.MAX_SAFE_INTEGER;
+}
+
+function splitClientCode(client) {
+  const code = String(client?.code || client?.id || '').trim().toUpperCase();
+  const match = code.match(/^([A-Z]*)(\d+)$/);
+  return { code, prefix: match?.[1] ?? '', number: match ? Number(match[2]) : Number.MAX_SAFE_INTEGER };
+}
+
+export function chooseCanonicalPhoneClient(clients = []) {
+  return [...clients].sort((left, right) => {
+    const a = splitClientCode(left);
+    const b = splitClientCode(right);
+    // Within the same CRM series, the lower number is the established code
+    // (L1635 must win over an accidental L6947 duplicate).
+    if (a.prefix === b.prefix && a.number !== b.number) return a.number - b.number;
+    const dateDifference = datedClient(left) - datedClient(right);
+    if (dateDifference) return dateDifference;
+    const sourceDifference = Number(left.data?.sourceDonnees === 'Google Sheets')
+      - Number(right.data?.sourceDonnees === 'Google Sheets');
+    if (sourceDifference) return sourceDifference;
+    return a.code.localeCompare(b.code, 'fr', { numeric: true });
+  })[0] || null;
+}
+
+async function mergePhoneClients(tx, matches) {
+  const canonical = chooseCanonicalPhoneClient(matches);
+  if (!canonical || matches.length < 2) return canonical;
+  const duplicates = matches.filter(client => client.id !== canonical.id);
+  const data = { ...canonical.data };
+  for (const duplicate of duplicates) {
+    for (const [key, value] of Object.entries(duplicate.data || {})) {
+      if ((data[key] === undefined || data[key] === null || data[key] === '') && value != null && value !== '') data[key] = value;
+    }
+  }
+  data.id = canonical.code;
+  data.code = canonical.code;
+  data.codeClientUltex = canonical.code;
+  const updated = await tx.collectionItem.update({ where: { id: canonical.id }, data: { data } });
+
+  for (const duplicate of duplicates) {
+    for (const field of ['client', 'codeClientAssocie', 'codeClient', 'codeClientUltex']) {
+      const references = await tx.collectionItem.findMany({
+        where: { data: { path: [field], equals: duplicate.code } }
+      });
+      for (const reference of references) {
+        await tx.collectionItem.update({
+          where: { collection_id: { collection: reference.collection, id: reference.id } },
+          data: { data: { ...reference.data, [field]: canonical.code } }
+        });
+      }
+    }
+    await tx.collectionItem.delete({
+      where: { collection_id: { collection: 'clients', id: duplicate.id } }
+    });
+  }
+  return updated;
+}
+
 async function nextCode(tx, prefix, minimum = 0) {
   // L codes intentionally fill the first free number after the reserved
   // range. SequenceCounter is a high-water mark only: deleting a complete
@@ -102,8 +165,7 @@ export async function syncLLead(prisma, body) {
 
     const clients = await tx.collectionItem.findMany({ where: { collection: 'clients' } });
     const matches = clients.filter(c => normalizeLeadPhone(c.data?.telephone) === lead.telephone);
-    if (matches.length > 1) throw inputError('Plusieurs clients ont ce téléphone. Fusionnez-les dans le CRM avant de réessayer.', 409);
-    let client = matches[0];
+    let client = matches.length > 1 ? await mergePhoneClients(tx, matches) : matches[0];
     const date = lead.dateReception.slice(0, 10);
     if (!client) {
       client = await createItem(tx, 'clients', 'L', {
