@@ -13,6 +13,7 @@ import { createClient } from 'redis';
 import { createRequire } from 'module';
 import { lLeadHandler } from './sheetsLLeads.js';
 import { reserveNextNumericClientCode } from './clientCodes.js';
+import { serializeCollectionRows } from './dashboardRows.js';
 
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
@@ -1002,11 +1003,41 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
       `)
     ]);
 
-    const mapRows = rows => rows.map(item => ({ id: item.id, createdAt: item.createdAt.toISOString(), ...item.data }));
+    // The operational client query is intentionally narrow for performance,
+    // but every returned demande must still have its exact client available.
+    // Otherwise the UI falls back to a stale snapshot such as displaying
+    // L1635 while linking to L6947.
+    const loadedClientAliases = new Set(clientRows.flatMap(item => [
+      item.id, item.code, item.data?.id, item.data?.code, item.data?.codeClientUltex,
+    ]).map(value => String(value || '').trim()).filter(Boolean));
+    const missingClientRefs = [...new Set(demandeRows.flatMap(item => [
+      item.data?.client, item.data?.codeClientUltex,
+    ]).map(value => String(value || '').trim()).filter(Boolean))]
+      .filter(code => !loadedClientAliases.has(code));
+    const referencedClientRows = missingClientRefs.length ? await prisma.$queryRaw(Prisma.sql`
+      SELECT id, code, data, "createdAt" FROM collection_items
+      WHERE collection = 'clients' AND (
+        id IN (${Prisma.join(missingClientRefs)})
+        OR code IN (${Prisma.join(missingClientRefs)})
+        OR data->>'code' IN (${Prisma.join(missingClientRefs)})
+        OR data->>'codeClientUltex' IN (${Prisma.join(missingClientRefs)})
+      )
+      ORDER BY "createdAt" DESC
+    `) : [];
+    const completeClientRows = [...clientRows];
+    const completeClientIds = new Set(clientRows.map(item => item.id));
+    for (const item of referencedClientRows) {
+      if (!completeClientIds.has(item.id)) {
+        completeClientRows.push(item);
+        completeClientIds.add(item.id);
+      }
+    }
+
     const payload = {
       db: {
-        clients: mapRows(clientRows), demandes: mapRows(demandeRows), demandeLignes: mapRows(lineRows),
-        taches: mapRows(taskRows), objectifsData: mapRows(objectiveRows),
+        clients: serializeCollectionRows(completeClientRows), demandes: serializeCollectionRows(demandeRows),
+        demandeLignes: serializeCollectionRows(lineRows), taches: serializeCollectionRows(taskRows),
+        objectifsData: serializeCollectionRows(objectiveRows),
         audit: auditRows.map(a => ({
           id: a.id, ts: Number(a.ts), date: a.date, heure: a.heure, utilisateur: a.utilisateur,
           module: a.module, action: a.action, objet: a.objet, champ: a.champ,
@@ -1102,10 +1133,9 @@ app.get('/api/dashboard/data/leads', authMiddleware, async (req, res) => {
       ORDER BY "createdAt" DESC
     `) : [];
 
-    const mapRows = rows => rows.map(item => ({ id: item.id, createdAt: item.createdAt.toISOString(), ...item.data }));
     const payload = {
-      items: mapRows(demandeRows),
-      clients: mapRows(clientRows),
+      items: serializeCollectionRows(demandeRows),
+      clients: serializeCollectionRows(clientRows),
       total: demandeRows.length,
       scope,
       date: scope === 'date' ? requestedDate : null,

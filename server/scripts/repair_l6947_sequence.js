@@ -15,6 +15,12 @@
 import 'dotenv/config';
 import { Prisma, PrismaClient } from '@prisma/client';
 
+// Production evidence proved L6947 is the legitimate new client Azzeddine
+// Bari, unrelated to L1635. Never allow the superseded merge/shift plan to
+// execute; keep this filename only to give operators a clear migration path.
+console.error('Script annulé: L6947 est un client légitime. Utilisez scripts/repair_dmd016564_client.js pour rattacher uniquement la demande Thermostat à L1635.');
+process.exit(1);
+
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes('--apply');
 const confirmationIndex = process.argv.indexOf('--confirm');
