@@ -31,15 +31,13 @@ export function validateSheetLead(body = {}) {
   return data;
 }
 
-export function firstAvailableLNumber(codes, minimum = 0) {
-  const occupied = new Set();
+export function nextMonotonicLNumber(codes, counterValue = 0, minimum = 0) {
+  let highest = Math.max(Number(minimum) || 0, Number(counterValue) || 0);
   for (const value of codes || []) {
     const code = String(value || '').trim().toUpperCase();
-    if (/^L\d+$/.test(code)) occupied.add(Number(code.slice(1)));
+    if (/^L\d+$/.test(code)) highest = Math.max(highest, Number(code.slice(1)));
   }
-  let candidate = Number(minimum) + 1;
-  while (occupied.has(candidate)) candidate += 1;
-  return candidate;
+  return highest + 1;
 }
 
 function datedClient(client) {
@@ -106,12 +104,9 @@ async function mergePhoneClients(tx, matches) {
 }
 
 async function nextCode(tx, prefix, minimum = 0) {
-  // L codes intentionally fill the first free number after the reserved
-  // range. SequenceCounter is a high-water mark only: deleting a complete
-  // test lead releases its L code, so the next lead must reuse that gap.
-  // The caller holds a PostgreSQL advisory transaction lock, keeping this
-  // scan-and-create allocation safe across processes and both Sheets.
   if (prefix === 'L') {
+    // L codes are strictly monotonic. Deleted or deliberately skipped codes
+    // remain consumed forever; the counter is the durable high-water mark.
     const clients = await tx.collectionItem.findMany({ where: { collection: 'clients' }, select: { id: true, code: true, data: true } });
     const occupiedCodes = [];
     for (const client of clients) {
@@ -119,19 +114,16 @@ async function nextCode(tx, prefix, minimum = 0) {
         if (/^L\d+$/.test(code || '')) occupiedCodes.push(code);
       }
     }
-    for (let attempt = 0; attempt < 10000; attempt++) {
-      const number = firstAvailableLNumber(occupiedCodes, minimum);
+    const current = await tx.sequenceCounter.findUnique({ where: { key: 'L' } });
+    let number = nextMonotonicLNumber(occupiedCodes, current?.val || 0, minimum);
+    for (let attempt = 0; attempt < 10000; attempt += 1, number += 1) {
       const code = `L${number}`;
       const used = await tx.collectionItem.findFirst({ where: { OR: [{ id: code }, { code }] } });
-      if (used) {
-        occupiedCodes.push(code);
-        continue;
-      }
-      const current = await tx.sequenceCounter.findUnique({ where: { key: 'L' } });
+      if (used) continue;
       await tx.sequenceCounter.upsert({
         where: { key: 'L' },
         create: { key: 'L', val: number },
-        update: { val: Math.max(number, current?.val || 0) },
+        update: { val: number },
       });
       return code;
     }

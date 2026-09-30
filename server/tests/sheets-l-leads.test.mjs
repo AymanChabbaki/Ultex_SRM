@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import { firstAvailableLNumber, normalizeLeadPhone, validateSheetLead } from '../src/sheetsLLeads.js';
+import { nextMonotonicLNumber, normalizeLeadPhone, validateSheetLead } from '../src/sheetsLLeads.js';
 
 const indexSource = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
 
@@ -92,17 +92,21 @@ test('validateSheetLead: rejects a non-string/number field type', () => {
   assert.throws(() => validateSheetLead(baseLead({ nom: { evil: true } })), /invalide/);
 });
 
-test('L allocation reuses a deleted gap before advancing the series', () => {
+test('L allocation never reuses a deleted or skipped gap', () => {
   const existing = [
-    'L6913', 'L6914', 'L6915', 'L6916', 'L6917', 'L6918', 'L6919', 'L6921',
+    'L6962', 'L6964', 'L6980',
   ];
-  assert.equal(firstAvailableLNumber(existing, 6912), 6920);
+  assert.equal(nextMonotonicLNumber(existing, 6980, 6912), 6981);
 });
 
-test('L allocation advances when there is no gap', () => {
-  assert.equal(firstAvailableLNumber(['L6913', 'L6914', 'L6915'], 6912), 6916);
+test('L allocation keeps the durable counter when the latest client was deleted', () => {
+  assert.equal(nextMonotonicLNumber(['L6978', 'L6979'], 6980, 6912), 6981);
+});
+
+test('L allocation advances past an imported code higher than the counter', () => {
+  assert.equal(nextMonotonicLNumber(['L6990'], 6980, 6912), 6991);
 });
 
 test('L allocation ignores unrelated and malformed codes', () => {
-  assert.equal(firstAvailableLNumber(['A6913', 'Lx', '', null, 'L6914'], 6912), 6913);
+  assert.equal(nextMonotonicLNumber(['A6999', 'Lx', '', null, 'L6914'], 6980, 6912), 6981);
 });
