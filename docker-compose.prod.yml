@@ -16,6 +16,24 @@ services:
     networks:
       - ubos-net
 
+  ubos-postgres-v2:
+    image: postgres:16-alpine
+    container_name: ubos_postgres_v2_prod
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_secure_pass_2026
+      POSTGRES_DB: ubos_v2_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ubos_v2_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - ubos_postgres_v2_prod_data:/var/lib/postgresql/data
+    networks:
+      - ubos-net
+
   ubos-redis:
     image: redis:7-alpine
     container_name: ubos_redis_prod
@@ -65,6 +83,38 @@ services:
     networks:
       - ubos-net
 
+  ubos-backend-v2:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ubos_backend_v2_prod
+    restart: always
+    command: ["sh", "-lc", "npx prisma db push --skip-generate && node src/index.js"]
+    environment:
+      PORT: 5000
+      CRM_INSTANCE: "v2"
+      DATABASE_URL: "postgresql://postgres:postgres_secure_pass_2026@ubos-postgres-v2:5432/ubos_v2_db?schema=public"
+      AUTH_DATABASE_URL: "postgresql://postgres:postgres_secure_pass_2026@ubos-postgres:5432/ubos_db?schema=public"
+      REDIS_URL: "redis://ubos-redis:6379/1"
+      JWT_SECRET: "ubos_prod_jwt_secret_98765"
+      ULTEX_SYNC_API_KEY: "a1fdd91e9a1c867ee14423c8140fa5cb228e6d7b0d0abbaf"
+      ULTEX_WORKFLOW_PAYMENT_SYNC_URL: "${ULTEX_WORKFLOW_PAYMENT_SYNC_URL:-https://workflow.ultex.ma/api/v1/crm-sync/payment}"
+      UPLOADS_DIR: /app/uploads
+    ports:
+      - '5051:5000'
+    depends_on:
+      ubos-postgres-v2:
+        condition: service_healthy
+      ubos-postgres:
+        condition: service_started
+      ubos-redis:
+        condition: service_healthy
+    volumes:
+      - ubos_arrivage_documents_v2:/app/uploads
+      - ${ARRIVAGE_IMPORT_ROOT:-/home/ultex/Arrivage}:/import/arrivages:ro
+    networks:
+      - ubos-net
+
   ubos-frontend:
     build:
       context: ./ubos-react
@@ -75,6 +125,7 @@ services:
       - '8080:80'
     depends_on:
       - ubos-backend
+      - ubos-backend-v2
     networks:
       - ubos-net
 
@@ -112,5 +163,7 @@ networks:
 
 volumes:
   ubos_postgres_prod_data:
+  ubos_postgres_v2_prod_data:
   ubos_backup_tmp:
   ubos_arrivage_documents:
+  ubos_arrivage_documents_v2:

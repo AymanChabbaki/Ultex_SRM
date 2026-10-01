@@ -22,6 +22,11 @@ dotenv.config();
 
 const app = express();
 const prisma = new PrismaClient();
+const CRM_INSTANCE = process.env.CRM_INSTANCE === 'v2' ? 'v2' : 'main';
+const AUTH_DATABASE_URL = String(process.env.AUTH_DATABASE_URL || '').trim();
+const authPrisma = AUTH_DATABASE_URL && AUTH_DATABASE_URL !== process.env.DATABASE_URL
+  ? new PrismaClient({ datasources: { db: { url: AUTH_DATABASE_URL } } })
+  : prisma;
 const PORT = process.env.PORT || 5000;
 const REDIS_URL = process.env.REDIS_URL || '';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -403,6 +408,7 @@ async function ecrireJournalSecurite({ action, utilisateur, module, resultat, ip
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
+    instance: CRM_INSTANCE,
     database: 'PostgreSQL',
     cache: redisClient?.isReady ? 'Redis connected' : 'Redis unavailable',
     timestamp: new Date()
@@ -412,7 +418,26 @@ app.get('/api/health', (req, res) => {
 // Requires a valid, non-expired JWT (issued by /api/auth/login) on every
 // data route — the token was already being issued but never verified,
 // so any client could read/write the whole database unauthenticated.
-function authMiddleware(req, res, next) {
+function userCanAccessV2(user) {
+  const profile = user?.modulesAutorises || {};
+  const identity = [
+    user?.role,
+    user?.service,
+    profile.poste,
+    profile.departement,
+    ...(Array.isArray(profile.services) ? profile.services : []),
+    ...(Array.isArray(profile.modules) ? profile.modules : []),
+  ].map(value => String(value || '').trim().toLowerCase());
+  return identity.some(value =>
+    value === 'data'
+    || value.includes('direction')
+    || value.includes('administrateur')
+    || value === 'workflowv2'
+    || value === 'v2leads'
+  );
+}
+
+async function authMiddleware(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) {
@@ -420,6 +445,13 @@ function authMiddleware(req, res, next) {
   }
   try {
     req.auth = jwt.verify(token, JWT_SECRET);
+    if (CRM_INSTANCE === 'v2') {
+      const user = await authPrisma.user.findUnique({ where: { id: req.auth.id } });
+      if (!user || !user.actif || !userCanAccessV2(user)) {
+        return res.status(403).json({ error: 'Espace CRM V2 réservé à Data et à la Direction' });
+      }
+      req.crmUser = user;
+    }
     next();
   } catch (error) {
     return res.status(401).json({ error: 'Session invalide ou expirée' });
@@ -428,27 +460,11 @@ function authMiddleware(req, res, next) {
 
 async function requireWorkflowV2Access(req, res, next) {
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.auth.id } });
+    const user = req.crmUser || await authPrisma.user.findUnique({ where: { id: req.auth.id } });
     if (!user || !user.actif) {
       return res.status(403).json({ error: 'Accès V2 refusé' });
     }
-    const profile = user.modulesAutorises || {};
-    const identity = [
-      user.role,
-      user.service,
-      profile.poste,
-      profile.departement,
-      ...(Array.isArray(profile.services) ? profile.services : []),
-      ...(Array.isArray(profile.modules) ? profile.modules : []),
-    ].map(value => String(value || '').trim().toLowerCase());
-    const allowed = identity.some(value =>
-      value === 'data'
-      || value.includes('direction')
-      || value.includes('administrateur')
-      || value === 'workflowv2'
-      || value === 'v2leads'
-    );
-    if (!allowed) return res.status(403).json({ error: 'Espace V2 réservé à Data et à la Direction' });
+    if (!userCanAccessV2(user)) return res.status(403).json({ error: 'Espace V2 réservé à Data et à la Direction' });
     req.crmUser = user;
     return next();
   } catch (error) {
@@ -536,7 +552,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
-    const user = await prisma.user.findFirst({
+    const user = await authPrisma.user.findFirst({
       where: {
         OR: [{ identifiant }, { code: identifiant }],
         actif: true
@@ -547,6 +563,9 @@ app.post('/api/auth/login', async (req, res) => {
       await ecrireJournalSecurite({ action: 'Connexion', utilisateur: identifiant, module: 'Sécurité', resultat: 'Échec — identifiant inconnu', ip: req.ip });
       return res.status(401).json({ error: 'Identifiant ou mot de passe incorrect' });
     }
+    if (CRM_INSTANCE === 'v2' && !userCanAccessV2(user)) {
+      return res.status(403).json({ error: 'Espace CRM V2 réservé à Data et à la Direction' });
+    }
 
     let motDePasseValide = false;
     if (BCRYPT_HASH_RE.test(user.motDePasse)) {
@@ -554,7 +573,7 @@ app.post('/api/auth/login', async (req, res) => {
     } else if (user.motDePasse === motDePasse) {
       // Ligne héritée (pré-migration) encore en clair : on migre silencieusement vers bcrypt.
       motDePasseValide = true;
-      await prisma.user.update({ where: { id: user.id }, data: { motDePasse: bcrypt.hashSync(motDePasse, 10) } });
+      await authPrisma.user.update({ where: { id: user.id }, data: { motDePasse: bcrypt.hashSync(motDePasse, 10) } });
     }
 
     if (!motDePasseValide) {
@@ -597,7 +616,7 @@ app.post('/api/auth/login', async (req, res) => {
 // password — used on app load to restore who's logged in.
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.auth.id } });
+    const user = await authPrisma.user.findUnique({ where: { id: req.auth.id } });
     if (!user || !user.actif) {
       return res.status(401).json({ error: 'Compte introuvable ou désactivé' });
     }
@@ -632,7 +651,7 @@ app.post('/api/security/otp/request', authMiddleware, async (req, res) => {
     const code = genererCodeOtp();
     const codeHash = bcrypt.hashSync(code, 10);
     const expiresAt = new Date(Date.now() + OTP_TTL_MS);
-    await prisma.otpCode.create({ data: { codeHash, requestedBy: req.auth.id, action, expiresAt } });
+    await authPrisma.otpCode.create({ data: { codeHash, requestedBy: req.auth.id, action, expiresAt } });
     await envoyerOtpParEmail(code, action, req.auth.identifiant || req.auth.nomComplet || req.auth.id);
     await ecrireJournalSecurite({ action: `Demande de code OTP (${action})`, utilisateur: req.auth.nomComplet || req.auth.identifiant, module: 'Sécurité', resultat: 'Code envoyé', ip: req.ip });
     res.json({ status: 'sent', expiresInSeconds: OTP_TTL_MS / 1000 });
@@ -649,7 +668,7 @@ app.post('/api/security/otp/verify', authMiddleware, async (req, res) => {
   const { code } = req.body || {};
   if (!code) return res.status(400).json({ error: 'Code requis' });
   try {
-    const otp = await prisma.otpCode.findFirst({
+    const otp = await authPrisma.otpCode.findFirst({
       where: { requestedBy: req.auth.id, used: false },
       orderBy: { createdAt: 'desc' }
     });
@@ -660,12 +679,12 @@ app.post('/api/security/otp/verify', authMiddleware, async (req, res) => {
     const valide = bcrypt.compareSync(String(code), otp.codeHash);
     if (!valide) {
       const attempts = otp.attempts + 1;
-      await prisma.otpCode.update({ where: { id: otp.id }, data: { attempts } });
+      await authPrisma.otpCode.update({ where: { id: otp.id }, data: { attempts } });
       await ecrireJournalSecurite({ action: `Vérification code OTP (${otp.action})`, utilisateur: req.auth.nomComplet || req.auth.identifiant, module: 'Sécurité', resultat: `Échec — code incorrect (tentative ${attempts}/${OTP_MAX_ATTEMPTS})`, ip: req.ip });
       return res.status(400).json({ error: 'Code incorrect', tentativesRestantes: OTP_MAX_ATTEMPTS - attempts });
     }
 
-    await prisma.otpCode.update({ where: { id: otp.id }, data: { used: true } });
+    await authPrisma.otpCode.update({ where: { id: otp.id }, data: { used: true } });
     const elevationToken = jwt.sign({ id: req.auth.id, elevated: true }, ELEVATION_SECRET, { expiresIn: ELEVATION_TTL_SECONDS });
     await ecrireJournalSecurite({ action: `Vérification code OTP (${otp.action})`, utilisateur: req.auth.nomComplet || req.auth.identifiant, module: 'Sécurité', resultat: 'Réussie — session sécurisée ouverte (15 min)', ip: req.ip });
     res.json({ elevationToken, expiresInSeconds: ELEVATION_TTL_SECONDS });
@@ -701,7 +720,7 @@ app.get('/api/db', authMiddleware, async (req, res) => {
       prisma.collectionItem.findMany({
         where: { collection: { in: BOOTSTRAP_COLLECTIONS } }
       }),
-      prisma.user.findMany(),
+      authPrisma.user.findMany(),
       prisma.notificationItem.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }),
       prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }),
       // Internal collections (notably the isolated Workflow V2 inbox) must
@@ -961,7 +980,7 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
     : new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }).format(new Date());
   const requestedUser = String(req.query.user || '').trim().slice(0, 120);
   try {
-    const target = await prisma.user.findFirst({
+    const target = await authPrisma.user.findFirst({
       where: req.auth.role === 'ADMIN' && requestedUser
         ? { OR: [{ identifiant: requestedUser }, { nomComplet: requestedUser }] }
         : { id: req.auth.id }
@@ -1165,7 +1184,7 @@ app.get('/api/dashboard/data/leads', authMiddleware, async (req, res) => {
   }
   const requestedUser = String(req.query.user || '').trim().slice(0, 120);
   try {
-    const target = await prisma.user.findFirst({
+    const target = await authPrisma.user.findFirst({
       where: req.auth.role === 'ADMIN' && requestedUser
         ? { OR: [{ identifiant: requestedUser }, { nomComplet: requestedUser }] }
         : { id: req.auth.id }
@@ -1281,7 +1300,7 @@ async function synchroniserEtatComplet(fullState, { purge = false } = {}) {
     if (Array.isArray(fullState.utilisateurs)) {
       for (const u of fullState.utilisateurs) {
         if (u.code || u.identifiant) {
-          const existing = await prisma.user.findFirst({
+          const existing = await authPrisma.user.findFirst({
             where: { OR: [{ code: u.code || '' }, { identifiant: u.identifiant || '' }] }
           });
 
@@ -1308,12 +1327,12 @@ async function synchroniserEtatComplet(fullState, { purge = false } = {}) {
           };
 
           if (existing) {
-            await prisma.user.update({
+            await authPrisma.user.update({
               where: { id: existing.id },
               data: userData
             });
           } else {
-            await prisma.user.create({
+            await authPrisma.user.create({
               data: userData
             });
           }
@@ -1796,7 +1815,7 @@ function construireDonneesUtilisateur(u, existing) {
 app.post('/api/security/users', authMiddleware, requireElevation, async (req, res) => {
   try {
     const data = construireDonneesUtilisateur(req.body || {}, null);
-    const user = await prisma.user.create({ data });
+    const user = await authPrisma.user.create({ data });
     const auteur = req.auth.nomComplet || req.auth.identifiant;
     await ecrireJournalSecurite({ action: 'Création utilisateur', utilisateur: auteur, module: 'Utilisateurs', resultat: `${user.nomComplet} (${user.code}) — rôle ${user.role}`, ip: req.ip });
     await alerterDirection(`${auteur} a créé le compte ${user.nomComplet}.`);
@@ -1810,11 +1829,11 @@ app.post('/api/security/users', authMiddleware, requireElevation, async (req, re
 
 app.patch('/api/security/users/:id', authMiddleware, requireElevation, async (req, res) => {
   try {
-    const existing = await prisma.user.findUnique({ where: { id: req.params.id } });
+    const existing = await authPrisma.user.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: 'Utilisateur introuvable' });
     const merged = { ...existing, ...req.body, code: existing.code };
     const data = construireDonneesUtilisateur(merged, existing);
-    const user = await prisma.user.update({ where: { id: existing.id }, data });
+    const user = await authPrisma.user.update({ where: { id: existing.id }, data });
     const auteur = req.auth.nomComplet || req.auth.identifiant;
     const changements = [];
     if (existing.role !== data.role) changements.push(`rôle ${existing.role} → ${data.role}`);
@@ -2294,7 +2313,11 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
 
   try {
     const isWorkflowV2 = workflowScope === 'v2' || isV2 === true;
-    if (isWorkflowV2) {
+    // The principal CRM keeps the compatibility inbox for older Workflow
+    // deployments. The dedicated V2 backend, however, must execute this
+    // complete sync so clients, contacts, demandes and products receive the
+    // exact same CRM functionality inside its physically separate database.
+    if (isWorkflowV2 && CRM_INSTANCE !== 'v2') {
       return res.json(await upsertWorkflowV2Lead(req.body || {}));
     }
 
@@ -2676,7 +2699,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
 
     res.json({
       status: 'ok',
-      scope: 'main',
+      scope: CRM_INSTANCE,
       client: { code: client.code },
       contact: { code: contact.code },
       demande: { code: demande.code },
@@ -3047,6 +3070,10 @@ app.listen(PORT, async () => {
   try {
     await prisma.$connect();
     console.log('✅ Connexion PostgreSQL établie.');
+    if (authPrisma !== prisma) {
+      await authPrisma.$connect();
+      console.log('✅ Authentification partagée avec le CRM principal.');
+    }
     await initialiserRedis();
     if (redisClient?.isReady) console.log('✅ Cache Redis connecté.');
     await reparerIdentitesClientsLGoogleSheets();
