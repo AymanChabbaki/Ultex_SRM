@@ -39,6 +39,7 @@ const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const ELEVATION_TTL_SECONDS = 15 * 60;
 const BCRYPT_HASH_RE = /^\$2[aby]\$/;
+const WORKFLOW_V2_COLLECTION = 'workflowV2Leads';
 
 if (!process.env.JWT_SECRET) {
   console.warn('⚠️ JWT_SECRET non défini — utilisation de la valeur par défaut (à définir en production).');
@@ -354,7 +355,8 @@ async function creerIndexPerformance() {
     "CREATE INDEX IF NOT EXISTS collection_items_demandes_ultex_dossier_idx ON collection_items ((data->>'ultexDossierId')) WHERE collection = 'demandes'",
     "CREATE INDEX IF NOT EXISTS collection_items_demande_lignes_demande_idx ON collection_items ((data->>'demande')) WHERE collection = 'demandeLignes'",
     "CREATE INDEX IF NOT EXISTS collection_items_demande_lignes_product_idx ON collection_items ((data->>'ultexProductId')) WHERE collection = 'demandeLignes'",
-    "CREATE INDEX IF NOT EXISTS collection_items_documents_ultex_idx ON collection_items ((data->>'ultexDocumentId')) WHERE collection = 'documents'"
+    "CREATE INDEX IF NOT EXISTS collection_items_documents_ultex_idx ON collection_items ((data->>'ultexDocumentId')) WHERE collection = 'documents'",
+    `CREATE INDEX IF NOT EXISTS collection_items_workflow_v2_ultex_idx ON collection_items ((data->>'ultexDossierId')) WHERE collection = '${WORKFLOW_V2_COLLECTION}'`
   ];
   for (const statement of statements) await prisma.$executeRawUnsafe(statement);
 }
@@ -423,6 +425,86 @@ function authMiddleware(req, res, next) {
     return res.status(401).json({ error: 'Session invalide ou expirée' });
   }
 }
+
+async function requireWorkflowV2Access(req, res, next) {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.auth.id } });
+    if (!user || !user.actif) {
+      return res.status(403).json({ error: 'Accès V2 refusé' });
+    }
+    const profile = user.modulesAutorises || {};
+    const identity = [
+      user.role,
+      user.service,
+      profile.poste,
+      profile.departement,
+      ...(Array.isArray(profile.services) ? profile.services : []),
+      ...(Array.isArray(profile.modules) ? profile.modules : []),
+    ].map(value => String(value || '').trim().toLowerCase());
+    const allowed = identity.some(value =>
+      value === 'data'
+      || value.includes('direction')
+      || value.includes('administrateur')
+      || value === 'workflowv2'
+      || value === 'v2leads'
+    );
+    if (!allowed) return res.status(403).json({ error: 'Espace V2 réservé à Data et à la Direction' });
+    req.crmUser = user;
+    return next();
+  } catch (error) {
+    console.error('V2 access check error:', error);
+    return res.status(500).json({ error: 'Impossible de vérifier l’accès V2' });
+  }
+}
+
+// Isolated, read-only CRM inbox for Workflow V2. It deliberately bypasses
+// the normal clients/demandes collections, so staged tests cannot allocate
+// a CRM client code or contaminate dashboards, KPIs and commercial lists.
+app.get('/api/workflow-v2/leads', authMiddleware, requireWorkflowV2Access, async (req, res) => {
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 25));
+  const q = String(req.query.q || '').trim().slice(0, 200);
+  const where = [Prisma.sql`collection = ${WORKFLOW_V2_COLLECTION}`];
+  if (q) {
+    const pattern = `%${q}%`;
+    where.push(Prisma.sql`(COALESCE(code, '') ILIKE ${pattern} OR data::text ILIKE ${pattern})`);
+  }
+  try {
+    const clause = Prisma.join(where, ' AND ');
+    const offset = (page - 1) * pageSize;
+    const [rows, countRows] = await Promise.all([
+      prisma.$queryRaw(Prisma.sql`
+        SELECT id, code, data, "createdAt", "updatedAt"
+        FROM collection_items
+        WHERE ${clause}
+        ORDER BY COALESCE(data->>'dateReception', '') DESC, "createdAt" DESC
+        LIMIT ${pageSize} OFFSET ${offset}
+      `),
+      prisma.$queryRaw(Prisma.sql`
+        SELECT COUNT(*)::int AS total
+        FROM collection_items
+        WHERE ${clause}
+      `),
+    ]);
+    const total = Number(countRows[0]?.total || 0);
+    return res.json({
+      items: rows.map(item => ({
+        id: item.id,
+        code: item.code,
+        createdAt: item.createdAt.toISOString(),
+        updatedAt: item.updatedAt.toISOString(),
+        ...item.data,
+      })),
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    });
+  } catch (error) {
+    console.error('Workflow V2 leads error:', error);
+    return res.status(500).json({ error: 'Erreur lors du chargement des leads V2' });
+  }
+});
 
 // Second, independent gate on top of authMiddleware — a valid normal
 // session is not enough for sensitive routes; a short-lived elevation
@@ -622,7 +704,13 @@ app.get('/api/db', authMiddleware, async (req, res) => {
       prisma.user.findMany(),
       prisma.notificationItem.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }),
       prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }),
-      prisma.collectionItem.groupBy({ by: ['collection'], _count: { _all: true } }),
+      // Internal collections (notably the isolated Workflow V2 inbox) must
+      // not even leak their counts through the ordinary CRM bootstrap.
+      prisma.collectionItem.groupBy({
+        by: ['collection'],
+        where: { collection: { in: COLLS } },
+        _count: { _all: true }
+      }),
       prisma.auditLog.groupBy({
         by: ['utilisateur'],
         where: { createdAt: { gte: sevenDaysAgo } },
@@ -2117,6 +2205,68 @@ async function fusionnerDoublonsClientParTelephone(canonicalClient, telephone) {
   });
 }
 
+async function upsertWorkflowV2Lead(payload) {
+  const { ultexDossierId, referenceCode, nom, workflowUpdatedAt } = payload || {};
+  if (!ultexDossierId || !nom) {
+    const error = new Error('ultexDossierId et nom requis');
+    error.status = 400;
+    throw error;
+  }
+
+  // A delayed retry from before promotion must never resurrect a lead in
+  // V2 once its normal CRM demande exists.
+  const existingNormalDemande = await trouverParUltexId('demandes', ultexDossierId);
+  if (existingNormalDemande) {
+    await prisma.collectionItem.deleteMany({
+      where: { collection: WORKFLOW_V2_COLLECTION, data: { path: ['ultexDossierId'], equals: ultexDossierId } }
+    });
+    return { status: 'ignored', scope: 'main', reason: 'already-promoted' };
+  }
+
+  const existingV2 = await prisma.collectionItem.findFirst({
+    where: { collection: WORKFLOW_V2_COLLECTION, data: { path: ['ultexDossierId'], equals: ultexDossierId } }
+  });
+  const displayCode = String(referenceCode || existingV2?.code || `V2-${String(ultexDossierId).slice(0, 8)}`).trim();
+  const v2Data = {
+    ...(existingV2?.data || {}),
+    ...payload,
+    id: existingV2?.id || `workflow-v2:${ultexDossierId}`,
+    code: displayCode,
+    workflowScope: 'v2',
+    isV2: true,
+    statutV2: 'En attente de promotion',
+    workflowUpdatedAt: workflowUpdatedAt || existingV2?.data?.workflowUpdatedAt || null,
+    synchronizedAt: new Date().toISOString(),
+  };
+  const lead = existingV2
+    ? await prisma.collectionItem.update({
+        where: { collection_id: { collection: WORKFLOW_V2_COLLECTION, id: existingV2.id } },
+        data: { code: displayCode, data: v2Data },
+      })
+    : await prisma.collectionItem.create({
+        data: {
+          collection: WORKFLOW_V2_COLLECTION,
+          id: v2Data.id,
+          code: displayCode,
+          data: v2Data,
+        },
+      });
+  return { status: 'ok', scope: 'v2', lead: { code: lead.code } };
+}
+
+// Separate from the normal dossier endpoint on purpose. An older CRM build
+// will reject this URL instead of silently treating a V2 payload as a normal
+// client during a rolling deployment.
+app.post('/api/sync/ultex/v2/dossier', ultexSyncAuth, async (req, res) => {
+  try {
+    return res.json(await upsertWorkflowV2Lead(req.body || {}));
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    console.error('ULTEX V2 sync error:', error);
+    return res.status(500).json({ error: 'Erreur de synchronisation ULTEX V2' });
+  }
+});
+
 app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   const {
     ultexDossierId, referenceCode, nom, telephone, email, ville, dateReception, dataTag, createdManually,
@@ -2134,7 +2284,8 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     // crm_sync.py), so null here means "no validated devis right now" --
     // keep whatever was last known rather than blanking the figures while
     // a devis is being revised.
-    montantVente, montantAchat
+    montantVente, montantAchat,
+    workflowScope, isV2
   } = req.body || {};
 
   if (!ultexDossierId || !nom) {
@@ -2142,6 +2293,17 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
   }
 
   try {
+    const isWorkflowV2 = workflowScope === 'v2' || isV2 === true;
+    if (isWorkflowV2) {
+      return res.json(await upsertWorkflowV2Lead(req.body || {}));
+    }
+
+    // Keep the V2 row until the complete normal sync succeeds. It is deleted
+    // immediately before the success response below, preventing a failed
+    // promotion sync from making the lead disappear from both CRM spaces.
+    const hiddenV2Lead = await prisma.collectionItem.findFirst({
+      where: { collection: WORKFLOW_V2_COLLECTION, data: { path: ['ultexDossierId'], equals: ultexDossierId } }
+    });
     const referenceWorkflow = String(referenceCode || '').trim();
     const suffixeDemande = referenceWorkflow.match(/^(.*)\/(\d+)$/);
     const demandeSupplementaire = Boolean(suffixeDemande && Number(suffixeDemande[2]) >= 2);
@@ -2506,8 +2668,15 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       }
     }
 
+    if (hiddenV2Lead) {
+      await prisma.collectionItem.delete({
+        where: { collection_id: { collection: WORKFLOW_V2_COLLECTION, id: hiddenV2Lead.id } }
+      });
+    }
+
     res.json({
       status: 'ok',
+      scope: 'main',
       client: { code: client.code },
       contact: { code: contact.code },
       demande: { code: demande.code },
@@ -2717,6 +2886,11 @@ app.post('/api/sync/ultex/dossier/supprime', ultexSyncAuth, async (req, res) => 
   try {
     const note = raison || 'Dossier supprimé dans ULTEX.';
     const marques = [];
+
+    const deletedV2 = await prisma.collectionItem.deleteMany({
+      where: { collection: WORKFLOW_V2_COLLECTION, data: { path: ['ultexDossierId'], equals: ultexDossierId } }
+    });
+    if (deletedV2.count) marques.push(`V2:${ultexDossierId}`);
 
     const dossierItem = await trouverParUltexId('dossiers', ultexDossierId);
     if (dossierItem) {

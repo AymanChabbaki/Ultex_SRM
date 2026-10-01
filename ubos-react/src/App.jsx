@@ -35,6 +35,7 @@ const RisquesClients = lazy(() => import('./components/custom/RisquesClients'));
 const DashboardLimex = lazy(() => import('./components/custom/DashboardLimex'));
 const RapportLimexDirection = lazy(() => import('./components/custom/RapportLimexDirection'));
 const TableauBordData = lazy(() => import('./components/custom/TableauBordData'));
+const WorkflowV2Leads = lazy(() => import('./components/custom/WorkflowV2Leads'));
 const MonProgrammeDuJour = lazy(() => import('./components/custom/MonProgrammeDuJour'));
 const MesTaches = lazy(() => import('./components/custom/MesTaches'));
 const MesObjectifs = lazy(() => import('./components/custom/MesObjectifs'));
@@ -186,6 +187,15 @@ const PersonalPageRoute = ({ Component, identifiant }) => {
   return <Component user={targetUser} isAdminView />;
 };
 
+const WorkflowV2Route = () => {
+  const { session, estDirection } = useAuth();
+  const allowed = estDirection() || (session?.services || []).includes('Data');
+  if (!allowed) {
+    return <div className="panneau"><div className="note-verrou"><b>Espace V2 réservé à Data et à la Direction</b></div></div>;
+  }
+  return <WorkflowV2Leads />;
+};
+
 const Router = () => {
   const [currentHash, setCurrentHash] = useState(window.location.hash.replace('#', '') || 'dashboard');
   const { session, estDirection } = useAuth();
@@ -218,6 +228,7 @@ const Router = () => {
         : wrap(<Dashboard />, dashboardCollections, 'Préparation de votre tableau de bord…');
       case 'dashUser': return wrap(<DashUserRoute identifiant={params} />, ['dossiers', 'taches'], 'Chargement du tableau de bord…');
       case 'tableauBordData': return <TableauBordDataRoute identifiant={params} />;
+      case 'workflowV2': return <WorkflowV2Route />;
       case 'monProgramme': return wrap(<PersonalPageRoute Component={MonProgrammeDuJour} identifiant={params} />, ['dossiers', 'taches', 'suivisClosing']);
       case 'mesTaches': return wrap(<PersonalPageRoute Component={MesTaches} identifiant={params} />, ['taches', 'suivisClosing']);
       case 'mesObjectifs': return wrap(<PersonalPageRoute Component={MesObjectifs} identifiant={params} />, ['audit', 'clients', 'demandeLignes', 'demandes', 'objectifsData', 'suivisClosing', 'taches']);

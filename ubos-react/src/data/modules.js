@@ -1035,6 +1035,7 @@ risquesClients:{label:"Factures & Risques clients", ic:ShieldAlert, grp:"Pilotag
 rapportDirection:{label:"Rapport Direction", ic:FileBarChart, grp:"Pilotage"},
 auditGlobal:{label:"Journal d'audit", ic:History, grp:"Pilotage"},
 tableauBordData:{label:"Tableau de bord Data", ic:Gauge, grp:"Mon espace"},
+workflowV2:{label:"Leads V2", ic:FolderArchive, grp:"Mon espace"},
 monProfil:{label:"Mon profil", ic:Users, grp:"Mon espace"},
 monProgramme:{label:"Mon programme aujourd'hui", ic:CalendarDays, grp:"Mon espace"},
 mesTaches:{label:"Mes tâches", ic:ClipboardList, grp:"Mon espace"},
@@ -1060,7 +1061,7 @@ documentsPartages:{label:"Documents partagés", ic:FolderOpen, grp:"Commercial"}
 };
 
 export const ORDRE_NAV = [
- ["Mon espace",["dashboard","tableauBordData","maJourneeClosing","maJourneeImane","suiviLimex","etudesCalcul","paiementsEcheances","monProgramme","mesTaches","mesObjectifs","devisAControler","coordinationMansouri","monPortefeuilleClosing","aQualifierClosing","monRapportJournalier","monAgenda","notifications","monProfil"]],
+ ["Mon espace",["dashboard","tableauBordData","workflowV2","maJourneeClosing","maJourneeImane","suiviLimex","etudesCalcul","paiementsEcheances","monProgramme","mesTaches","mesObjectifs","devisAControler","coordinationMansouri","monPortefeuilleClosing","aQualifierClosing","monRapportJournalier","monAgenda","notifications","monProfil"]],
  ["Pilotage",["pilotageEquipe","quiFaitQuoi","ajouterTache","rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal","journalSecurite","etatClosing","suivisClosing"]],
  ["Commercial",["clients","contacts","demandes","commandes","offres","reclamations","facturationRecus","documentsPartages"]],
  ["Études",["sourcings","etudes"]],

@@ -57,6 +57,9 @@ export function estCoordinateurLimex(session) {
 
 export function moduleVisible(session, id) {
     if (!session) return false;
+    if (id === 'workflowV2') {
+        return estDirection(session) || (session.services || []).includes('Data');
+    }
     if (MODULES_DIRECTION.includes(id)) return estDirection(session);
     if (MODULES_COMMERCIAL.includes(id)) {
         return estDirection(session) || session.departement === 'Commercial' || (session.services || []).includes('Commercial');

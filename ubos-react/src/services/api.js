@@ -57,6 +57,24 @@ export async function fetchCollectionPage(collection, params = {}) {
   return await res.json();
 }
 
+export async function fetchWorkflowV2Leads(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+  });
+  const res = await fetch(`${API_URL}/workflow-v2/leads?${query}`, {
+    headers: { ...authHeaders() }
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const error = new Error(body.error || 'Erreur lors du chargement des leads V2');
+    error.status = res.status;
+    throw error;
+  }
+  return body;
+}
+
 export async function reserveNumericClientCode() {
   const res = await fetch(`${API_URL}/clients/next-numeric-code`, {
     method: 'POST',
