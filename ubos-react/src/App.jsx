@@ -4,6 +4,7 @@ import { DBProvider, useDB } from './context/DBContext';
 import { ToastProvider } from './context/ToastContext';
 import { SecurityProvider } from './context/SecurityContext';
 import Layout from './components/layout/Layout';
+import { IS_CRM_V2 } from './lib/v2';
 
 // Route components are split into independent chunks. PDF/OCR/Excel and the
 // dozens of operational screens no longer block the login/dashboard bundle.
@@ -222,13 +223,17 @@ const Router = () => {
       ? ['leads', 'dossiers', 'paiements', 'taches', 'transits']
       : ['dossiers', 'taches'];
 
+    // /v2 is a separate hidden CRM surface, not a module inside the normal
+    // CRM. Whatever hash is present, it can only render the isolated V2
+    // inbox and can never fall through to ordinary CRM collections.
+    if (IS_CRM_V2) return <WorkflowV2Route />;
+
     switch (route) {
       case 'dashboard': return isDataUser
         ? <Dashboard />
         : wrap(<Dashboard />, dashboardCollections, 'Préparation de votre tableau de bord…');
       case 'dashUser': return wrap(<DashUserRoute identifiant={params} />, ['dossiers', 'taches'], 'Chargement du tableau de bord…');
       case 'tableauBordData': return <TableauBordDataRoute identifiant={params} />;
-      case 'workflowV2': return <WorkflowV2Route />;
       case 'monProgramme': return wrap(<PersonalPageRoute Component={MonProgrammeDuJour} identifiant={params} />, ['dossiers', 'taches', 'suivisClosing']);
       case 'mesTaches': return wrap(<PersonalPageRoute Component={MesTaches} identifiant={params} />, ['taches', 'suivisClosing']);
       case 'mesObjectifs': return wrap(<PersonalPageRoute Component={MesObjectifs} identifiant={params} />, ['audit', 'clients', 'demandeLignes', 'demandes', 'objectifsData', 'suivisClosing', 'taches']);

@@ -4,6 +4,7 @@ import { useDB } from '../../context/DBContext';
 import { destinataireEstMoi } from '../../data/permissions';
 import { useSidebar } from './Layout';
 import { MenuIcon, BellIcon, DatabaseIcon, SyncIcon } from '../common/Icons';
+import { IS_CRM_V2 } from '../../lib/v2';
 
 const Topbar = ({ titre, toggleSidebar: propToggle }) => {
   const { session, deconnecter, estDirection } = useAuth();
@@ -43,14 +44,14 @@ const Topbar = ({ titre, toggleSidebar: propToggle }) => {
           else window.location.hash = 'dashboard';
         }}>← Retour</button>
       )}
-      <input 
+      {!IS_CRM_V2 && <input
         type="search" 
         className="gsearch" 
         placeholder="Recherche globale (Entrée)" 
         value={terme}
         onChange={e => setTerme(e.target.value)}
         onKeyDown={handleRecherche}
-      />
+      />}
       
       {/* PostgreSQL Status Indicator */}
       <div
@@ -63,13 +64,13 @@ const Topbar = ({ titre, toggleSidebar: propToggle }) => {
         {syncing && <SyncIcon size={14} color={isPostgresConnected ? '#059669' : '#d97706'} className="animate-spin" />}
       </div>
 
-      <button className="cloche" onClick={() => window.location.hash = 'notifications'} title="Notifications">
+      {!IS_CRM_V2 && <button className="cloche" onClick={() => window.location.hash = 'notifications'} title="Notifications">
         <BellIcon size={18} color="#0159A3" />
         <em style={{ display: nb ? 'block' : 'none' }}>{nb > 0 ? nb : ''}</em>
-      </button>
+      </button>}
 
       <div className="badge-user">
-        <a href="#monProfil" title="Mon profil" style={{ display: 'contents', color: 'inherit', textDecoration: 'none' }}>
+        <a href={IS_CRM_V2 ? '/v2' : '#monProfil'} title={IS_CRM_V2 ? 'CRM V2' : 'Mon profil'} style={{ display: 'contents', color: 'inherit', textDecoration: 'none' }}>
           <div className="rond">{init}</div>
           <div>
             <b>{session ? session.nomComplet : "—"}</b>

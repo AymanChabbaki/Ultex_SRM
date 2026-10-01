@@ -76,7 +76,7 @@ export default function WorkflowV2Leads() {
 
   return (
     <>
-      <Topbar titre="Leads V2" />
+      <Topbar titre="CRM V2 — Leads Workflow" />
       <div className="banniere-brouillon">
         <b>Espace isolé V2</b>
         <span>Ces leads ne créent ni client, ni demande, ni activité dans le CRM principal. Ils basculent automatiquement après leur promotion dans Workflow V2.</span>

@@ -1061,7 +1061,7 @@ documentsPartages:{label:"Documents partagés", ic:FolderOpen, grp:"Commercial"}
 };
 
 export const ORDRE_NAV = [
- ["Mon espace",["dashboard","tableauBordData","workflowV2","maJourneeClosing","maJourneeImane","suiviLimex","etudesCalcul","paiementsEcheances","monProgramme","mesTaches","mesObjectifs","devisAControler","coordinationMansouri","monPortefeuilleClosing","aQualifierClosing","monRapportJournalier","monAgenda","notifications","monProfil"]],
+ ["Mon espace",["dashboard","tableauBordData","maJourneeClosing","maJourneeImane","suiviLimex","etudesCalcul","paiementsEcheances","monProgramme","mesTaches","mesObjectifs","devisAControler","coordinationMansouri","monPortefeuilleClosing","aQualifierClosing","monRapportJournalier","monAgenda","notifications","monProfil"]],
  ["Pilotage",["pilotageEquipe","quiFaitQuoi","ajouterTache","rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal","journalSecurite","etatClosing","suivisClosing"]],
  ["Commercial",["clients","contacts","demandes","commandes","offres","reclamations","facturationRecus","documentsPartages"]],
  ["Études",["sourcings","etudes"]],
