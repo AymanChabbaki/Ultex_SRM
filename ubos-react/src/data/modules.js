@@ -1035,7 +1035,6 @@ risquesClients:{label:"Factures & Risques clients", ic:ShieldAlert, grp:"Pilotag
 rapportDirection:{label:"Rapport Direction", ic:FileBarChart, grp:"Pilotage"},
 auditGlobal:{label:"Journal d'audit", ic:History, grp:"Pilotage"},
 tableauBordData:{label:"Tableau de bord Data", ic:Gauge, grp:"Mon espace"},
-workflowV2:{label:"Leads V2", ic:FolderArchive, grp:"Mon espace"},
 monProfil:{label:"Mon profil", ic:Users, grp:"Mon espace"},
 monProgramme:{label:"Mon programme aujourd'hui", ic:CalendarDays, grp:"Mon espace"},
 mesTaches:{label:"Mes tâches", ic:ClipboardList, grp:"Mon espace"},
