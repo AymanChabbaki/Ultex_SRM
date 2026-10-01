@@ -4,7 +4,6 @@ import { DBProvider, useDB } from './context/DBContext';
 import { ToastProvider } from './context/ToastContext';
 import { SecurityProvider } from './context/SecurityContext';
 import Layout from './components/layout/Layout';
-import { IS_CRM_V2 } from './lib/v2';
 
 // Route components are split into independent chunks. PDF/OCR/Excel and the
 // dozens of operational screens no longer block the login/dashboard bundle.
@@ -36,7 +35,6 @@ const RisquesClients = lazy(() => import('./components/custom/RisquesClients'));
 const DashboardLimex = lazy(() => import('./components/custom/DashboardLimex'));
 const RapportLimexDirection = lazy(() => import('./components/custom/RapportLimexDirection'));
 const TableauBordData = lazy(() => import('./components/custom/TableauBordData'));
-const WorkflowV2Leads = lazy(() => import('./components/custom/WorkflowV2Leads'));
 const MonProgrammeDuJour = lazy(() => import('./components/custom/MonProgrammeDuJour'));
 const MesTaches = lazy(() => import('./components/custom/MesTaches'));
 const MesObjectifs = lazy(() => import('./components/custom/MesObjectifs'));
@@ -188,15 +186,6 @@ const PersonalPageRoute = ({ Component, identifiant }) => {
   return <Component user={targetUser} isAdminView />;
 };
 
-const WorkflowV2Route = () => {
-  const { session, estDirection } = useAuth();
-  const allowed = estDirection() || (session?.services || []).includes('Data');
-  if (!allowed) {
-    return <div className="panneau"><div className="note-verrou"><b>Espace V2 réservé à Data et à la Direction</b></div></div>;
-  }
-  return <WorkflowV2Leads />;
-};
-
 const Router = () => {
   const [currentHash, setCurrentHash] = useState(window.location.hash.replace('#', '') || 'dashboard');
   const { session, estDirection } = useAuth();
@@ -222,11 +211,6 @@ const Router = () => {
     const dashboardCollections = estDirection()
       ? ['leads', 'dossiers', 'paiements', 'taches', 'transits']
       : ['dossiers', 'taches'];
-
-    // /v2 is a separate hidden CRM surface, not a module inside the normal
-    // CRM. Whatever hash is present, it can only render the isolated V2
-    // inbox and can never fall through to ordinary CRM collections.
-    if (IS_CRM_V2) return <WorkflowV2Route />;
 
     switch (route) {
       case 'dashboard': return isDataUser

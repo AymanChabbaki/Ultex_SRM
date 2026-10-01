@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+const IS_V2_SURFACE = typeof window !== 'undefined'
+  && (window.location.pathname === '/v2' || window.location.pathname.startsWith('/v2/'));
+const API_URL = IS_V2_SURFACE ? '/api-v2' : (import.meta.env.VITE_API_URL || '/api');
 const TOKEN_KEY = 'ubos_token';
 
 // Just the JWT string — an auth credential, not a cache of business data.

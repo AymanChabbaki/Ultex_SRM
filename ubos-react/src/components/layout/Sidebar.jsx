@@ -20,15 +20,13 @@ const Sidebar = ({ ouvert }) => {
   const sidebarCtx = useSidebar();
   const isCollapsed = sidebarCtx?.collapsed;
 
-  const [currentHash, setCurrentHash] = useState(
-    IS_CRM_V2 ? 'workflowV2' : (window.location.hash.replace('#', '') || 'dashboard')
-  );
+  const [currentHash, setCurrentHash] = useState(window.location.hash.replace('#', '') || 'dashboard');
 
   useEffect(() => {
     const onHashChange = () => {
       let hash = window.location.hash.replace('#', '');
       if (hash.includes(':')) hash = hash.split(':')[0];
-      setCurrentHash(IS_CRM_V2 ? 'workflowV2' : (hash || 'dashboard'));
+      setCurrentHash(hash || 'dashboard');
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
@@ -84,7 +82,7 @@ const Sidebar = ({ ouvert }) => {
         <Logo size={isCollapsed ? "small" : "medium"} light />
       </div>
       <nav id="nav">
-        {(IS_CRM_V2 ? [['CRM V2', ['workflowV2']]] : ORDRE_NAV).map(([grp, ids]) => {
+        {ORDRE_NAV.map(([grp, ids]) => {
           const isDataUser = !estDirection() && (session?.services || []).includes('Data');
           // The main Dashboard already renders the Data dashboard for Data
           // users. Keep the dedicated hash route for Direction deep links,
@@ -114,7 +112,7 @@ const Sidebar = ({ ouvert }) => {
           );
         })}
       </nav>
-      {!IS_CRM_V2 && <div className="aside-pied">
+      <div className="aside-pied">
         <button onClick={exporterJSON} title="Télécharger la sauvegarde complète (JSON)" className="btn-aside-action">
           <DownloadIcon size={14} />
           <span className="btn-text">Sauvegarde</span>
@@ -124,7 +122,7 @@ const Sidebar = ({ ouvert }) => {
           <span className="btn-text">Restaurer</span>
         </button>
         <input type="file" id="fimport" accept=".json" style={{ display: 'none' }} onChange={importerJSON} />
-      </div>}
+      </div>
       {IS_CRM_V2
         ? <div className="aside-pied"><a className="btn-aside-action" href="/">← CRM principal</a></div>
         : <div className="sauve-info" id="sauveInfo">Sauvegarde automatique active</div>}

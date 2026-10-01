@@ -38,20 +38,21 @@ const Topbar = ({ titre, toggleSidebar: propToggle }) => {
         <MenuIcon size={18} color="#ffffff" />
       </button>
       <h2>{titre}</h2>
+      {IS_CRM_V2 && <span className="pill p-ambre" title="Données totalement séparées du CRM principal">CRM V2</span>}
       {window.location.hash.startsWith('#fiche') && (
         <button className="btn mini doux" onClick={() => {
           if (window.history.length > 1) window.history.back();
           else window.location.hash = 'dashboard';
         }}>← Retour</button>
       )}
-      {!IS_CRM_V2 && <input
+      <input
         type="search" 
         className="gsearch" 
         placeholder="Recherche globale (Entrée)" 
         value={terme}
         onChange={e => setTerme(e.target.value)}
         onKeyDown={handleRecherche}
-      />}
+      />
       
       {/* PostgreSQL Status Indicator */}
       <div
@@ -64,13 +65,13 @@ const Topbar = ({ titre, toggleSidebar: propToggle }) => {
         {syncing && <SyncIcon size={14} color={isPostgresConnected ? '#059669' : '#d97706'} className="animate-spin" />}
       </div>
 
-      {!IS_CRM_V2 && <button className="cloche" onClick={() => window.location.hash = 'notifications'} title="Notifications">
+      <button className="cloche" onClick={() => window.location.hash = 'notifications'} title="Notifications">
         <BellIcon size={18} color="#0159A3" />
         <em style={{ display: nb ? 'block' : 'none' }}>{nb > 0 ? nb : ''}</em>
-      </button>}
+      </button>
 
       <div className="badge-user">
-        <a href={IS_CRM_V2 ? '/v2' : '#monProfil'} title={IS_CRM_V2 ? 'CRM V2' : 'Mon profil'} style={{ display: 'contents', color: 'inherit', textDecoration: 'none' }}>
+        <a href="#monProfil" title="Mon profil" style={{ display: 'contents', color: 'inherit', textDecoration: 'none' }}>
           <div className="rond">{init}</div>
           <div>
             <b>{session ? session.nomComplet : "—"}</b>
