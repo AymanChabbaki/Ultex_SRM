@@ -302,6 +302,67 @@ async function reserveNextEClientCode() {
   }, { maxWait: 15000, timeout: 30000 });
 }
 
+async function repointClientReferences(tx, oldCode, newCode) {
+  for (const field of ['client', 'codeClientAssocie', 'codeClient', 'clientCode', 'codeClientUltex']) {
+    const linked = await tx.collectionItem.findMany({
+      where: { data: { path: [field], equals: oldCode } },
+    });
+    for (const item of linked) {
+      await tx.collectionItem.update({
+        where: { collection_id: { collection: item.collection, id: item.id } },
+        data: { data: { ...item.data, [field]: newCode } },
+      });
+    }
+  }
+
+  // SIEMA product lines use P1-<client code> as their business reference.
+  const oldReference = `P1-${oldCode}`;
+  const lines = await tx.collectionItem.findMany({
+    where: { collection: 'demandeLignes', data: { path: ['referenceMetier'], equals: oldReference } },
+  });
+  for (const line of lines) {
+    await tx.collectionItem.update({
+      where: { collection_id: { collection: line.collection, id: line.id } },
+      data: { data: { ...line.data, referenceMetier: `P1-${newCode}` } },
+    });
+  }
+  await tx.auditLog.updateMany({ where: { objet: oldCode }, data: { objet: newCode } });
+}
+
+async function migrateImportedClientToE(client) {
+  const oldCode = client.code;
+  const newCode = await reserveNextEClientCode();
+  return prisma.$transaction(async tx => {
+    const fresh = await tx.collectionItem.findUnique({
+      where: { collection_id: { collection: 'clients', id: client.id } },
+    });
+    if (!fresh) throw new Error(`Client SIEMA ${oldCode} introuvable pendant la migration.`);
+    const conflict = await tx.collectionItem.findFirst({
+      where: {
+        OR: [
+          { id: newCode },
+          { code: newCode },
+          { collection: 'clients', data: { path: ['codeClientUltex'], equals: newCode } },
+        ],
+      },
+      select: { id: true, collection: true },
+    });
+    if (conflict) throw new Error(`Le code ${newCode} est déjà utilisé (${conflict.collection}/${conflict.id}).`);
+
+    await tx.collectionItem.delete({
+      where: { collection_id: { collection: 'clients', id: fresh.id } },
+    });
+    await tx.collectionItem.create({
+      data: {
+        collection: 'clients', id: newCode, code: newCode, createdAt: fresh.createdAt,
+        data: { ...fresh.data, id: newCode, code: newCode, codeClientUltex: newCode },
+      },
+    });
+    await repointClientReferences(tx, oldCode, newCode);
+    return { oldCode, newCode, name: fresh.data?.nom || '' };
+  });
+}
+
 function mergeClientData(existing, record, code, today) {
   const current = existing?.data || {};
   const allPhones = [...new Set([...phoneTokens(current.telephonesSource || current.telephone), ...record.phones])];
@@ -468,13 +529,41 @@ async function main() {
   if (APPLY && CONFIRM !== CONFIRM_TOKEN) throw new Error(`Confirmation requise: --confirm ${CONFIRM_TOKEN}`);
 
   const clients = await prisma.collectionItem.findMany({ where: { collection: 'clients' } });
-  const existingImports = await prisma.collectionItem.findMany({
-    where: { collection: 'demandes', data: { path: ['sourceSynchronisation'], equals: SOURCE_NAME } },
-    select: { data: true },
+  const allDemandes = await prisma.collectionItem.findMany({
+    where: { collection: 'demandes' },
+    select: { id: true, code: true, data: true },
   });
-  const importedIds = new Set(existingImports.map(item => item.data?.importSourceId).filter(Boolean));
+  const existingImports = allDemandes.filter(
+    item => item.data?.sourceSynchronisation === SOURCE_NAME,
+  );
+  const importedBySourceId = new Map(
+    existingImports.map(item => [item.data?.importSourceId, item]).filter(([sourceId]) => sourceId),
+  );
+  const clientsByCode = new Map();
+  for (const client of clients) {
+    for (const value of [client.id, client.code, client.data?.codeClientUltex]) {
+      if (value) clientsByCode.set(String(value), client);
+    }
+  }
+  const safeSiemaClientForMigration = client => {
+    if (!client || client.data?.sourceDonnees !== SOURCE_NAME || !/^\d+$/.test(String(client.code || ''))) return false;
+    const linkedDemandes = allDemandes.filter(item => (
+      item.data?.client === client.code || item.data?.codeClientUltex === client.code
+    ));
+    return linkedDemandes.length > 0
+      && linkedDemandes.every(item => item.data?.sourceSynchronisation === SOURCE_NAME);
+  };
   const plan = analysis.records.map(record => {
-    if (importedIds.has(record.importSourceId)) return { record, action: 'already_imported', matches: [] };
+    const imported = importedBySourceId.get(record.importSourceId);
+    if (imported) {
+      const currentCode = String(imported.data?.client || imported.data?.codeClientUltex || '');
+      const existingClient = clientsByCode.get(currentCode);
+      if (/^E\d+$/.test(currentCode)) return { record, action: 'already_imported', matches: [] };
+      if (safeSiemaClientForMigration(existingClient)) {
+        return { record, action: 'migrate_to_e', matches: [], existingClient };
+      }
+      return { record, action: 'already_imported_preserve_code', matches: [], existingClient };
+    }
     const matches = matchClients(record, clients);
     if (matches.length > 1) return { record, action: 'conflict', matches: matches.map(item => item.code) };
     return { record, action: matches.length === 1 ? 'reuse_client' : 'create_client', matches };
@@ -492,6 +581,8 @@ async function main() {
       createClient: plan.filter(item => item.action === 'create_client').length,
       reuseClient: plan.filter(item => item.action === 'reuse_client').length,
       alreadyImported: plan.filter(item => item.action === 'already_imported').length,
+      migrateToE: new Set(plan.filter(item => item.action === 'migrate_to_e').map(item => item.existingClient.code)).size,
+      preservedExistingCodes: plan.filter(item => item.action === 'already_imported_preserve_code').length,
       conflicts: plan.filter(item => item.action === 'conflict').length,
     },
     conflicts: plan.filter(item => item.action === 'conflict').map(item => ({
@@ -501,6 +592,7 @@ async function main() {
       matchingClients: item.matches,
     })),
     results: [],
+    codeMigrations: [],
   };
 
   console.log(JSON.stringify(report.summary));
@@ -511,13 +603,21 @@ async function main() {
   }
 
   for (const item of plan) {
-    if (item.action === 'already_imported' || item.action === 'conflict') continue;
+    if (!['create_client', 'reuse_client'].includes(item.action)) continue;
     const result = await insertRecord(item.record, item.matches[0] || null, new Date());
     report.results.push({ rowNumber: item.record.rowNumber, company: item.record.company, ...result });
   }
+  const migrations = new Map();
+  for (const item of plan.filter(entry => entry.action === 'migrate_to_e')) {
+    migrations.set(item.existingClient.code, item.existingClient);
+  }
+  for (const client of migrations.values()) {
+    report.codeMigrations.push(await migrateImportedClientToE(client));
+  }
   report.inserted = report.results.length;
+  report.migratedToE = report.codeMigrations.length;
   await saveReport(REPORT, report);
-  console.log(`Import V2 terminé: ${report.inserted} demande(s), ${report.summary.createClient} nouveau(x) client(s), ${report.summary.reuseClient} client(s) réutilisé(s).`);
+  console.log(`Import V2 terminé: ${report.inserted} demande(s), ${report.summary.createClient} nouveau(x) client(s), ${report.summary.reuseClient} client(s) réutilisé(s), ${report.migratedToE} code(s) numérique(s) migré(s) vers E.`);
 }
 
 main()

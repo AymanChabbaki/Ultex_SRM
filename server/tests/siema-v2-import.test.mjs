@@ -43,5 +43,9 @@ test('SIEMA importer is V2-only, confirmed explicitly, and allocates E client co
   assert.match(source, /const code = `E\$\{number\}`/);
   assert.match(source, /pays: current\.pays \|\| record\.country/);
   assert.match(source, /pays impossible à déterminer/);
+  assert.match(source, /async function migrateImportedClientToE/);
+  assert.match(source, /linkedDemandes\.every\(item => item\.data\?\.sourceSynchronisation === SOURCE_NAME\)/);
+  assert.match(source, /await repointClientReferences\(tx, oldCode, newCode\)/);
+  assert.match(source, /referenceMetier: `P1-\$\{newCode\}`/);
   assert.doesNotMatch(source, /reserveNextNumericClientCode/);
 });
