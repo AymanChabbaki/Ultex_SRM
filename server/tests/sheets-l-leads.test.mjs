@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import { nextMonotonicLNumber, normalizeLeadPhone, validateSheetLead } from '../src/sheetsLLeads.js';
+import { nextLNumberFromCurrentClients, normalizeLeadPhone, validateSheetLead } from '../src/sheetsLLeads.js';
 
 const indexSource = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
 
@@ -96,17 +96,19 @@ test('L allocation never reuses a deleted or skipped gap', () => {
   const existing = [
     'L6962', 'L6964', 'L6980',
   ];
-  assert.equal(nextMonotonicLNumber(existing, 6980, 6912), 6981);
+  assert.equal(nextLNumberFromCurrentClients(existing, 6912), 6981);
 });
 
-test('L allocation keeps the durable counter when the latest client was deleted', () => {
-  assert.equal(nextMonotonicLNumber(['L6978', 'L6979'], 6980, 6912), 6981);
+test('L allocation follows the corrected live maximum instead of a stale counter', () => {
+  // Production regression: staff corrected/renamed L7005..L7010, leaving
+  // L7004 as the current maximum while the old counter still said 7010.
+  assert.equal(nextLNumberFromCurrentClients(['L6999', 'L7004'], 6912), 7005);
 });
 
 test('L allocation advances past an imported code higher than the counter', () => {
-  assert.equal(nextMonotonicLNumber(['L6990'], 6980, 6912), 6991);
+  assert.equal(nextLNumberFromCurrentClients(['L6990'], 6912), 6991);
 });
 
 test('L allocation ignores unrelated and malformed codes', () => {
-  assert.equal(nextMonotonicLNumber(['A6999', 'Lx', '', null, 'L6914'], 6980, 6912), 6981);
+  assert.equal(nextLNumberFromCurrentClients(['A6999', 'Lx', '', null, 'L6914'], 6912), 6915);
 });

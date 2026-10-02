@@ -31,8 +31,12 @@ export function validateSheetLead(body = {}) {
   return data;
 }
 
-export function nextMonotonicLNumber(codes, counterValue = 0, minimum = 0) {
-  let highest = Math.max(Number(minimum) || 0, Number(counterValue) || 0);
+export function nextLNumberFromCurrentClients(codes, minimum = 0) {
+  // The live client table is authoritative. A stale high-water counter must
+  // not survive deliberate code corrections/renames (for example, if the
+  // current maximum was corrected from L7010 back to L7004, the next code is
+  // L7005). Gaps below the current maximum are still never filled.
+  let highest = Number(minimum) || 0;
   for (const value of codes || []) {
     const code = String(value || '').trim().toUpperCase();
     if (/^L\d+$/.test(code)) highest = Math.max(highest, Number(code.slice(1)));
@@ -105,8 +109,8 @@ async function mergePhoneClients(tx, matches) {
 
 async function nextCode(tx, prefix, minimum = 0) {
   if (prefix === 'L') {
-    // L codes are strictly monotonic. Deleted or deliberately skipped codes
-    // remain consumed forever; the counter is the durable high-water mark.
+    // The current highest client code is authoritative. The advisory lock in
+    // syncLLead serializes this read + create path across server processes.
     const clients = await tx.collectionItem.findMany({ where: { collection: 'clients' }, select: { id: true, code: true, data: true } });
     const occupiedCodes = [];
     for (const client of clients) {
@@ -114,8 +118,7 @@ async function nextCode(tx, prefix, minimum = 0) {
         if (/^L\d+$/.test(code || '')) occupiedCodes.push(code);
       }
     }
-    const current = await tx.sequenceCounter.findUnique({ where: { key: 'L' } });
-    let number = nextMonotonicLNumber(occupiedCodes, current?.val || 0, minimum);
+    let number = nextLNumberFromCurrentClients(occupiedCodes, minimum);
     for (let attempt = 0; attempt < 10000; attempt += 1, number += 1) {
       const code = `L${number}`;
       const used = await tx.collectionItem.findFirst({ where: { OR: [{ id: code }, { code }] } });
@@ -123,6 +126,8 @@ async function nextCode(tx, prefix, minimum = 0) {
       await tx.sequenceCounter.upsert({
         where: { key: 'L' },
         create: { key: 'L', val: number },
+        // Keep the counter as a diagnostic mirror only. It is deliberately
+        // allowed to move down after staff correct the highest live L code.
         update: { val: number },
       });
       return code;
