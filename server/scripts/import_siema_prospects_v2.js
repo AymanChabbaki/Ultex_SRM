@@ -363,6 +363,51 @@ async function migrateImportedClientToE(client) {
   });
 }
 
+async function refreshExistingSiemaRecord(record, importedDemande, client) {
+  if (!client) throw new Error(`Client introuvable pour la ligne SIEMA ${record.rowNumber}.`);
+  const today = new Date().toISOString().slice(0, 10);
+  return prisma.$transaction(async tx => {
+    const freshClient = await tx.collectionItem.findUnique({
+      where: { collection_id: { collection: 'clients', id: client.id } },
+    });
+    if (!freshClient) throw new Error(`Client ${client.code} introuvable pendant la mise à jour du pays.`);
+    await tx.collectionItem.update({
+      where: { collection_id: { collection: 'clients', id: freshClient.id } },
+      data: { data: mergeClientData(freshClient, record, freshClient.code, today) },
+    });
+
+    const contact = await tx.collectionItem.findFirst({
+      where: { collection: 'contacts', data: { path: ['importSourceId'], equals: record.importSourceId } },
+    });
+    if (contact) {
+      await tx.collectionItem.update({
+        where: { collection_id: { collection: 'contacts', id: contact.id } },
+        data: { data: {
+          ...contact.data,
+          pays: contact.data?.pays || record.country,
+          telephone: contact.data?.telephone || record.primaryPhone,
+          whatsapp: contact.data?.whatsapp || record.primaryPhone,
+          telephones: record.phones,
+          emails: record.emails,
+          telephoneSource: record.phoneRaw,
+          emailSource: record.emailRaw,
+        } },
+      });
+    }
+
+    if (importedDemande) {
+      await tx.collectionItem.update({
+        where: { collection_id: { collection: 'demandes', id: importedDemande.id } },
+        data: { data: {
+          ...importedDemande.data,
+          paysProspect: importedDemande.data?.paysProspect || record.country,
+        } },
+      });
+    }
+    return { code: freshClient.code, country: record.country };
+  });
+}
+
 function mergeClientData(existing, record, code, today) {
   const current = existing?.data || {};
   const allPhones = [...new Set([...phoneTokens(current.telephonesSource || current.telephone), ...record.phones])];
@@ -558,11 +603,13 @@ async function main() {
     if (imported) {
       const currentCode = String(imported.data?.client || imported.data?.codeClientUltex || '');
       const existingClient = clientsByCode.get(currentCode);
-      if (/^E\d+$/.test(currentCode)) return { record, action: 'already_imported', matches: [] };
-      if (safeSiemaClientForMigration(existingClient)) {
-        return { record, action: 'migrate_to_e', matches: [], existingClient };
+      if (/^E\d+$/.test(currentCode)) {
+        return { record, action: 'already_imported', matches: [], existingClient, imported };
       }
-      return { record, action: 'already_imported_preserve_code', matches: [], existingClient };
+      if (safeSiemaClientForMigration(existingClient)) {
+        return { record, action: 'migrate_to_e', matches: [], existingClient, imported };
+      }
+      return { record, action: 'already_imported_preserve_code', matches: [], existingClient, imported };
     }
     const matches = matchClients(record, clients);
     if (matches.length > 1) return { record, action: 'conflict', matches: matches.map(item => item.code) };
@@ -583,6 +630,10 @@ async function main() {
       alreadyImported: plan.filter(item => item.action === 'already_imported').length,
       migrateToE: new Set(plan.filter(item => item.action === 'migrate_to_e').map(item => item.existingClient.code)).size,
       preservedExistingCodes: plan.filter(item => item.action === 'already_imported_preserve_code').length,
+      updateCountries: plan.filter(item => (
+        ['already_imported', 'already_imported_preserve_code', 'migrate_to_e'].includes(item.action)
+        && item.existingClient
+      )).length,
       conflicts: plan.filter(item => item.action === 'conflict').length,
     },
     conflicts: plan.filter(item => item.action === 'conflict').map(item => ({
@@ -593,6 +644,7 @@ async function main() {
     })),
     results: [],
     codeMigrations: [],
+    countryBackfills: [],
   };
 
   console.log(JSON.stringify(report.summary));
@@ -607,6 +659,15 @@ async function main() {
     const result = await insertRecord(item.record, item.matches[0] || null, new Date());
     report.results.push({ rowNumber: item.record.rowNumber, company: item.record.company, ...result });
   }
+  for (const item of plan.filter(entry => (
+    ['already_imported', 'already_imported_preserve_code', 'migrate_to_e'].includes(entry.action)
+    && entry.existingClient
+    && entry.imported
+  ))) {
+    report.countryBackfills.push(
+      await refreshExistingSiemaRecord(item.record, item.imported, item.existingClient),
+    );
+  }
   const migrations = new Map();
   for (const item of plan.filter(entry => entry.action === 'migrate_to_e')) {
     migrations.set(item.existingClient.code, item.existingClient);
@@ -616,8 +677,9 @@ async function main() {
   }
   report.inserted = report.results.length;
   report.migratedToE = report.codeMigrations.length;
+  report.updatedCountries = report.countryBackfills.length;
   await saveReport(REPORT, report);
-  console.log(`Import V2 terminé: ${report.inserted} demande(s), ${report.summary.createClient} nouveau(x) client(s), ${report.summary.reuseClient} client(s) réutilisé(s), ${report.migratedToE} code(s) numérique(s) migré(s) vers E.`);
+  console.log(`Import V2 terminé: ${report.inserted} demande(s), ${report.summary.createClient} nouveau(x) client(s), ${report.summary.reuseClient} client(s) réutilisé(s), ${report.migratedToE} code(s) numérique(s) migré(s) vers E, ${report.updatedCountries} pays mis à jour.`);
 }
 
 main()

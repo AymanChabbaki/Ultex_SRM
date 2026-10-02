@@ -47,5 +47,8 @@ test('SIEMA importer is V2-only, confirmed explicitly, and allocates E client co
   assert.match(source, /linkedDemandes\.every\(item => item\.data\?\.sourceSynchronisation === SOURCE_NAME\)/);
   assert.match(source, /await repointClientReferences\(tx, oldCode, newCode\)/);
   assert.match(source, /referenceMetier: `P1-\$\{newCode\}`/);
+  assert.match(source, /async function refreshExistingSiemaRecord/);
+  assert.match(source, /pays: contact\.data\?\.pays \|\| record\.country/);
+  assert.match(source, /paysProspect: importedDemande\.data\?\.paysProspect \|\| record\.country/);
   assert.doesNotMatch(source, /reserveNextNumericClientCode/);
 });
