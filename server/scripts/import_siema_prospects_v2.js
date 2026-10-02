@@ -18,7 +18,6 @@ import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { PrismaClient } from '@prisma/client';
-import { reserveNextNumericClientCode } from '../src/clientCodes.js';
 
 const args = process.argv.slice(2);
 const hasFlag = flag => args.includes(flag);
@@ -104,13 +103,61 @@ function emailTokens(raw) {
   return [...new Set(clean(raw).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)?.map(value => value.toLowerCase()) || [])];
 }
 
-function phoneTokens(raw) {
+const COUNTRY_BY_DIAL_CODE = [
+  ['962', 'Jordanie'],
+  ['420', 'République tchèque'],
+  ['212', 'Maroc'],
+  ['20', 'Égypte'],
+  ['90', 'Turquie'],
+  ['39', 'Italie'],
+  ['49', 'Allemagne'],
+  ['86', 'Chine'],
+  ['91', 'Inde'],
+  ['7', 'Russie'],
+];
+
+function countryFromInternationalPhone(phone) {
+  const digits = clean(phone).replace(/\D/g, '').replace(/^00/, '');
+  return COUNTRY_BY_DIAL_CODE.find(([prefix]) => digits.startsWith(prefix))?.[1] || '';
+}
+
+function inferCountry(record) {
+  const firstRawPhone = clean(record.phoneRaw).split(/[;|]/)[0];
+  const explicitInternational = /^\s*(?:\+|00)/.test(firstRawPhone)
+    ? countryFromInternationalPhone(firstRawPhone)
+    : '';
+  if (explicitInternational) return explicitInternational;
+
+  const digits = firstRawPhone.replace(/\D/g, '');
+  const domainHints = normalize(`${record.emailRaw} ${record.website}`);
+  if (/^212\d+/.test(digits) || /^0[567]\d{8}$/.test(digits) || /\.ma(?:\b|\/)/.test(domainHints)) return 'Maroc';
+  if (/^962\d+/.test(digits)) return 'Jordanie';
+  if (/^20\d+/.test(digits)) return 'Égypte';
+  if (/^90\d+/.test(digits) || /\.tr(?:\b|\/)/.test(domainHints)) return 'Turquie';
+  if (/^39\d+/.test(digits)) return 'Italie';
+  if (/^49\d+/.test(digits)) return 'Allemagne';
+  if (/^91\d+/.test(digits)) return 'Inde';
+  if (/^420\d+/.test(digits) || /\.cz(?:\b|\/)/.test(domainHints)) return 'République tchèque';
+  if (/^7\d{10}$/.test(digits) || /\.ru(?:\b|\/)/.test(domainHints)) return 'Russie';
+  if (/^514\d{7}$/.test(digits)) return 'Canada';
+  if (/\.es(?:\b|\/)/.test(domainHints)) return 'Espagne';
+  if (
+    /^86\d+/.test(digits)
+    || (/^1\d{10}$/.test(digits) && /(?:qq\.com|chinagoods|\.cn(?:\b|\/))/.test(domainHints))
+  ) return 'Chine';
+  return '';
+}
+
+function phoneTokens(raw, country = '') {
   const tokens = [];
   for (const part of clean(raw).split(/[;|]/)) {
     let phone = part.replace(/\([^)]*\)/g, '').replace(/\D/g, '');
     if (phone.startsWith('00')) phone = phone.slice(2);
     if (/^0[567]\d{8}$/.test(phone)) phone = `212${phone.slice(1)}`;
-    if (/^[567]\d{8}$/.test(phone)) phone = `212${phone}`;
+    if (country === 'Maroc' && /^[567]\d{8}$/.test(phone)) phone = `212${phone}`;
+    if (country === 'Espagne' && /^[6789]\d{8}$/.test(phone)) phone = `34${phone}`;
+    if (country === 'Canada' && /^\d{10}$/.test(phone)) phone = `1${phone}`;
+    if (country === 'Chine' && /^1\d{10}$/.test(phone)) phone = `86${phone}`;
     if (phone.length >= 7) tokens.push(phone);
   }
   return [...new Set(tokens)];
@@ -144,13 +191,19 @@ function analyse(text) {
       sourcingCountries: clean(values[8]),
       sourcingNeed: clean(values[9]),
     };
-    record.phones = phoneTokens(record.phoneRaw);
+    record.country = inferCountry(record);
+    record.phones = phoneTokens(record.phoneRaw, record.country);
     record.emails = emailTokens(record.emailRaw);
     record.primaryPhone = record.phones[0] || '';
     record.primaryEmail = record.emails[0] || '';
     record.importSourceId = stableSourceId(record);
-    if (!record.company || !record.contact || (!record.primaryPhone && !record.primaryEmail)) {
-      invalid.push({ rowNumber: record.rowNumber, company: record.company, contact: record.contact, reason: 'identité ou coordonnées insuffisantes' });
+    if (!record.company || !record.contact || (!record.primaryPhone && !record.primaryEmail) || !record.country) {
+      invalid.push({
+        rowNumber: record.rowNumber,
+        company: record.company,
+        contact: record.contact,
+        reason: !record.country ? 'pays impossible à déterminer' : 'identité ou coordonnées insuffisantes',
+      });
     } else {
       records.push(record);
     }
@@ -158,14 +211,21 @@ function analyse(text) {
   return { records, invalid };
 }
 
+function countriesSummary(records) {
+  return records.reduce((summary, record) => {
+    summary[record.country] = (summary[record.country] || 0) + 1;
+    return summary;
+  }, {});
+}
+
 function clientIdentitySets(client) {
   const data = client.data || {};
   return {
     phones: new Set([
-      ...phoneTokens(data.telephone),
-      ...phoneTokens(data.whatsapp),
-      ...phoneTokens(data.telephonesSource),
-      ...(Array.isArray(data.telephones) ? data.telephones.flatMap(phoneTokens) : []),
+      ...phoneTokens(data.telephone, data.pays),
+      ...phoneTokens(data.whatsapp, data.pays),
+      ...phoneTokens(data.telephonesSource, data.pays),
+      ...(Array.isArray(data.telephones) ? data.telephones.flatMap(value => phoneTokens(value, data.pays)) : []),
     ]),
     emails: new Set([
       ...emailTokens(data.email),
@@ -204,6 +264,44 @@ async function createItem(tx, collection, prefix, values, createdAt) {
   });
 }
 
+async function reserveNextEClientCode() {
+  return prisma.$transaction(async tx => {
+    // A dedicated advisory lock makes E-code allocation safe if two SIEMA
+    // imports or users run at the same time. Codes always continue after the
+    // highest E code already present; deleted/skipped codes are not recycled.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(6900, 5)`;
+    const clients = await tx.collectionItem.findMany({
+      where: { collection: 'clients' },
+      select: { id: true, code: true, data: true },
+    });
+    let highest = 0;
+    for (const client of clients) {
+      for (const value of [client.id, client.code, client.data?.codeClientUltex]) {
+        const match = clean(value).toUpperCase().match(/^E(\d+)$/);
+        if (match) highest = Math.max(highest, Number(match[1]));
+      }
+    }
+    const counterKey = 'CLIENT_E';
+    const current = await tx.sequenceCounter.findUnique({ where: { key: counterKey } });
+    let number = Math.max(highest + 1, Number(current?.val || 0) + 1, 1);
+    for (let attempt = 0; attempt < 10000; attempt += 1, number += 1) {
+      const code = `E${number}`;
+      const used = await tx.collectionItem.findFirst({
+        where: { OR: [{ id: code }, { code }, { data: { path: ['codeClientUltex'], equals: code } }] },
+        select: { id: true },
+      });
+      if (used) continue;
+      await tx.sequenceCounter.upsert({
+        where: { key: counterKey },
+        create: { key: counterKey, val: number },
+        update: { val: number },
+      });
+      return code;
+    }
+    throw new Error('Aucun code client E disponible.');
+  }, { maxWait: 15000, timeout: 30000 });
+}
+
 function mergeClientData(existing, record, code, today) {
   const current = existing?.data || {};
   const allPhones = [...new Set([...phoneTokens(current.telephonesSource || current.telephone), ...record.phones])];
@@ -218,6 +316,7 @@ function mergeClientData(existing, record, code, today) {
     telephone: current.telephone || record.primaryPhone,
     whatsapp: current.whatsapp || record.primaryPhone,
     email: current.email || record.primaryEmail,
+    pays: current.pays || record.country,
     siteWeb: current.siteWeb || record.website,
     secteurActivite: current.secteurActivite || record.activity,
     activitePrincipale: current.activitePrincipale || record.activity,
@@ -237,6 +336,7 @@ function mergeClientData(existing, record, code, today) {
     telephonesSource: [current.telephonesSource, record.phoneRaw].filter(Boolean).join(' ; '),
     emailsSource: [current.emailsSource, record.emailRaw].filter(Boolean).join(' ; '),
     sourceDonnees: current.sourceDonnees || SOURCE_NAME,
+    paysContactSource: record.country,
     importSiema: true,
   };
 }
@@ -245,7 +345,7 @@ async function insertRecord(record, matchedClient, now) {
   const today = now.toISOString().slice(0, 10);
   // Reserving the numeric identity uses its own advisory-lock transaction;
   // every actual CRM record for the row is then written atomically below.
-  const reservedCode = matchedClient ? '' : await reserveNextNumericClientCode(prisma);
+  const reservedCode = matchedClient ? '' : await reserveNextEClientCode();
   return prisma.$transaction(async tx => {
     const createdClient = !matchedClient;
     const client = matchedClient
@@ -271,6 +371,7 @@ async function insertRecord(record, matchedClient, now) {
         telephone: record.primaryPhone,
         whatsapp: record.primaryPhone,
         email: record.primaryEmail,
+        pays: record.country,
         telephones: record.phones,
         emails: record.emails,
         telephoneSource: record.phoneRaw,
@@ -303,6 +404,7 @@ async function insertRecord(record, matchedClient, now) {
         `Entreprise : ${record.company}`,
         `Activité : ${record.activity}`,
         `Contact : ${record.contact} — ${record.role}`,
+        `Pays (indicatif téléphonique) : ${record.country}`,
         `Téléphones source : ${record.phoneRaw}`,
         `E-mails source : ${record.emailRaw}`,
         record.website ? `Site web : ${record.website}` : '',
@@ -354,6 +456,7 @@ async function main() {
       sourceRows: analysis.records.length + analysis.invalid.length,
       validRows: analysis.records.length,
       invalidRows: analysis.invalid,
+      countries: countriesSummary(analysis.records),
     };
     await saveReport(REPORT, report);
     console.log(`Inspection SIEMA: ${report.validRows} ligne(s) valide(s), ${report.invalidRows.length} rejet(s), aucune connexion et aucune écriture.`);
@@ -384,6 +487,7 @@ async function main() {
     sourceRows: analysis.records.length + analysis.invalid.length,
     validRows: analysis.records.length,
     invalidRows: analysis.invalid,
+    countries: countriesSummary(analysis.records),
     summary: {
       createClient: plan.filter(item => item.action === 'create_client').length,
       reuseClient: plan.filter(item => item.action === 'reuse_client').length,
