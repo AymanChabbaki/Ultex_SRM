@@ -50,7 +50,6 @@ const RAW_LEADS = [
   ['9623', '', 'clics', '212 645-564035', 'MACHINE', '', 'PROFORMA', '02/10/26', 'Traité', '', ''],
   ['9624', '', 'clics', '212 693-608509', '', '', '80 usd de m/ses', '02/10/26', 'En cours', '', ''],
   ['9625', 'ABDO SENHAJI', 'clics', '212 666-534171', '', '', '', '03/10/26', 'Pas de réponse', '', ''],
-  ['9626', '', 'APPEL', '212 661-458114', '', '', 'L6998', '03/10/26', 'En cours', '', ''],
   ['9627', 'mohamed', 'wtsp confirmation', '212 772-600034', '', '', 'rv casa lundi inchalah', '03/10/26', 'En cours', '', ''],
   ['9628', 'HICHAM', 'Clics', '212 660-370242', 'des boits en plastique', '', 'GHYSWLU ECHANTILLON hta ychuf qualité ,apres ghysift lina pour la quantité', '05/10/26', 'Pas Prêt', '', ''],
   ['9629', '', 'Clics', '212 653-786490', '', '', '', '05/10/26', 'Pas de réponse', '', ''],
