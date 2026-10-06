@@ -43,6 +43,12 @@ function enrichirLead(demande, clientsByCode, extra = {}) {
   const patch = {
     _clientCodeAffiche: canonicalCode || demande.codeClientUltex || demande.client || '—',
     _clientLienCode: clientLinkCode,
+    _clientNomAffiche: client?.nom
+      || demande.clientNom
+      || demande.nomClient
+      || demande.sheetSourceData?.nom
+      || demande.sourceRecord?.nom
+      || '—',
     ...extra,
   };
   const dataTagAffiche = demande.dataTag || client?.dataTag;
@@ -290,6 +296,7 @@ export default function TableauBordData({ user, isAdminView }) {
               ? <a href={`#ficheClient:${o._clientLienCode}`}>{v}</a>
               : <span title="La fiche client liée est absente">{v}</span>
             },
+            { key: '_clientNomAffiche', label: 'Nom du client' },
             { key: 'objectifGeneral', label: 'Besoin / produit' },
             { key: 'dateHeureReception', label: 'Reçu le (GMT)', render: (v, o) => formatGMTDateTime(v || o.dateDemande) || '—' },
             { key: 'sourceSynchronisation', label: 'Source', render: (v, o) => pill(v || o.source || '—', 'p-gris') },

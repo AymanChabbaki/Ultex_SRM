@@ -35,3 +35,10 @@ test('a lead remains linked through its persisted client reference when compact 
   assert.match(dashboardSource, /demandesDeAgent\(\{ demandes: leadHistory\.items \|\| \[\] \}, user\)/);
   assert.match(dashboardSource, /localDay\(demande\.dateHeureReception \|\| demande\.dateDemande\) === leadDate/);
 });
+
+test('the lead table displays the linked client name with source-data fallbacks', () => {
+  assert.match(dashboardSource, /_clientNomAffiche: client\?\.nom/);
+  assert.match(dashboardSource, /demande\.sheetSourceData\?\.nom/);
+  assert.match(dashboardSource, /demande\.sourceRecord\?\.nom/);
+  assert.match(dashboardSource, /key: '_clientNomAffiche', label: 'Nom du client'/);
+});
