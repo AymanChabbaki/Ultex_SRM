@@ -49,6 +49,15 @@ for (const key of Object.keys(FACTURATION_TEMPLATES)) {
     const rowCount = [...table.matchAll(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g)].length;
     const expectedRows = 1 + sample.items.length + 1;
     if (rowCount !== expectedRows) throw new Error(`${key}: ${rowCount} lignes au lieu de ${expectedRows}`);
+    const rows = [...table.matchAll(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g)].map(match => match[0]);
+    const references = rows.slice(1, -1).map(row => {
+      const firstCell = row.match(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/)?.[0] || '';
+      return [...firstCell.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map(match => match[1]).join('').trim();
+    });
+    const expectedReferences = sample.items.map((_, index) => String(index + 1));
+    if (references.join(',') !== expectedReferences.join(',')) {
+      throw new Error(`${key}: références ${references.join(',')} au lieu de ${expectedReferences.join(',')}`);
+    }
   }
 
   const source = await JSZip.loadAsync(await fs.readFile(path.resolve('templates', 'facturation-recus', FACTURATION_TEMPLATES[key].template)));

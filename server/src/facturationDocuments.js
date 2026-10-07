@@ -300,7 +300,7 @@ function fillInvoice(xml, data, definition) {
       formatMoney(item.amount),
     ]));
     const serviceRows = service.map((item, index) => fillCompactRow(rows[2], [
-      index + 1,
+      operation.length + index + 1,
       item.label || '',
       formatMoney(item.amount),
     ]));
