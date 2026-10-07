@@ -14,7 +14,7 @@ import { createRequire } from 'module';
 import { lLeadHandler } from './sheetsLLeads.js';
 import { reserveNextNumericClientCode } from './clientCodes.js';
 import { serializeCollectionRows } from './dashboardRows.js';
-import { FACTURATION_TEMPLATES, generateFacturationDocx, publicTemplateDefinitions } from './facturationDocuments.js';
+import { FACTURATION_TEMPLATES, convertDocxToPdf, generateFacturationDocx, publicTemplateDefinitions } from './facturationDocuments.js';
 
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
@@ -1598,11 +1598,12 @@ app.post('/api/facturation-recus/generate', authMiddleware, requireFacturationAc
   let absolutePath = '';
   try {
     payload.reference = nettoyerReferenceDocument(payload.reference) || await reserverReferenceFacturation(definition);
-    const buffer = await generateFacturationDocx(templateKey, payload);
+    const docxBuffer = await generateFacturationDocx(templateKey, payload);
+    const buffer = await convertDocxToPdf(docxBuffer);
     const now = new Date();
     const year = String(now.getFullYear());
     const safeReference = payload.reference.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || definition.prefix.replace(/\W/g, '');
-    const fileName = `${safeReference}_${crypto.randomUUID().slice(0, 8)}.docx`;
+    const fileName = `${safeReference}_${crypto.randomUUID().slice(0, 8)}.pdf`;
     const relativePath = path.posix.join('facturation-recus', year, fileName);
     absolutePath = path.resolve(UPLOADS_DIR, relativePath);
     const relativeCheck = path.relative(UPLOADS_DIR, absolutePath);
@@ -1633,9 +1634,9 @@ app.post('/api/facturation-recus/generate', authMiddleware, requireFacturationAc
     };
     const documentData = {
       code: documentCode,
-      nom: `${definition.label} — ${payload.reference}.docx`,
+      nom: `${definition.label} — ${payload.reference}.pdf`,
       type: definition.family === 'facture' ? 'Facture' : definition.family === 'livraison' ? 'Bon de livraison' : definition.family === 'recu' ? 'Reçu de paiement' : 'Contrat',
-      typeFichier: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      typeFichier: 'application/pdf',
       categorie: definition.family === 'facture' ? 'Facture' : 'Autre',
       sourceModule: 'facturationRecus',
       storagePath: relativePath,

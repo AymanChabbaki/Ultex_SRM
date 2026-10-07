@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 
@@ -308,4 +310,61 @@ export async function generateFacturationDocx(templateKey, input = {}) {
   const nextXml = fillDocumentXml(originalXml, templateKey, input);
   zip.file('word/document.xml', nextXml);
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+}
+
+export async function convertDocxToPdf(docxBuffer) {
+  const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'ubos-facturation-'));
+  const inputPath = path.join(temporaryDirectory, 'document.docx');
+  const outputPath = path.join(temporaryDirectory, 'document.pdf');
+  const executable = process.env.LIBREOFFICE_BIN || 'soffice';
+
+  try {
+    await fs.writeFile(inputPath, docxBuffer);
+    await new Promise((resolve, reject) => {
+      const child = spawn(executable, [
+        '--headless',
+        '--nologo',
+        '--nolockcheck',
+        '--nodefault',
+        '--nofirststartwizard',
+        '--convert-to', 'pdf',
+        '--outdir', temporaryDirectory,
+        inputPath,
+      ], {
+        env: {
+          ...process.env,
+          HOME: temporaryDirectory,
+          TMPDIR: temporaryDirectory,
+          SAL_USE_VCLPLUGIN: 'svp',
+        },
+        windowsHide: true,
+      });
+      let output = '';
+      let errors = '';
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error('La conversion PDF a dépassé le délai autorisé'));
+      }, 90_000);
+      child.stdout.on('data', chunk => { output += chunk.toString(); });
+      child.stderr.on('data', chunk => { errors += chunk.toString(); });
+      child.once('error', error => {
+        clearTimeout(timer);
+        reject(new Error(`Convertisseur PDF indisponible: ${error.message}`));
+      });
+      child.once('close', code => {
+        clearTimeout(timer);
+        if (code === 0) resolve();
+        else reject(new Error(`Échec de la conversion PDF (${code}): ${errors || output || 'erreur inconnue'}`));
+      });
+    });
+    const pdfBuffer = await fs.readFile(outputPath).catch(() => {
+      throw new Error('LibreOffice n’a créé aucun fichier PDF');
+    });
+    if (!pdfBuffer.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+      throw new Error('Le convertisseur n’a pas produit un PDF valide');
+    }
+    return pdfBuffer;
+  } finally {
+    await fs.rm(temporaryDirectory, { recursive: true, force: true }).catch(() => {});
+  }
 }
