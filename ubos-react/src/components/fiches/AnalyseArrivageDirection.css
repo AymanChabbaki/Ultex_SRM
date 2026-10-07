@@ -14,7 +14,10 @@
 .limex-tabs,
 .limex-analysis-layout,
 .limex-direction-form,
+.limex-validation-card,
 .limex-summary-card,
+.limex-decision-card,
+.limex-missing-strip,
 .limex-tab-card { margin-left: 18px; margin-right: 18px; }
 
 .limex-arrival-header {
@@ -71,7 +74,7 @@
 .limex-progress i { background: #1fb773; display: block; height: 100%; }
 
 .limex-control-table-wrap { overflow: auto; }
-.limex-control-table { border-collapse: collapse; min-width: 900px; width: 100%; }
+.limex-control-table { border-collapse: collapse; min-width: 1020px; width: 100%; }
 .limex-control-table th { background: #f6f9fc; color: #3f5067; font-size: 10px; padding: 10px 8px; text-align: left; }
 .limex-control-table td { border-top: 1px solid #edf1f5; font-size: 11px; padding: 7px; vertical-align: top; }
 .limex-control-table td:first-child { color: var(--limex-muted); text-align: center; width: 26px; }
@@ -80,7 +83,7 @@
 .limex-control-table select { border: 1px solid #d8e0ea; border-radius: 7px; font: inherit; min-width: 125px; padding: 6px; resize: vertical; width: 100%; }
 .limex-control-table textarea:disabled,
 .limex-control-table select:disabled { background: #f6f8fb; color: #526174; }
-.limex-document-link { display: inline-block; font-size: 10px; margin-top: 5px; }
+.limex-document-link { background: transparent; border: 0; color: var(--limex-blue); cursor: pointer; display: inline-block; font-size: 10px; margin-top: 5px; padding: 0; }
 
 .limex-status { border-radius: 999px; display: inline-block; font-size: 9px; font-weight: 800; padding: 4px 7px; white-space: nowrap; }
 .limex-status-ok, select.limex-status-ok { background: #dff7eb; color: #117b4c; }
@@ -94,19 +97,44 @@
 .limex-side-panel section { overflow: hidden; }
 .limex-side-panel section > header { align-items: center; border-bottom: 1px solid var(--limex-border); display: flex; justify-content: space-between; padding: 10px 12px; }
 .limex-side-panel h3 { align-items: center; color: #1d385c; display: flex; font-size: 13px; gap: 6px; margin: 0; }
-.limex-document-list a { align-items: center; border-bottom: 1px solid #edf1f5; color: inherit; display: grid; gap: 7px; grid-template-columns: 20px minmax(0, 1fr) auto; padding: 9px 11px; text-decoration: none; }
-.limex-document-list a > svg { color: #e04444; }
+.limex-document-row { align-items: center; border-bottom: 1px solid #edf1f5; color: inherit; display: grid; gap: 7px; grid-template-columns: 20px minmax(0, 1fr) auto auto; padding: 9px 11px; }
+.limex-document-row > svg { color: #e04444; }
 .limex-document-list b { display: block; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .limex-document-list small { color: var(--limex-muted); display: block; font-size: 9px; margin-top: 2px; }
 .limex-text-button { background: transparent; border: 0; color: var(--limex-blue); cursor: pointer; font-size: 11px; padding: 10px 12px; }
-.limex-missing-list button { align-items: center; background: transparent; border: 0; border-bottom: 1px solid #edf1f5; cursor: pointer; display: flex; font-size: 10px; justify-content: space-between; padding: 9px 11px; text-align: left; width: 100%; }
+.limex-request-list button { align-items: center; background: transparent; border: 0; border-bottom: 1px solid #edf1f5; cursor: pointer; display: flex; font-size: 10px; justify-content: space-between; padding: 9px 11px; text-align: left; width: 100%; }
+.limex-request-list button b, .limex-request-list button small { display: block; }
+.limex-request-list button small { color: var(--limex-muted); margin-top: 3px; }
 .limex-empty { color: var(--limex-muted); font-size: 11px; margin: 0; padding: 14px; }
 
+.limex-product-review { background: #fff; border: 1px solid var(--limex-border); border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
+.limex-product-review > header { align-items: center; border-bottom: 1px solid var(--limex-border); display: flex; justify-content: space-between; padding: 12px 14px; }
+.limex-product-review h3 { color: #173d70; margin: 3px 0 0; }
+.limex-product-review small { color: var(--limex-blue); font-weight: 800; }
+.limex-product-review label { color: var(--limex-muted); display: grid; font-size: 10px; gap: 4px; }
+.limex-product-review select { border: 1px solid #d8e0ea; border-radius: 7px; min-width: 220px; padding: 7px; }
+.limex-product-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
+.limex-product-grid > div { border-right: 1px solid #edf1f5; border-top: 1px solid #edf1f5; display: grid; gap: 4px; padding: 10px 12px; }
+.limex-product-grid span { color: var(--limex-muted); font-size: 9px; text-transform: uppercase; }
+.limex-product-grid b { color: #34465e; font-size: 11px; }
+
+.limex-missing-strip { background: #fff; border: 1px solid #efd999; border-radius: 12px; margin-top: 10px; overflow: hidden; }
+.limex-missing-strip > header { align-items: center; background: #fff9e8; display: flex; justify-content: space-between; padding: 10px 13px; }
+.limex-missing-strip h3 { align-items: center; color: #835f00; display: flex; font-size: 13px; gap: 7px; margin: 0; }
+.limex-missing-strip > header > b { background: #f5c957; border-radius: 999px; color: #684800; padding: 3px 8px; }
+.limex-missing-strip > div { display: flex; flex-wrap: wrap; gap: 7px; max-height: 150px; overflow: auto; padding: 11px; }
+.limex-missing-strip button { align-items: center; background: #fff; border: 1px solid #e6d6aa; border-radius: 8px; cursor: pointer; display: flex; font-size: 10px; gap: 7px; padding: 6px 8px; }
+.limex-missing-strip p { color: var(--limex-muted); margin: 0; }
+
 .limex-direction-form,
+.limex-validation-card,
 .limex-summary-card,
+.limex-decision-card,
 .limex-tab-card { margin-top: 10px; padding: 14px; }
 .limex-direction-form h3,
+.limex-validation-card h3,
 .limex-summary-card h3,
+.limex-decision-card h3,
 .limex-tab-card h3 { color: #163d70; margin: 0 0 12px; }
 .limex-form-grid { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .limex-form-grid label,
@@ -119,6 +147,12 @@
 .limex-form-grid :disabled,
 .limex-summary-inputs :disabled { background: #f4f6f9; color: #566478; }
 
+.limex-validation-card { background: #fff; border: 1px solid var(--limex-border); border-radius: 12px; }
+.limex-validation-card > div { display: grid; gap: 10px; grid-template-columns: repeat(4, 1fr); }
+.limex-validation-card label { color: #45556b; display: grid; font-size: 11px; font-weight: 700; gap: 5px; }
+.limex-validation-card input, .limex-validation-card select { border: 1px solid #d8e0ea; border-radius: 8px; padding: 8px; }
+.limex-validation-card :disabled { background: #f4f6f9; color: #566478; }
+
 .limex-summary-kpis { display: grid; gap: 8px; grid-template-columns: repeat(6, 1fr); }
 .limex-summary-kpis > div { background: #f4f7fa; border: 1px solid var(--limex-border); border-radius: 9px; display: grid; padding: 10px; }
 .limex-summary-kpis b { font-size: 18px; }
@@ -130,6 +164,16 @@
 .limex-summary-inputs { display: grid; gap: 10px; grid-template-columns: repeat(3, 1fr); margin-top: 12px; }
 .limex-summary-list ul { margin: 7px 0 0; padding-left: 17px; }
 .limex-summary-list p { color: var(--limex-muted); }
+
+.limex-decision-card { background: #fff; border: 1px solid var(--limex-border); border-radius: 12px; display: grid; gap: 14px; grid-template-columns: minmax(280px, .8fr) minmax(520px, 1.2fr); }
+.limex-decision-card > div:first-child { background: #fff9e8; border: 1px solid #efd999; border-radius: 10px; padding: 12px; }
+.limex-decision-card label { align-items: flex-start; color: #3f5067; display: flex; font-size: 11px; gap: 8px; }
+.limex-decision-card textarea { border: 1px solid #d8e0ea; border-radius: 8px; margin-top: 10px; padding: 8px; resize: vertical; width: 100%; }
+.limex-execution-plan { padding: 4px; }
+.limex-execution-plan > div { display: grid; gap: 8px; grid-template-columns: repeat(2, 1fr); }
+.limex-execution-plan article { background: #f7faff; border: 1px solid var(--limex-border); border-radius: 9px; display: grid; gap: 4px; padding: 9px; }
+.limex-execution-plan article b { color: #1d4f88; font-size: 11px; }
+.limex-execution-plan article span { color: var(--limex-muted); font-size: 10px; }
 
 .limex-action-bar { align-items: center; background: rgba(255, 255, 255, .96); border-top: 1px solid var(--limex-border); bottom: 0; display: flex; gap: 8px; justify-content: space-between; left: 0; padding: 10px 18px; position: sticky; right: 0; z-index: 20; }
 .limex-action-bar .btn { align-items: center; display: inline-flex; gap: 6px; }
@@ -150,7 +194,7 @@
 .limex-history small { color: var(--limex-muted); margin-top: 3px; }
 .limex-history em { color: #405269; font-style: normal; margin-top: 6px; white-space: pre-wrap; }
 
-@media (max-width: 1450px) {
+@media (max-width: 1180px) {
   .limex-analysis-layout { grid-template-columns: 225px minmax(560px, 1fr); }
   .limex-side-panel { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; }
   .limex-header-kpis { grid-template-columns: repeat(3, 1fr); }
@@ -163,16 +207,19 @@
   .limex-sections-panel h3 { grid-column: 1 / -1; }
   .limex-side-panel { grid-column: auto; grid-template-columns: 1fr; }
   .limex-form-grid { grid-template-columns: repeat(2, 1fr); }
+  .limex-validation-card > div { grid-template-columns: repeat(2, 1fr); }
   .limex-summary-kpis { grid-template-columns: repeat(3, 1fr); }
   .limex-summary-inputs { grid-template-columns: 1fr; }
+  .limex-decision-card { grid-template-columns: 1fr; }
   .limex-action-bar { align-items: stretch; flex-direction: column; position: static; }
   .limex-phase-actions { flex-wrap: wrap; }
 }
 
 @media (max-width: 620px) {
-  .limex-arrival-header, .limex-tabs, .limex-analysis-layout, .limex-direction-form, .limex-summary-card, .limex-tab-card { margin-left: 8px; margin-right: 8px; }
+  .limex-arrival-header, .limex-tabs, .limex-analysis-layout, .limex-direction-form, .limex-validation-card, .limex-summary-card, .limex-decision-card, .limex-missing-strip, .limex-tab-card { margin-left: 8px; margin-right: 8px; }
   .limex-header-kpis { grid-template-columns: repeat(2, 1fr); }
   .limex-sections-panel, .limex-form-grid { grid-template-columns: 1fr; }
   .limex-form-grid label.wide { grid-column: auto; }
+  .limex-validation-card > div, .limex-product-grid, .limex-execution-plan > div { grid-template-columns: 1fr; }
   .limex-summary-kpis { grid-template-columns: repeat(2, 1fr); }
 }

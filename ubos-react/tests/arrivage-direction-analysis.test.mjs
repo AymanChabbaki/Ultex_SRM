@@ -60,12 +60,21 @@ test('draft highlights missing information and computes progress and summary', (
 
 test('Direction arrival screen persists analysis and returns the workflow to Imane', () => {
   const source = fs.readFileSync(new URL('../src/components/fiches/AnalyseArrivageDirection.jsx', import.meta.url), 'utf8');
+  const apiSource = fs.readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');
   const arrivalSource = fs.readFileSync(new URL('../src/components/fiches/FicheArrivage.jsx', import.meta.url), 'utf8');
   const appSource = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
   assert.match(source, /analysesLimex: replaceAnalysis\(record\)/);
   assert.match(source, /ACTIONS_REVUE_ARRIVAGE\.RETOUR_IMANE/);
   assert.match(source, /destinataireImane\(db\)/);
   assert.match(source, /Terminer l'analyse et transmettre à Imane/);
+  assert.match(source, /VÉRIFICATION PAR PRODUIT/);
+  assert.match(source, /<th>Action<\/th>/);
+  assert.match(source, /Demandes de complément/);
+  assert.match(source, /Contrôle & validation/);
+  assert.match(source, /Plan d'exécution proposé/);
+  assert.match(source, /openDocument\(document\)/);
+  assert.doesNotMatch(source, /href=\{`#ficheDocument:/);
+  assert.match(apiSource, /export async function openStoredDocument/);
   assert.match(arrivalSource, /roleCircuit === 'Direction'/);
   assert.match(appSource, /\['analysesLimex', 'arrivages'/);
 });

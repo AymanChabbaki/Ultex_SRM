@@ -41,8 +41,16 @@ const STATUS_CLASS = {
 };
 
 const unique = values => [...new Set(values.filter(Boolean))];
-const displayDate = value => value ? new Date(value).toLocaleDateString('fr-FR', { timeZone: 'UTC' }) : '—';
-const displayDateTime = value => value ? new Date(value).toLocaleString('fr-FR', { timeZone: 'UTC' }) : '—';
+const displayDate = value => {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString('fr-FR', { timeZone: 'UTC' });
+};
+const displayDateTime = value => {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('fr-FR', { timeZone: 'UTC' });
+};
 
 function statusLabel(status) {
   return <span className={`limex-status ${STATUS_CLASS[status] || 'limex-status-neutral'}`}>{status || 'Non vérifié'}</span>;
@@ -148,6 +156,27 @@ export default function AnalyseArrivageDirection({ arrivage }) {
       },
     }));
     toast(`Demande ajoutée : ${item.label}`);
+  };
+
+  const requestGeneralComplement = () => {
+    if (!canEdit) return;
+    const request = {
+      id: `CMP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      sectionId: section.id,
+      section: section.title,
+      itemId: '',
+      label: 'Demande générale',
+      detail: `Complément à préciser pour la rubrique « ${section.title} »`,
+      status: 'En attente',
+      requestedBy: userCourant,
+      requestedAt: new Date().toISOString(),
+    };
+    setDraft(current => ({
+      ...current,
+      complementRequests: [...(current.complementRequests || []), request],
+      complements: [current.complements, `• ${request.detail}`].filter(Boolean).join('\n'),
+    }));
+    toast('Demande générale ajoutée. Précisez-la dans le champ « Compléments à demander ».');
   };
 
   const analysisRecord = (source, status = source.status || 'Brouillon') => {
@@ -323,7 +352,7 @@ export default function AnalyseArrivageDirection({ arrivage }) {
                 </div>
                 <label>
                   Produit
-                  <select value={selectedProductIndex} disabled={!canEdit} onChange={event => updateDraft({ selectedProductIndex: Number(event.target.value) })}>
+                  <select value={selectedProductIndex} onChange={event => updateDraft({ selectedProductIndex: Number(event.target.value) })}>
                     {context.lines.map((line, index) => <option key={`${line.commande.code}-${line.code || index}`} value={index}>{index + 1} / {context.lines.length} · {line.nomProduit || line.produit || 'Produit'}</option>)}
                   </select>
                 </label>
@@ -398,7 +427,7 @@ export default function AnalyseArrivageDirection({ arrivage }) {
             {context.documents.length > 8 && <button className="limex-text-button" onClick={() => setActiveTab('documents')}>Voir tous les documents ({context.documents.length}) →</button>}
           </section>
           <section>
-            <header><h3><AlertTriangle size={17} /> Demandes de complément</h3><button className="btn mini" disabled={!canEdit} onClick={() => updateDraft({ complements: `${draft.complements || ''}${draft.complements ? '\n' : ''}• ` })}>+ Nouvelle demande</button></header>
+            <header><h3><AlertTriangle size={17} /> Demandes de complément</h3><button className="btn mini" disabled={!canEdit} onClick={requestGeneralComplement}>+ Nouvelle demande</button></header>
             <div className="limex-request-list">
               {(draft.complementRequests || []).length ? (draft.complementRequests || []).slice().reverse().map(request => (
                 <button key={request.id} onClick={() => changeSection(LIMEX_DIRECTION_SECTIONS.findIndex(sectionItem => sectionItem.id === request.sectionId))}>
