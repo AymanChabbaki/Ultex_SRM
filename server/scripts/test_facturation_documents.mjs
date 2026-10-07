@@ -44,6 +44,13 @@ for (const key of Object.keys(FACTURATION_TEMPLATES)) {
   if (leftover) throw new Error(`${key}: donnée exemple encore présente (${leftover})`);
   if (/\*{3,}/.test(text)) throw new Error(`${key}: placeholder non remplacé`);
 
+  if (FACTURATION_TEMPLATES[key].family === 'facture') {
+    const table = xml.match(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/)?.[0] || '';
+    const rowCount = [...table.matchAll(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g)].length;
+    const expectedRows = 1 + sample.items.length + 1;
+    if (rowCount !== expectedRows) throw new Error(`${key}: ${rowCount} lignes au lieu de ${expectedRows}`);
+  }
+
   const source = await JSZip.loadAsync(await fs.readFile(path.resolve('templates', 'facturation-recus', FACTURATION_TEMPLATES[key].template)));
   for (const part of Object.keys(source.files)) {
     if (part === 'word/document.xml' || source.files[part].dir) continue;

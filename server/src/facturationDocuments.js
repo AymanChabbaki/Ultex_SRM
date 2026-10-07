@@ -118,8 +118,11 @@ function splitRows(tableXml) {
 }
 
 function replaceRows(tableXml, rows) {
-  let index = 0;
-  return tableXml.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, () => rows[index++] || '');
+  const matches = [...tableXml.matchAll(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g)];
+  if (!matches.length) return tableXml;
+  const first = matches[0];
+  const last = matches[matches.length - 1];
+  return `${tableXml.slice(0, first.index)}${rows.join('')}${tableXml.slice(last.index + last[0].length)}`;
 }
 
 function replaceCell(rowXml, cellIndex, value) {
@@ -132,6 +135,26 @@ function replaceCell(rowXml, cellIndex, value) {
 
 function fillRow(rowXml, values) {
   return values.reduce((xml, value, index) => replaceCell(xml, index, value), rowXml);
+}
+
+function replaceCellWithSingleParagraph(rowXml, cellIndex, value) {
+  let index = -1;
+  return rowXml.replace(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g, cell => {
+    index += 1;
+    if (index !== cellIndex) return cell;
+    const opening = cell.match(/^<w:tc(?:\s[^>]*)?>/)?.[0] || '<w:tc>';
+    const properties = cell.match(/<w:tcPr(?:\s[^>]*)?>[\s\S]*?<\/w:tcPr>/)?.[0] || '';
+    const paragraphs = [...cell.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].map(match => match[0]);
+    const paragraph = paragraphs.find(candidate => /<w:t(?:\s[^>]*)?>/.test(candidate))
+      || paragraphs[0]
+      || '<w:p><w:r><w:t></w:t></w:r></w:p>';
+    return `${opening}${properties}${replaceElementText(paragraph, value)}</w:tc>`;
+  });
+}
+
+function fillCompactRow(rowXml, values) {
+  const withoutFixedHeight = rowXml.replace(/<w:trHeight(?:\s[^>]*)?\/>/g, '');
+  return values.reduce((xml, value, index) => replaceCellWithSingleParagraph(xml, index, value), withoutFixedHeight);
 }
 
 function formatDate(value) {
@@ -268,18 +291,23 @@ function fillInvoice(xml, data, definition) {
   const total = data.totalAmount !== undefined && data.totalAmount !== ''
     ? Number(data.totalAmount)
     : items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-  const groupValues = list => [
-    list.map((_, index) => index + 1).join('\n') || '—',
-    list.map(item => item.label || '').join('\n') || '—',
-    list.map(item => formatMoney(item.amount)).join('\n') || formatMoney(0),
-  ];
-
   xml = mapTable(xml, 0, table => {
     const rows = splitRows(table);
-    if (rows[1]) rows[1] = fillRow(rows[1], groupValues(operation));
-    if (rows[2]) rows[2] = fillRow(rows[2], groupValues(service));
-    if (rows[3]) rows[3] = fillRow(rows[3], ['Total en MAD', formatMoney(total)]);
-    return replaceRows(table, rows);
+    if (rows.length < 4) return table;
+    const operationRows = operation.map((item, index) => fillCompactRow(rows[1], [
+      index + 1,
+      item.label || '',
+      formatMoney(item.amount),
+    ]));
+    const serviceRows = service.map((item, index) => fillCompactRow(rows[2], [
+      index + 1,
+      item.label || '',
+      formatMoney(item.amount),
+    ]));
+    const bodyRows = [...operationRows, ...serviceRows];
+    if (!bodyRows.length) bodyRows.push(fillCompactRow(rows[1], ['—', '—', formatMoney(0)]));
+    const totalRow = fillRow(rows[3], ['Total en MAD', formatMoney(total)]);
+    return replaceRows(table, [rows[0], ...bodyRows, totalRow]);
   });
   return xml;
 }
