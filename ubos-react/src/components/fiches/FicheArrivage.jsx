@@ -8,6 +8,7 @@ import DataTable from '../common/DataTable';
 import Modal from '../common/Modal';
 import LigneModal from '../common/LigneModal';
 import ModuleForm from '../modules/ModuleForm';
+import AnalyseArrivageDirection from './AnalyseArrivageDirection';
 import { MODS } from '../../data/modules';
 import { pill } from '../../utils/format';
 import {
@@ -169,6 +170,10 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
       toast(error.message || "Impossible d'effectuer cette action.");
     }
   };
+
+  if (roleCircuit === 'Direction') {
+    return <AnalyseArrivageDirection arrivage={arrivage} />;
+  }
 
   return (
     <div>

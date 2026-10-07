@@ -246,7 +246,7 @@ const Router = () => {
       case 'ficheDemande': return wrap(<FicheDemande codeProp={params} code={params} />, ['audit', 'clients', 'commandes', 'demandeLignes', 'demandeRoutages', 'demandes', 'documents', 'paiements']);
       case 'ficheDemandeLigne': return wrap(<FicheDemandeLigne codeProp={params} code={params} />, ['demandeLignes', 'demandeRoutages', 'demandes', 'produits', 'taches']);
       case 'ficheCommande': return wrap(<FicheCommande codeProp={params} code={params} />, ['arrivages', 'clients', 'commandes']);
-      case 'ficheArrivage': return wrap(<FicheArrivage codeProp={params} code={params} />, ['arrivages', 'clients', 'commandes', 'documents', 'fournisseurs', 'paiements']);
+      case 'ficheArrivage': return wrap(<FicheArrivage codeProp={params} code={params} />, ['analysesLimex', 'arrivages', 'clients', 'commandes', 'documents', 'fournisseurs', 'paiements', 'produits']);
       case 'ficheDocument': return wrap(<FicheDocument codeProp={params} code={params} />, ['documents']);
       case 'ficheFF': return wrap(<FicheFF codeProp={params} code={params} />, ['clients', 'documents', 'dossiers', 'facturesFinales']);
       case 'ficheChecklistLimex': return wrap(<FicheChecklistLimex codeProp={params} code={params} />, ['controlesLimex', 'dossierControlesLimex', 'dossiers', 'limexPortesValidation']);
