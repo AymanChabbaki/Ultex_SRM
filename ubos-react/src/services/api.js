@@ -310,3 +310,22 @@ export async function downloadStoredDocument(code, filename) {
   link.remove();
   URL.revokeObjectURL(objectUrl);
 }
+
+export async function openStoredDocument(code) {
+  const previewWindow = window.open('', '_blank');
+  try {
+    const res = await fetch(`${API_URL}/documents/${encodeURIComponent(code)}/download`, {
+      headers: { ...authHeaders() }
+    });
+    if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+    if (!res.ok) throw new Error('Ouverture du document impossible');
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    if (previewWindow) previewWindow.location.replace(objectUrl);
+    else window.open(objectUrl, '_blank', 'noopener,noreferrer');
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5 * 60 * 1000);
+  } catch (error) {
+    if (previewWindow) previewWindow.close();
+    throw error;
+  }
+}

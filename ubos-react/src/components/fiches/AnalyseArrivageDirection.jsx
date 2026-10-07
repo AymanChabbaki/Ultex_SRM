@@ -9,6 +9,7 @@ import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
+import { openStoredDocument } from '../../services/api';
 import {
   LIMEX_DIRECTION_SECTIONS,
   LIMEX_DIRECTION_STATUSES,
@@ -79,6 +80,8 @@ export default function AnalyseArrivageDirection({ arrivage }) {
   const clientsCount = context.clients.length;
   const productsCount = context.lines.length || (arrivage.produitSource ? 1 : 0);
   const statusText = canEdit ? 'Analyse en cours' : (draft.status || arrivage.circuitValidation || 'Consultation');
+  const selectedProductIndex = Math.min(Number(draft.selectedProductIndex || 0), Math.max(0, context.lines.length - 1));
+  const selectedProduct = context.lines[selectedProductIndex];
 
   const updateDraft = patch => setDraft(current => ({ ...current, ...patch }));
   const updateControl = (itemId, patch) => setDraft(current => ({
@@ -91,6 +94,61 @@ export default function AnalyseArrivageDirection({ arrivage }) {
       },
     },
   }));
+
+  const openDocument = async document => {
+    if (!document) {
+      toast('Document introuvable.');
+      return;
+    }
+    try {
+      const directUrl = document.url || (String(document.fichier || '').startsWith('data:') ? document.fichier : '');
+      if (directUrl) {
+        window.open(directUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      if (document.storagePath) {
+        await openStoredDocument(document.code);
+        return;
+      }
+      toast(`Aucun fichier n'est attaché à « ${document.nom || document.code} ».`);
+    } catch (error) {
+      toast(error.message || "Impossible d'ouvrir le document.");
+    }
+  };
+
+  const requestComplement = item => {
+    if (!canEdit) return;
+    const control = draft.controls?.[section.id]?.[item.id] || {};
+    const exists = (draft.complementRequests || []).some(request => request.sectionId === section.id && request.itemId === item.id && request.status !== 'Reçu');
+    if (exists) {
+      toast('Une demande active existe déjà pour ce point.');
+      return;
+    }
+    const request = {
+      id: `CMP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      sectionId: section.id,
+      section: section.title,
+      itemId: item.id,
+      label: item.label,
+      detail: control.observation || `Compléter : ${item.label}`,
+      status: 'En attente',
+      requestedBy: userCourant,
+      requestedAt: new Date().toISOString(),
+    };
+    setDraft(current => ({
+      ...current,
+      complementRequests: [...(current.complementRequests || []), request],
+      complements: [current.complements, `• ${request.detail}`].filter(Boolean).join('\n'),
+      controls: {
+        ...current.controls,
+        [section.id]: {
+          ...current.controls?.[section.id],
+          [item.id]: { ...current.controls?.[section.id]?.[item.id], status: 'À recevoir' },
+        },
+      },
+    }));
+    toast(`Demande ajoutée : ${item.label}`);
+  };
 
   const analysisRecord = (source, status = source.status || 'Brouillon') => {
     const now = new Date().toISOString();
@@ -256,6 +314,30 @@ export default function AnalyseArrivageDirection({ arrivage }) {
         </aside>
 
         <main className="limex-analysis-main">
+          {section.id === 'technique' && context.lines.length > 0 && (
+            <section className="limex-product-review">
+              <header>
+                <div>
+                  <small>VÉRIFICATION PAR PRODUIT</small>
+                  <h3>{selectedProduct?.nomProduit || selectedProduct?.produit || `Produit ${selectedProductIndex + 1}`}</h3>
+                </div>
+                <label>
+                  Produit
+                  <select value={selectedProductIndex} disabled={!canEdit} onChange={event => updateDraft({ selectedProductIndex: Number(event.target.value) })}>
+                    {context.lines.map((line, index) => <option key={`${line.commande.code}-${line.code || index}`} value={index}>{index + 1} / {context.lines.length} · {line.nomProduit || line.produit || 'Produit'}</option>)}
+                  </select>
+                </label>
+              </header>
+              <div className="limex-product-grid">
+                <div><span>Commande</span><b>{selectedProduct?.commande?.referenceMetier || selectedProduct?.commande?.code || '—'}</b></div>
+                <div><span>Désignation technique</span><b>{selectedProduct?.designationTechnique || selectedProduct?.description || '—'}</b></div>
+                <div><span>Quantité</span><b>{selectedProduct?.quantite || '—'} {selectedProduct?.unite || ''}</b></div>
+                <div><span>HS Code proposé</span><b>{selectedProduct?.hsCode || selectedProduct?.hs_code || '—'}</b></div>
+                <div><span>Incoterm</span><b>{selectedProduct?.incoterm || context.incoterms || '—'}</b></div>
+                <div><span>Fournisseur</span><b>{context.suppliers.find(item => item.code === selectedProduct?.fournisseur)?.nom || selectedProduct?.fournisseur || '—'}</b></div>
+              </div>
+            </section>
+          )}
           <section className="limex-section-card">
             <header>
               <div>
@@ -266,7 +348,7 @@ export default function AnalyseArrivageDirection({ arrivage }) {
             </header>
             <div className="limex-control-table-wrap">
               <table className="limex-control-table">
-                <thead><tr><th>#</th><th>Point de contrôle</th><th>Information actuelle</th><th>Statut</th><th>Observation / Directive</th><th>Document</th></tr></thead>
+                <thead><tr><th>#</th><th>Point de contrôle</th><th>Information actuelle</th><th>Statut</th><th>Observation / Directive</th><th>Document</th><th>Action</th></tr></thead>
                 <tbody>
                   {section.items.map((item, index) => {
                     const control = sectionControls[item.id] || {};
@@ -286,7 +368,12 @@ export default function AnalyseArrivageDirection({ arrivage }) {
                             <option value="">—</option>
                             {context.documents.map(document => <option key={document.code} value={document.code}>{document.nom || document.code}</option>)}
                           </select>
-                          {control.documentCode && <a className="limex-document-link" href={`#ficheDocument:${control.documentCode}`}>Voir</a>}
+                          {control.documentCode && <button type="button" className="limex-document-link" onClick={() => openDocument(context.documents.find(document => document.code === control.documentCode))}>Voir</button>}
+                        </td>
+                        <td>
+                          {control.documentCode
+                            ? <button type="button" className="btn mini doux" onClick={() => openDocument(context.documents.find(document => document.code === control.documentCode))}>Voir</button>
+                            : <button type="button" className="btn mini" disabled={!canEdit} onClick={() => requestComplement(item)}>Demander</button>}
                         </td>
                       </tr>
                     );
@@ -302,25 +389,37 @@ export default function AnalyseArrivageDirection({ arrivage }) {
             <header><h3>Documents liés</h3>{peut('ajouter') && <button className="btn mini" onClick={() => setShowDocumentForm(true)}>+ Ajouter</button>}</header>
             <div className="limex-document-list">
               {context.documents.length ? context.documents.slice(0, 8).map(document => (
-                <a key={document.code} href={`#ficheDocument:${document.code}`}>
+                <div key={document.code} className="limex-document-row">
                   <FileText size={17} /><span><b>{document.nom || document.code}</b><small>{document.type || 'Document'} · {displayDate(document.dateDocument || document.createdAt)}</small></span>{statusLabel(document.statut || 'Reçu')}
-                </a>
+                  <button type="button" className="btn mini doux" onClick={() => openDocument(document)}>Voir</button>
+                </div>
               )) : <p className="limex-empty">Aucun document lié.</p>}
             </div>
             {context.documents.length > 8 && <button className="limex-text-button" onClick={() => setActiveTab('documents')}>Voir tous les documents ({context.documents.length}) →</button>}
           </section>
           <section>
-            <header><h3><AlertTriangle size={17} /> Informations manquantes</h3></header>
-            <div className="limex-missing-list">
-              {missing.length ? missing.slice(0, 7).map(item => (
-                <button key={`${item.sectionId}-${item.label}`} onClick={() => changeSection(LIMEX_DIRECTION_SECTIONS.findIndex(sectionItem => sectionItem.id === item.sectionId))}>
-                  <span>{item.label}</span>{statusLabel(item.status)}
+            <header><h3><AlertTriangle size={17} /> Demandes de complément</h3><button className="btn mini" disabled={!canEdit} onClick={() => updateDraft({ complements: `${draft.complements || ''}${draft.complements ? '\n' : ''}• ` })}>+ Nouvelle demande</button></header>
+            <div className="limex-request-list">
+              {(draft.complementRequests || []).length ? (draft.complementRequests || []).slice().reverse().map(request => (
+                <button key={request.id} onClick={() => changeSection(LIMEX_DIRECTION_SECTIONS.findIndex(sectionItem => sectionItem.id === request.sectionId))}>
+                  <span><b>{request.label}</b><small>{request.requestedBy || 'Direction'} · {displayDate(request.requestedAt)}</small></span>{statusLabel(request.status)}
                 </button>
-              )) : <p className="limex-empty">Aucun manque identifié.</p>}
+              )) : <p className="limex-empty">Aucune demande créée. Utilisez « Demander » sur un point de contrôle.</p>}
             </div>
           </section>
         </aside>
       </div>
+
+      <section className="limex-missing-strip">
+        <header><h3><AlertTriangle size={18} /> Informations manquantes détectées</h3><b>{missing.length}</b></header>
+        <div>
+          {missing.length ? missing.map(item => (
+            <button key={`${item.sectionId}-${item.label}`} onClick={() => changeSection(LIMEX_DIRECTION_SECTIONS.findIndex(sectionItem => sectionItem.id === item.sectionId))}>
+              <span>{item.label}</span>{statusLabel(item.status)}
+            </button>
+          )) : <p>Aucune information manquante détectée.</p>}
+        </div>
+      </section>
 
       <section className="limex-direction-form">
         <h3>Analyse Direction</h3>
@@ -365,6 +464,20 @@ export default function AnalyseArrivageDirection({ arrivage }) {
         </div>
       </section>
 
+      <section className="limex-validation-card">
+        <h3>Contrôle & validation</h3>
+        <div>
+          <label>Validation Direction
+            <select value={draft.directionValidation || 'En attente'} disabled={!canEdit} onChange={event => updateDraft({ directionValidation: event.target.value })}>
+              {['En attente', 'Analysé', 'Complément requis', 'Validé sous réserve', 'Bloqué'].map(value => <option key={value}>{value}</option>)}
+            </select>
+          </label>
+          <label>Analysé par<input value={draft.analysePar || userCourant || ''} disabled /></label>
+          <label>Date d'analyse<input value={draft.dateAnalyse ? String(draft.dateAnalyse).slice(0, 10) : new Date().toISOString().slice(0, 10)} disabled /></label>
+          <label>État du circuit<input value={arrivage.circuitValidation || '—'} disabled /></label>
+        </div>
+      </section>
+
       <section className="limex-summary-card">
         <h3>Synthèse de l'analyse LIMEX (Direction)</h3>
         <div className="limex-summary-kpis">
@@ -379,6 +492,23 @@ export default function AnalyseArrivageDirection({ arrivage }) {
           <label>Principales observations<textarea rows="5" value={draft.mainObservations || ''} disabled={!canEdit} onChange={event => updateDraft({ mainObservations: event.target.value })} /></label>
           <label>Décisions / Conditions Direction<textarea rows="5" value={draft.directionDecisions || ''} disabled={!canEdit} onChange={event => updateDraft({ directionDecisions: event.target.value })} /></label>
           <label>Risques identifiés<textarea rows="5" value={draft.identifiedRisks || ''} disabled={!canEdit} onChange={event => updateDraft({ identifiedRisks: event.target.value })} /></label>
+        </div>
+      </section>
+
+      <section className="limex-decision-card">
+        <div>
+          <h3>Décision Direction requise</h3>
+          <label><input type="checkbox" checked={Boolean(draft.decisionApproved)} disabled={!canEdit} onChange={event => updateDraft({ decisionApproved: event.target.checked })} /> Autoriser l'engagement après levée des corrections et réception des documents requis</label>
+          <textarea rows="3" value={draft.decisionRequired || ''} disabled={!canEdit} onChange={event => updateDraft({ decisionRequired: event.target.value })} placeholder="Décision, réserves ou conditions obligatoires…" />
+        </div>
+        <div className="limex-execution-plan">
+          <h3>Plan d'exécution proposé</h3>
+          <div>
+            <article><b>Yasser · Approvisionnement</b><span>Confirmer production, fournisseur et documents manquants.</span></article>
+            <article><b>Imane · Coordination</b><span>Centraliser les compléments et revérifier la conformité globale.</span></article>
+            <article><b>Transport</b><span>Valider la cotation, la réservation, le départ et le suivi.</span></article>
+            <article><b>Direction</b><span>Lever les blocages et autoriser l'engagement final.</span></article>
+          </div>
         </div>
       </section>
 
@@ -406,7 +536,7 @@ export default function AnalyseArrivageDirection({ arrivage }) {
       <section className="limex-tab-card"><h3>Fournisseurs concernés</h3><table><thead><tr><th>Code</th><th>Fournisseur</th><th>Pays / ville</th><th>Contact</th><th>Téléphone</th><th>Email</th></tr></thead><tbody>{context.suppliers.map(supplier => <tr key={supplier.code}><td>{supplier.code}</td><td>{supplier.nom || supplier.raisonSociale || '—'}</td><td>{[supplier.ville, supplier.pays].filter(Boolean).join(', ') || '—'}</td><td>{supplier.contact || '—'}</td><td>{supplier.telephone || '—'}</td><td>{supplier.email || '—'}</td></tr>)}</tbody></table></section>
     );
     if (activeTab === 'documents') return (
-      <section className="limex-tab-card"><div className="limex-tab-title"><h3>Documents liés</h3>{peut('ajouter') && <button className="btn mini" onClick={() => setShowDocumentForm(true)}>+ Ajouter</button>}</div><table><thead><tr><th>Document</th><th>Catégorie</th><th>Commande</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>{context.documents.map(document => <tr key={document.code}><td>{document.nom || document.code}</td><td>{document.type || '—'}</td><td>{document.commande || '—'}</td><td>{displayDate(document.dateDocument || document.createdAt)}</td><td>{statusLabel(document.statut || 'Reçu')}</td><td><a className="btn mini doux" href={`#ficheDocument:${document.code}`}>Voir</a></td></tr>)}</tbody></table></section>
+      <section className="limex-tab-card"><div className="limex-tab-title"><h3>Documents liés</h3>{peut('ajouter') && <button className="btn mini" onClick={() => setShowDocumentForm(true)}>+ Ajouter</button>}</div><table><thead><tr><th>Document</th><th>Catégorie</th><th>Commande</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>{context.documents.map(document => <tr key={document.code}><td>{document.nom || document.code}</td><td>{document.type || '—'}</td><td>{document.commande || '—'}</td><td>{displayDate(document.dateDocument || document.createdAt)}</td><td>{statusLabel(document.statut || 'Reçu')}</td><td><button type="button" className="btn mini doux" onClick={() => openDocument(document)}>Voir</button></td></tr>)}</tbody></table></section>
     );
     return (
       <section className="limex-tab-card"><h3>Historique de l'arrivage et de l'analyse</h3><div className="limex-history">{(arrivage.circuitHistorique || []).map(entry => <div key={entry.id || `${entry.date}-${entry.action}`}><span /><p><b>{entry.libelle}</b><small>{displayDateTime(entry.date)} · {entry.auteur || '—'}</small>{entry.note && <em>{entry.note}</em>}</p></div>)}</div></section>
