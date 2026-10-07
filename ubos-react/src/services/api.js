@@ -329,3 +329,27 @@ export async function openStoredDocument(code) {
     throw error;
   }
 }
+
+export async function fetchFacturationTemplates() {
+  const res = await fetch(`${API_URL}/facturation-recus/templates`, { headers: { ...authHeaders() } });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'Impossible de charger les modèles de facturation');
+  return body.items || [];
+}
+
+export async function generateFacturationDocument(templateKey, data) {
+  const res = await fetch(`${API_URL}/facturation-recus/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ templateKey, data }),
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const error = new Error(body.error || 'Impossible de générer le document');
+    error.status = res.status;
+    throw error;
+  }
+  return body;
+}

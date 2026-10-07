@@ -14,6 +14,7 @@ import { createRequire } from 'module';
 import { lLeadHandler } from './sheetsLLeads.js';
 import { reserveNextNumericClientCode } from './clientCodes.js';
 import { serializeCollectionRows } from './dashboardRows.js';
+import { FACTURATION_TEMPLATES, generateFacturationDocx, publicTemplateDefinitions } from './facturationDocuments.js';
 
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
@@ -308,7 +309,8 @@ const COLLS = [
   "demandeLignes", "demandeRoutages", "objectifsData",
   "tacheEtapes", "rapportsJournaliers", "journalSecurite",
   "suivisClosing",
-  "suivisLimex", "actionsLimex", "instructionsLimex", "documentsComptablesCasa"
+  "suivisLimex", "actionsLimex", "instructionsLimex", "documentsComptablesCasa",
+  "facturationRecus"
 ];
 
 // Login only needs identity, notifications, sequences and a short audit tail.
@@ -437,6 +439,18 @@ function userCanAccessV2(user) {
   );
 }
 
+function userCanAccessFacturation(user) {
+  const profile = user?.modulesAutorises || {};
+  const identity = [
+    user?.role,
+    user?.service,
+    profile.departement,
+    ...(Array.isArray(profile.services) ? profile.services : []),
+    ...(Array.isArray(profile.modules) ? profile.modules : []),
+  ].map(value => String(value || '').trim().toLowerCase());
+  return identity.some(value => value.includes('direction') || value === 'commercial' || value === 'facturationrecus');
+}
+
 async function authMiddleware(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
@@ -470,6 +484,20 @@ async function requireWorkflowV2Access(req, res, next) {
   } catch (error) {
     console.error('V2 access check error:', error);
     return res.status(500).json({ error: 'Impossible de vérifier l’accès V2' });
+  }
+}
+
+async function requireFacturationAccess(req, res, next) {
+  try {
+    const user = req.crmUser || await authPrisma.user.findUnique({ where: { id: req.auth.id } });
+    if (!user || !user.actif || !userCanAccessFacturation(user)) {
+      return res.status(403).json({ error: 'Accès réservé au service Commercial et à la Direction' });
+    }
+    req.crmUser = user;
+    return next();
+  } catch (error) {
+    console.error('Facturation access check error:', error);
+    return res.status(500).json({ error: 'Impossible de vérifier l’accès à la facturation' });
   }
 }
 
@@ -1525,6 +1553,114 @@ app.get('/api/documents/:code/download', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Document download error:', error);
     res.status(500).json({ error: 'Erreur lors du téléchargement du document' });
+  }
+});
+
+function nettoyerReferenceDocument(value) {
+  return String(value || '').trim().replace(/[\r\n\t]/g, ' ').slice(0, 80);
+}
+
+async function reserverReferenceFacturation(definition) {
+  const now = new Date();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yy = String(now.getFullYear()).slice(-2);
+  const key = `facturation:${definition.prefix}:${now.getFullYear()}:${mm}`;
+  const counter = await prisma.sequenceCounter.upsert({
+    where: { key },
+    create: { key, val: 1 },
+    update: { val: { increment: 1 } },
+  });
+  return `${definition.prefix}${String(counter.val).padStart(4, '0')}-${mm}${yy}`;
+}
+
+app.get('/api/facturation-recus/templates', authMiddleware, requireFacturationAccess, (_req, res) => {
+  res.json({ items: publicTemplateDefinitions() });
+});
+
+app.post('/api/facturation-recus/generate', authMiddleware, requireFacturationAccess, async (req, res) => {
+  const templateKey = String(req.body?.templateKey || '').trim();
+  const definition = FACTURATION_TEMPLATES[templateKey];
+  if (!definition) return res.status(400).json({ error: 'Modèle de document invalide' });
+
+  const payload = req.body?.data && typeof req.body.data === 'object' && !Array.isArray(req.body.data)
+    ? { ...req.body.data }
+    : {};
+  if (!payload.clientCode || !payload.clientName) {
+    return res.status(400).json({ error: 'Le client et son code sont obligatoires' });
+  }
+  if (Array.isArray(payload.lines) && payload.lines.length > 25) {
+    return res.status(400).json({ error: 'Maximum 25 lignes de livraison' });
+  }
+  if (Array.isArray(payload.items) && payload.items.length > 50) {
+    return res.status(400).json({ error: 'Maximum 50 lignes de facturation' });
+  }
+
+  let absolutePath = '';
+  try {
+    payload.reference = nettoyerReferenceDocument(payload.reference) || await reserverReferenceFacturation(definition);
+    const buffer = await generateFacturationDocx(templateKey, payload);
+    const now = new Date();
+    const year = String(now.getFullYear());
+    const safeReference = payload.reference.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || definition.prefix.replace(/\W/g, '');
+    const fileName = `${safeReference}_${crypto.randomUUID().slice(0, 8)}.docx`;
+    const relativePath = path.posix.join('facturation-recus', year, fileName);
+    absolutePath = path.resolve(UPLOADS_DIR, relativePath);
+    const relativeCheck = path.relative(UPLOADS_DIR, absolutePath);
+    if (relativeCheck.startsWith('..') || path.isAbsolute(relativeCheck)) {
+      return res.status(400).json({ error: 'Chemin de génération invalide' });
+    }
+    await fs.promises.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.promises.writeFile(absolutePath, buffer);
+
+    const suffix = `${Date.now()}${crypto.randomInt(1000, 9999)}`;
+    const documentCode = `DOCF${suffix}`;
+    const recordCode = `FRC${suffix}`;
+    const createdBy = req.crmUser?.nomComplet || req.auth?.nomComplet || req.auth?.identifiant || '—';
+    const createdAt = now.toISOString();
+    const common = {
+      client: payload.clientCode,
+      commande: payload.orderCode || '',
+      demande: payload.requestCode || '',
+      dossier: payload.dossierCode || '',
+      paiement: payload.paymentCode || '',
+      reference: payload.reference,
+      templateKey,
+      famille: definition.family,
+      transport: definition.transport || payload.transportMode || '',
+      auteur: createdBy,
+      dateCreation: createdAt,
+      ts: now.getTime(),
+    };
+    const documentData = {
+      code: documentCode,
+      nom: `${definition.label} — ${payload.reference}.docx`,
+      type: definition.family === 'facture' ? 'Facture' : definition.family === 'livraison' ? 'Bon de livraison' : definition.family === 'recu' ? 'Reçu de paiement' : 'Contrat',
+      typeFichier: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      categorie: definition.family === 'facture' ? 'Facture' : 'Autre',
+      sourceModule: 'facturationRecus',
+      storagePath: relativePath,
+      statut: 'Généré',
+      taille: buffer.length,
+      ...common,
+    };
+    const recordData = {
+      code: recordCode,
+      document: documentCode,
+      libelle: definition.label,
+      statut: 'Généré',
+      montant: definition.family === 'facture' ? Number(payload.totalAmount || 0) : definition.family === 'recu' ? Number(payload.amount || 0) : 0,
+      ...common,
+    };
+
+    await prisma.$transaction([
+      prisma.collectionItem.create({ data: { collection: 'documents', id: documentCode, code: documentCode, dossier: payload.dossierCode || null, data: documentData } }),
+      prisma.collectionItem.create({ data: { collection: 'facturationRecus', id: recordCode, code: recordCode, dossier: payload.dossierCode || null, data: recordData } }),
+    ]);
+    return res.status(201).json({ document: documentData, record: recordData });
+  } catch (error) {
+    if (absolutePath) await fs.promises.rm(absolutePath, { force: true }).catch(() => {});
+    console.error('Facturation document generation error:', error);
+    return res.status(500).json({ error: error.message || 'Impossible de générer le document' });
   }
 });
 

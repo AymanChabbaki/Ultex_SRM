@@ -20,7 +20,8 @@ export function baseVide() {
     demandeLignes: [], demandeRoutages: [], objectifsData: [],
     tacheEtapes: [], rapportsJournaliers: [], journalSecurite: [],
     suivisClosing: [],
-    suivisLimex: [], actionsLimex: [], instructionsLimex: [], documentsComptablesCasa: []
+    suivisLimex: [], actionsLimex: [], instructionsLimex: [], documentsComptablesCasa: [],
+    facturationRecus: []
   };
 }
 

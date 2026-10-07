@@ -1,0 +1,58 @@
+.fr-page { padding-bottom: 28px; }
+.fr-hero { margin: 0 0 16px; padding: 22px 24px; border: 1px solid #dbe5f1; border-radius: 16px; background: linear-gradient(120deg, #f8fbff 0%, #fff 58%, #fff9df 100%); display: flex; justify-content: space-between; align-items: center; gap: 24px; }
+.fr-hero h2 { margin: 4px 0 6px; color: #0a3766; font-size: clamp(20px, 2vw, 29px); }
+.fr-hero p { margin: 0; color: #5c6e82; }
+.fr-eyebrow { color: #b17a00; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.fr-hero-stats { display: flex; gap: 10px; flex-wrap: wrap; }
+.fr-hero-stats span { min-width: 116px; padding: 13px 16px; background: rgba(255,255,255,.86); border: 1px solid #e1e8f0; border-radius: 12px; color: #667589; }
+.fr-hero-stats b { display: block; color: #07569b; font-size: 23px; }
+.fr-family-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+.fr-family-tabs button { border: 1px solid #dae4ef; background: #fff; border-radius: 12px; padding: 14px; display: flex; align-items: center; gap: 10px; text-align: left; color: #4e6074; cursor: pointer; }
+.fr-family-tabs button.active { border-color: #0c65ac; color: #07569b; background: #edf7ff; box-shadow: inset 0 -3px 0 #0c65ac; }
+.fr-family-tabs b, .fr-family-tabs small { display: block; }
+.fr-family-tabs small { margin-top: 2px; color: #8491a2; font-size: 11px; }
+.fr-template-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; margin-bottom: 28px; }
+.fr-template-card { min-height: 86px; padding: 14px; border: 1px solid #dfe7ef; border-radius: 14px; background: #fff; display: grid; grid-template-columns: 46px 1fr auto; gap: 12px; align-items: center; text-align: left; color: #25415f; cursor: pointer; transition: .18s ease; }
+.fr-template-card:hover { border-color: #0c65ac; transform: translateY(-1px); box-shadow: 0 8px 22px rgba(26,72,111,.09); }
+.fr-template-card small { display: block; color: #7f8c9c; margin-top: 4px; }
+.fr-template-icon { width: 46px; height: 46px; border-radius: 12px; background: #edf6ff; color: #0c65ac; display: grid; place-items: center; }
+.fr-history-title { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin: 8px 0 10px; }
+.fr-history-title h3 { margin: 3px 0 0; color: #153958; }
+.fr-history-title input { width: min(360px, 100%); }
+.fr-wizard { padding: 4px 18px 18px; }
+.fr-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+.fr-steps > div { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; border-bottom: 3px solid #dce4ed; color: #8a96a6; font-weight: 700; font-size: 12px; }
+.fr-steps > div.active { color: #07569b; border-color: #0c65ac; }
+.fr-steps span { width: 25px; height: 25px; border-radius: 50%; display: grid; place-items: center; background: #e7edf4; }
+.fr-steps .active span { background: #0c65ac; color: #fff; }
+.fr-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.fr-field { display: flex; flex-direction: column; gap: 6px; }
+.fr-field > span { color: #485c72; font-size: 12px; font-weight: 700; }
+.fr-field input, .fr-field select, .fr-line-editor input, .fr-line-editor select, .fr-history-title input { min-height: 40px; padding: 9px 10px; border: 1px solid #cfd9e4; border-radius: 8px; background: #fff; color: #26394f; }
+.fr-wide { grid-column: 1 / -1; }
+.fr-line-editor { padding: 13px; border: 1px solid #dfe7ef; border-radius: 12px; background: #f8fafc; }
+.fr-line-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.fr-invoice-line { display: grid; grid-template-columns: 140px minmax(200px,1fr) 170px 36px; gap: 8px; margin-top: 8px; }
+.fr-delivery-labels, .fr-delivery-line { display: grid; grid-template-columns: 90px minmax(180px,1.5fr) 100px 100px 80px minmax(130px,1fr) 36px; gap: 7px; align-items: center; }
+.fr-delivery-labels { color: #65758a; font-size: 11px; font-weight: 800; padding: 0 4px 4px; }
+.fr-delivery-line { margin-top: 7px; }
+.fr-icon-btn { width: 34px; height: 34px; border-radius: 8px; border: 1px solid #d7e0e9; background: #fff; display: grid; place-items: center; cursor: pointer; }
+.fr-icon-btn.danger { color: #bf2e37; }
+.fr-preview { max-width: 760px; margin: 0 auto; padding: 26px; border: 1px solid #ced8e3; background: #fff; box-shadow: 0 12px 35px rgba(21,57,88,.1); }
+.fr-preview-brand { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; border-bottom: 2px solid #0b5fa5; color: #0b5fa5; }
+.fr-preview-brand b { font-size: 24px; }
+.fr-preview-brand span { font-weight: 800; font-size: 12px; }
+.fr-preview h3 { text-align: center; color: #173957; margin: 22px 0 18px; }
+.fr-preview-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 18px; }
+.fr-preview-meta span { padding: 8px; background: #f5f8fb; font-size: 12px; }
+.fr-preview-meta b { display: block; color: #718094; font-size: 10px; text-transform: uppercase; }
+.fr-preview table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+.fr-preview th, .fr-preview td { border: 1px solid #ccd6e0; padding: 9px; text-align: left; }
+.fr-preview th { background: #eaf2fb; }
+.fr-preview td:last-child, .fr-preview th:last-child { text-align: right; }
+.fr-preview .fr-total { font-weight: 800; background: #fff9df; }
+.fr-preview small { color: #77879a; }
+.fr-row-actions { display: flex; gap: 5px; white-space: nowrap; }
+.fr-row-actions .btn { display: inline-flex; align-items: center; gap: 4px; }
+@media (max-width: 900px) { .fr-family-tabs { grid-template-columns: repeat(2, 1fr); } .fr-hero { align-items: flex-start; flex-direction: column; } .fr-delivery-labels { display: none; } .fr-delivery-line { grid-template-columns: repeat(2, 1fr); padding: 10px; border: 1px solid #e1e7ee; border-radius: 10px; } }
+@media (max-width: 620px) { .fr-family-tabs, .fr-form-grid, .fr-preview-meta { grid-template-columns: 1fr; } .fr-wide { grid-column: auto; } .fr-invoice-line { grid-template-columns: 1fr; } .fr-history-title { align-items: stretch; flex-direction: column; } }

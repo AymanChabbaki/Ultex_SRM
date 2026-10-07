@@ -20,6 +20,7 @@
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
+    "jszip": "^3.10.2",
     "nodemailer": "^9.0.5",
     "pdf-parse": "^2.4.5",
     "pg": "^8.13.1",
