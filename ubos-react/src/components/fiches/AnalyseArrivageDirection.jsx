@@ -84,6 +84,7 @@ export default function AnalyseArrivageDirection({ arrivage }) {
   const progress = sectionProgress(draft, section.id);
   const summary = summarizeDirectionAnalysis(draft);
   const missing = missingDirectionInformation(draft);
+  const sectionMissing = missing.filter(item => item.sectionId === section.id);
   const createdEntry = [...(arrivage.circuitHistorique || [])].at(-1);
   const clientsCount = context.clients.length;
   const productsCount = context.lines.length || (arrivage.produitSource ? 1 : 0);
@@ -328,7 +329,7 @@ export default function AnalyseArrivageDirection({ arrivage }) {
   const renderAnalysis = () => (
     <>
       <div className="limex-analysis-layout">
-        <aside className="limex-sections-panel">
+        <div className="limex-sections-panel">
           <h3>Rubriques d'analyse</h3>
           {LIMEX_DIRECTION_SECTIONS.map((item, index) => {
             const itemProgress = sectionProgress(draft, item.id);
@@ -340,7 +341,7 @@ export default function AnalyseArrivageDirection({ arrivage }) {
               </button>
             );
           })}
-        </aside>
+        </div>
 
         <main className="limex-analysis-main">
           {section.id === 'technique' && context.lines.length > 0 && (
@@ -413,7 +414,7 @@ export default function AnalyseArrivageDirection({ arrivage }) {
           </section>
         </main>
 
-        <aside className="limex-side-panel">
+        <div className="limex-side-panel">
           <section>
             <header><h3>Documents liés</h3>{peut('ajouter') && <button className="btn mini" onClick={() => setShowDocumentForm(true)}>+ Ajouter</button>}</header>
             <div className="limex-document-list">
@@ -436,17 +437,17 @@ export default function AnalyseArrivageDirection({ arrivage }) {
               )) : <p className="limex-empty">Aucune demande créée. Utilisez « Demander » sur un point de contrôle.</p>}
             </div>
           </section>
-        </aside>
+        </div>
       </div>
 
       <section className="limex-missing-strip">
-        <header><h3><AlertTriangle size={18} /> Informations manquantes détectées</h3><b>{missing.length}</b></header>
+        <header><h3><AlertTriangle size={18} /> Informations manquantes — {section.title}</h3><b>{sectionMissing.length} dans cette phase · {missing.length} au total</b></header>
         <div>
-          {missing.length ? missing.map(item => (
+          {sectionMissing.length ? sectionMissing.slice(0, 10).map(item => (
             <button key={`${item.sectionId}-${item.label}`} onClick={() => changeSection(LIMEX_DIRECTION_SECTIONS.findIndex(sectionItem => sectionItem.id === item.sectionId))}>
               <span>{item.label}</span>{statusLabel(item.status)}
             </button>
-          )) : <p>Aucune information manquante détectée.</p>}
+          )) : <p>Aucune information manquante dans cette phase.</p>}
         </div>
       </section>
 

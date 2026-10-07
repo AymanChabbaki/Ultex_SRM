@@ -196,7 +196,16 @@ export function buildDirectionAnalysisContext(db, arrivage) {
   const supplierCodes = [...new Set(lines.map(line => line.fournisseur).filter(Boolean))];
   const suppliers = supplierCodes.map(code => (db.fournisseurs || []).find(item => item.code === code) || { code, nom: code });
   const commandCodes = new Set(commandes.map(item => item.code));
-  const documents = (db.documents || []).filter(document => document.arrivage === arrivage.code || commandCodes.has(document.commande));
+  const systemFiles = new Set(['thumbs.db', '.ds_store', 'desktop.ini']);
+  const documentKeys = new Set();
+  const documents = (db.documents || []).filter(document => document.arrivage === arrivage.code || commandCodes.has(document.commande)).filter(document => {
+    const name = String(document.nom || '').trim().toLocaleLowerCase('fr');
+    if (systemFiles.has(name)) return false;
+    const key = String(document.code || `${name}|${document.url || document.storagePath || ''}`);
+    if (documentKeys.has(key)) return false;
+    documentKeys.add(key);
+    return true;
+  });
   const payments = (db.paiements || []).filter(payment => commandCodes.has(payment.commande) || (commandes.some(c => c.paiement === payment.code)));
 
   const field = key => joinValues(lines.map(line => line[key]));

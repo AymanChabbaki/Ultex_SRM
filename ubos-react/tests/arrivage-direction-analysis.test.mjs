@@ -74,6 +74,8 @@ test('Direction arrival screen persists analysis and returns the workflow to Ima
   assert.match(source, /Plan d'exécution proposé/);
   assert.match(source, /openDocument\(document\)/);
   assert.doesNotMatch(source, /href=\{`#ficheDocument:/);
+  assert.doesNotMatch(source, /<aside/);
+  assert.match(source, /sectionMissing\.slice\(0, 10\)/);
   assert.match(apiSource, /export async function openStoredDocument/);
   assert.match(arrivalSource, /roleCircuit === 'Direction'/);
   assert.match(appSource, /\['analysesLimex', 'arrivages'/);
