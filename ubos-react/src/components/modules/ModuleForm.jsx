@@ -77,6 +77,11 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
         }
       });
 
+      if (typeof M.apresChangement === 'function') {
+        const patch = M.apresChangement(db, next, k, v, prev) || {};
+        Object.assign(next, patch);
+      }
+
       return next;
     });
   };
@@ -264,6 +269,15 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
         </div>
       )}
       <div className="corps">
+        {moduleId === 'arrivages' && formData._prefill && activeStep === 0 && (
+          <div className="champ large" style={{ background: 'var(--fond-jaune)', border: '1px solid var(--or)', borderRadius: '10px', padding: '12px' }}>
+            <b>Données récupérées automatiquement</b>
+            <div style={{ marginTop: '6px', color: 'var(--gris)' }}>
+              {formData._prefill.commandes} commande(s) · {formData._prefill.clients} client(s) · {formData._prefill.produits} produit(s) · {formData._prefill.fournisseurs} fournisseur(s) · {formData._prefill.documents} document(s) · {formData._prefill.paiements} paiement(s)
+            </div>
+            <small>Les informations réellement nouvelles de l'expédition (ETA, BL/AWB, conteneur, compagnie et suivi) restent à compléter.</small>
+          </div>
+        )}
         {visibleChamps.map((f, i) => (
           <FormField
             key={f.k || i}

@@ -71,6 +71,154 @@ export function notificationsNouvelleCommande(db, commande) {
     .map(dest => ({ dest, message, module: 'Commandes / LIMEX' }));
 }
 
+const valeursUniques = values => [...new Set(values
+  .flatMap(value => Array.isArray(value) ? value : [value])
+  .map(value => String(value ?? '').trim())
+  .filter(Boolean))];
+
+const joindre = (values, separator = ' · ') => valeursUniques(values).join(separator);
+
+const premiereValeur = (...values) => values.find(value => String(value ?? '').trim()) ?? '';
+
+const dateISO = value => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value).slice(0, 10);
+  return parsed.toISOString().slice(0, 10);
+};
+
+const premiereDate = values => valeursUniques(values).map(dateISO).filter(Boolean).sort()[0] || '';
+const derniereDate = values => valeursUniques(values).map(dateISO).filter(Boolean).sort().at(-1) || '';
+
+const nombre = value => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatNombre = value => Number(value || 0).toLocaleString('fr-FR', {
+  minimumFractionDigits: Number(value || 0) % 1 ? 2 : 0,
+  maximumFractionDigits: 2,
+});
+
+export function lignesArrivageDepuisCommandes(db, commandes) {
+  return commandes.flatMap(commande => {
+    const demandeCode = commande.demande || commande.source_demande_id;
+    const lignesDemande = (db?.demandeLignes || []).filter(ligne => ligne.demande === demandeCode);
+    const lignesCommande = Array.isArray(commande.lignes) ? commande.lignes : [];
+    if (!lignesCommande.length) return lignesDemande.map(ligne => ({ ...ligne, commandeCode: commande.code }));
+
+    return lignesCommande.map((ligne, index) => {
+      const identifiants = [ligne.code, ligne.id, ligne.idTechniqueSource, ligne.referenceMetier, ligne.reference]
+        .map(normaliserIdentite).filter(Boolean);
+      const ligneDemande = lignesDemande.find(candidate => {
+        const candidats = [candidate.code, candidate.id, candidate.idTechniqueSource, candidate.referenceMetier, candidate.reference]
+          .map(normaliserIdentite).filter(Boolean);
+        return candidats.some(value => identifiants.includes(value));
+      }) || lignesDemande[index] || {};
+      // La commande est prioritaire pour les valeurs commerciales finales,
+      // tandis que la demande complète les données techniques/logistiques.
+      return { ...ligneDemande, ...ligne, commandeCode: commande.code };
+    });
+  });
+}
+
+/**
+ * Agrège les données déjà connues par UBOS quand une ou plusieurs commandes
+ * sont rattachées à un arrivage. Les champs purement logistiques (ETA, BL,
+ * conteneur, compagnie réelle...) restent volontairement à compléter.
+ */
+export function prefillArrivageDepuisCommandes(db, commandeCodes = [], courant = {}) {
+  const codes = new Set(Array.isArray(commandeCodes) ? commandeCodes : []);
+  const commandes = (db?.commandes || []).filter(commande => codes.has(commande.code));
+  if (!commandes.length) return {};
+
+  const demandes = valeursUniques(commandes.map(commande => commande.demande || commande.source_demande_id))
+    .map(code => (db?.demandes || []).find(demande => demande.code === code))
+    .filter(Boolean);
+  const clients = valeursUniques(commandes.map(commande => commande.client))
+    .map(code => (db?.clients || []).find(client => client.code === code) || { code, nom: code })
+    .filter(Boolean);
+  const lignes = lignesArrivageDepuisCommandes(db, commandes);
+  const paiements = (db?.paiements || []).filter(paiement => {
+    if (codes.has(paiement.commande)) return true;
+    if (commandes.some(commande => commande.paiement === paiement.code || (commande.paiementCodes || []).includes(paiement.code))) return true;
+    return demandes.some(demande => paiement.demande === demande.code);
+  });
+  const documents = (db?.documents || []).filter(document => {
+    if (codes.has(document.commande)) return true;
+    if (demandes.some(demande => document.demande === demande.code)) return true;
+    return lignes.some(ligne => document.ligneDemande === ligne.code);
+  });
+  const fournisseurs = valeursUniques(lignes.map(ligne => ligne.fournisseur))
+    .map(code => (db?.fournisseurs || []).find(fournisseur => fournisseur.code === code) || { code, nom: code });
+
+  const totalPoids = lignes.reduce((somme, ligne) => somme + nombre(ligne.poidsBrutTotal || ligne.poids), 0);
+  const totalCbm = lignes.reduce((somme, ligne) => somme + nombre(ligne.cbmTotal || ligne.cbm), 0);
+  const montantDevis = commandes.reduce((somme, commande) => somme + nombre(
+    commande.totalImporteMad || commande.totalImporte || commande.calculValideMontantMad || commande.montantTotal || commande.valeurMarchandise,
+  ), 0);
+  const produits = joindre(lignes.map(ligne => premiereValeur(
+    ligne.nomProduit, ligne.produit, ligne.designationTechnique, ligne.description,
+  )), ' ; ') || joindre(demandes.map(demande => demande.objectifGeneral), ' ; ');
+  const modes = valeursUniques([
+    ...commandes.map(commande => commande.modeTransport),
+    ...lignes.map(ligne => ligne.modeTransportSouhaite || ligne.modeTransport),
+  ]);
+  const incoterms = valeursUniques([
+    ...commandes.map(commande => commande.incoterm),
+    ...lignes.map(ligne => ligne.incoterm),
+  ]);
+  const packages = valeursUniques(commandes.map(commande => commande.formuleUltex));
+  const paysOrigine = valeursUniques(lignes.map(ligne => ligne.paysOrigine || ligne.paysFournisseur));
+  const villesEnlevement = valeursUniques(lignes.map(ligne => ligne.adresseEnlevement || ligne.villeFournisseur));
+  const portsDepart = valeursUniques(lignes.map(ligne => ligne.portProbable));
+  const proformas = valeursUniques([
+    ...commandes.map(commande => commande.numeroProforma || commande.referenceProforma),
+    ...documents.filter(document => /proforma|invoice|facture fournisseur/i.test(`${document.type || ''} ${document.nom || ''}`))
+      .map(document => document.nom || document.code),
+  ]);
+  const modesPaiement = valeursUniques(paiements.map(paiement => paiement.modePaiement || paiement.mode));
+  const sens = valeursUniques(demandes.map(demande => demande.sensOperation));
+  const references = commandes.map(commande => commande.referenceMetier || commande.code);
+
+  const volumePoids = [
+    totalCbm > 0 ? `${formatNombre(totalCbm)} CBM` : '',
+    totalPoids > 0 ? `${formatNombre(totalPoids)} kg` : '',
+  ].filter(Boolean).join(' · ');
+
+  return {
+    nomInterne: courant.nomInterne || `${joindre(references, ' + ')} — ${joindre(clients.map(client => client.nom || client.code), ' / ')}`,
+    codeClientSource: joindre(clients.map(client => client.codeClientUltex || client.code), ' / '),
+    nomClientSource: joindre(clients.map(client => client.nom || client.raisonSociale || client.code), ' / '),
+    produitSource: produits,
+    incotermSource: joindre(incoterms, ' / '),
+    serviceSource: joindre(packages.length ? packages : demandes.map(demande => demande.typeDemande), ' / '),
+    dateConfirmationSource: premiereDate(commandes.map(commande => commande.dateConfirmation || commande.dateCommande)),
+    totalImporteSource: montantDevis > 0 ? `${formatNombre(montantDevis)} MAD` : '',
+    dateEngagementSource: premiereDate(commandes.map(commande => commande.dateEngagement || commande.dateConversionWorkflow || commande.dateConfirmation)),
+    datePaiementSource: derniereDate(paiements.map(paiement => paiement.datePaiementEffectif || paiement.date || paiement.ts)),
+    modePaiementSource: joindre(modesPaiement, ' / '),
+    numeroProformaSource: joindre(proformas, ' / '),
+    volumePoidsSource: volumePoids,
+    type: sens.length === 1 ? sens[0] : (courant.type || 'Import'),
+    formuleDominante: packages.length === 1 ? packages[0] : joindre(packages, ' / '),
+    modeTransport: modes.length === 1 ? modes[0] : joindre(modes, ' / '),
+    paysOrigine: joindre(paysOrigine, ' / '),
+    villeEnlevement: joindre(villesEnlevement, ' / '),
+    portDepart: joindre(portsDepart, ' / '),
+    portArrivee: courant.portArrivee || joindre(demandes.map(demande => demande.villeDestination), ' / '),
+    typeConteneur: courant.typeConteneur || joindre(lignes.map(ligne => ligne.typeConteneur || ligne.conteneur), ' / '),
+    _prefill: {
+      commandes: commandes.length,
+      clients: clients.length,
+      produits: lignes.length,
+      fournisseurs: fournisseurs.length,
+      documents: documents.length,
+      paiements: paiements.length,
+    },
+  };
+}
+
 export function roleRevueArrivage(session) {
   if (!session) return '';
   if (session.departement === 'Direction' || (session.services || []).includes('Direction')) return 'Direction';

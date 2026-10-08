@@ -19,7 +19,8 @@ import { genererControlesDossier } from '../utils/limex';
 import { construireMessageTache } from '../utils/tachesPilotage';
 import { construireMessageSuiviClosing, enregistrerCalculTermine } from '../utils/closingCoordination';
 import {
-  destinataireImane, initialiserRevueArrivage, notificationsNouvelleCommande
+  destinataireImane, initialiserRevueArrivage, notificationsNouvelleCommande,
+  prefillArrivageDepuisCommandes
 } from '../utils/arrivageWorkflow';
 import {
   LayoutDashboard, Contact2, Building2, Archive, ClipboardEdit, ShoppingCart, FolderKanban,
@@ -608,6 +609,9 @@ certifs:{label:"Certification & Organismes", ic:Award, grp:"Opérations", coll:"
  cols:[["dossier","Dossier",v=>`<span class="pill p-gris">${esc(v||"—")}</span>`],["organisme","Organisme",v=>pill(v||"—","p-or")],["responsable","Responsable"],["echeance","Échéance",(v,o)=>{if(!v)return "—";const j=Math.ceil((new Date(v)-Date.now())/864e5);return esc(v)+" "+(j<0&&o.statut!=="Obtenue"?pill("Dépassée","p-rouge"):j<=7&&o.statut!=="Obtenue"?pill(j+" j","p-ambre"):"")}],["statut","Statut",v=>pillStatut(v==="Obtenue"?"Validé":v==="Refusée"?"Rejeté":v)]]},
 
 arrivages:{label:"Arrivages", ic:Anchor, grp:"LIMEX", coll:"arrivages", pfx:"ARR", statut:"statut",
+ apresChangement: (DB, formData, champ, valeur) => champ === "commandes"
+  ? prefillArrivageDepuisCommandes(DB, valeur, formData._prefill ? { ...formData, nomInterne: "" } : formData)
+  : {},
  etapes:{
   "Commandes liées":["commandes"],
   "Identification & source":["ancienNumero","nomInterne","codeClientSource","nomClientSource","produitSource","incotermSource","serviceSource","dateConfirmationSource","totalImporteSource","dateEngagementSource","datePaiementSource","modePaiementSource","numeroProformaSource","volumePoidsSource"],
@@ -616,7 +620,7 @@ arrivages:{label:"Arrivages", ic:Anchor, grp:"LIMEX", coll:"arrivages", pfx:"ARR
   "Suivi LIMEX":["statut","niveauRisque","actionSuivante","respActionSuivante","echeanceActionSuivante","remarques"]
  },
  champs:[
-  {k:"commandes",l:"Commandes à rattacher à cet arrivage",t:"multiref",coll:"commandes",cle:"referenceMetier",req:1,large:1,aide:"Sélectionnez une ou plusieurs commandes. Une commande déjà liée à un autre arrivage est masquée.",filterOptions:(commande,formData,DB)=>commande.statut!=="Annulée"&&!(DB.arrivages||[]).some(arrivage=>arrivage.code!==formData.code&&(arrivage.commandes||[]).includes(commande.code)),formatOption:(commande,DB)=>{const client=(DB.clients||[]).find(item=>item.code===commande.client);return `${commande.referenceMetier||commande.code} · ${client?.nom||commande.client||"Client non renseigné"}`;}},
+  {k:"commandes",l:"Commandes à rattacher à cet arrivage",t:"multiref",coll:"commandes",cle:"referenceMetier",req:1,large:1,aide:"Sélectionnez une ou plusieurs commandes. Le client, la demande, les produits, fournisseurs, montants, paiements, documents et données transport déjà connus seront repris automatiquement. Une commande déjà liée à un autre arrivage est masquée.",filterOptions:(commande,formData,DB)=>commande.statut!=="Annulée"&&!(DB.arrivages||[]).some(arrivage=>arrivage.code!==formData.code&&(arrivage.commandes||[]).includes(commande.code)),formatOption:(commande,DB)=>{const client=(DB.clients||[]).find(item=>item.code===commande.client);return `${commande.referenceMetier||commande.code} · ${client?.nom||commande.client||"Client non renseigné"}`;}},
   {k:"ancienNumero",l:"Ancien numéro d'arrivage",t:"text",aide:"Recherchable — ex. Arrivage 39, Arrivage 120."},
   {k:"nomInterne",l:"Nom interne de l'arrivage",t:"text"},
   {k:"codeClientSource",l:"Code client source",t:"text"},
@@ -636,7 +640,7 @@ arrivages:{label:"Arrivages", ic:Anchor, grp:"LIMEX", coll:"arrivages", pfx:"ARR
   {k:"trackingSource",l:"N° suivi source",t:"text"},
   {k:"dateSortieSource",l:"Date de sortie source",t:"date"},
   {k:"responsableLimex",l:"Responsable LIMEX",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB)},
-  {k:"type",l:"Type",t:"select",opts:["Import","Export","National"]},
+  {k:"type",l:"Type",t:"select",opts:["Import","Export","Accompagnement","National"]},
   {k:"formuleDominante",l:"Formule dominante",t:"select",opts:FORMULES_ULTEX},
   {k:"modeTransport",l:"Mode de transport",t:"select",opts:()=>CATEGORIES_TRANSPORT.flatMap(cat=>MODES_TRANSPORT_DETAIL[cat].map(s=>cat+" — "+s))},
   {k:"paysOrigine",l:"Pays d'origine",t:"pays"},
@@ -658,6 +662,12 @@ arrivages:{label:"Arrivages", ic:Anchor, grp:"LIMEX", coll:"arrivages", pfx:"ARR
  ],
  avantSauve: (DB, o, ctx) => {
   if (!(o.commandes || []).length) { ctx?.toast("Sélectionnez au moins une commande pour créer l'arrivage."); return false; }
+  delete o._prefill;
+  const prefill = prefillArrivageDepuisCommandes(DB, o.commandes, o);
+  delete prefill._prefill;
+  Object.entries(prefill).forEach(([key, value]) => {
+   if ((o[key] === undefined || o[key] === null || o[key] === "") && value !== "") o[key] = value;
+  });
   if(!o.statut) o.statut = STATUTS_ARRIVAGE[0];
  },
  apresSauve: (DB, o, ancien, ctx) => {

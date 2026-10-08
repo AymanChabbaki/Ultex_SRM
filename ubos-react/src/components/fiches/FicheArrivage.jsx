@@ -13,7 +13,8 @@ import { MODS } from '../../data/modules';
 import { pill } from '../../utils/format';
 import {
   ACTIONS_REVUE_ARRIVAGE, actionsRevueArrivage, destinataireImane, destinataireYasser,
-  ETATS_REVUE_ARRIVAGE, roleRevueArrivage, transitionRevueArrivage
+  ETATS_REVUE_ARRIVAGE, prefillArrivageDepuisCommandes, roleRevueArrivage,
+  transitionRevueArrivage
 } from '../../utils/arrivageWorkflow';
 
 const FRAIS_CHAMPS = [
@@ -96,7 +97,9 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
 
   const commandes = db.commandes?.filter(c => arrivage.commandes?.includes(c.code)) || [];
   const commandesDisponibles = db.commandes?.filter(c => !arrivage.commandes?.includes(c.code) && c.statut !== 'Annulée') || [];
-  const documents = db.documents?.filter(d => d.arrivage === code) || [];
+  const demandeCodes = new Set(commandes.map(c => c.demande || c.source_demande_id).filter(Boolean));
+  const commandeCodes = new Set(commandes.map(c => c.code));
+  const documents = (db.documents || []).filter(d => d.arrivage === code || commandeCodes.has(d.commande) || demandeCodes.has(d.demande));
   const roleCircuit = roleRevueArrivage(session);
   const actionsCircuit = actionsRevueArrivage(arrivage, roleCircuit);
   const historiqueCircuit = arrivage.circuitHistorique || [];
@@ -111,12 +114,15 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   const handleAjouterCommande = () => {
     if (!commandeChoisie) { toast('Sélectionnez une commande.'); return; }
     const avant = arrivage.commandes || [];
+    const commandesApres = [...avant, commandeChoisie];
+    const prefill = prefillArrivageDepuisCommandes(db, commandesApres, arrivage);
+    delete prefill._prefill;
     updateDB({
       ...db,
-      arrivages: (db.arrivages || []).map(a => a.code === code ? { ...a, commandes: [...avant, commandeChoisie] } : a),
+      arrivages: (db.arrivages || []).map(a => a.code === code ? { ...a, ...prefill, commandes: commandesApres } : a),
       commandes: (db.commandes || []).map(c => c.code === commandeChoisie ? { ...c, statut: 'En arrivage' } : c)
     });
-    audit('Arrivages', 'Commande ajoutée', code, 'commandes', avant.join(','), [...avant, commandeChoisie].join(','));
+    audit('Arrivages', 'Commande ajoutée', code, 'commandes', avant.join(','), commandesApres.join(','));
     setShowAjouterCommande(false);
     setCommandeChoisie('');
   };
@@ -125,9 +131,11 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
     if (!window.confirm(`Retirer ${commandeCode} de cet arrivage ?`)) return;
     const avant = arrivage.commandes || [];
     const apres = avant.filter(c => c !== commandeCode);
+    const prefill = prefillArrivageDepuisCommandes(db, apres, arrivage);
+    delete prefill._prefill;
     updateDB({
       ...db,
-      arrivages: (db.arrivages || []).map(a => a.code === code ? { ...a, commandes: apres } : a),
+      arrivages: (db.arrivages || []).map(a => a.code === code ? { ...a, ...prefill, commandes: apres } : a),
       commandes: (db.commandes || []).map(c => c.code === commandeCode ? { ...c, statut: 'En traitement' } : c)
     });
     audit('Arrivages', 'Commande retirée', code, 'commandes', avant.join(','), apres.join(','));

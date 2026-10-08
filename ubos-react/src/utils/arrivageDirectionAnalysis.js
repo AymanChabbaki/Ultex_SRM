@@ -1,3 +1,5 @@
+import { lignesArrivageDepuisCommandes } from './arrivageWorkflow';
+
 const joinValues = values => [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))].join(', ');
 
 const firstValue = (...values) => values.find(value => value !== undefined && value !== null && String(value).trim() !== '') || '';
@@ -190,15 +192,24 @@ export const LIMEX_DIRECTION_SECTIONS = [
 
 export function buildDirectionAnalysisContext(db, arrivage) {
   const commandes = (db.commandes || []).filter(item => (arrivage.commandes || []).includes(item.code));
-  const lines = commandes.flatMap(commande => (commande.lignes || []).map(line => ({ ...line, commande })));
+  const commandeParCode = new Map(commandes.map(commande => [commande.code, commande]));
+  const lines = lignesArrivageDepuisCommandes(db, commandes)
+    .map(line => ({ ...line, commande: commandeParCode.get(line.commandeCode) }));
   const clients = [...new Set(commandes.map(commande => commande.client).filter(Boolean))]
     .map(code => (db.clients || []).find(client => client.code === code) || { code, nom: code });
   const supplierCodes = [...new Set(lines.map(line => line.fournisseur).filter(Boolean))];
   const suppliers = supplierCodes.map(code => (db.fournisseurs || []).find(item => item.code === code) || { code, nom: code });
   const commandCodes = new Set(commandes.map(item => item.code));
+  const demandeCodes = new Set(commandes.map(item => item.demande || item.source_demande_id).filter(Boolean));
+  const ligneCodes = new Set(lines.map(item => item.code).filter(Boolean));
   const systemFiles = new Set(['thumbs.db', '.ds_store', 'desktop.ini']);
   const documentKeys = new Set();
-  const documents = (db.documents || []).filter(document => document.arrivage === arrivage.code || commandCodes.has(document.commande)).filter(document => {
+  const documents = (db.documents || []).filter(document => (
+    document.arrivage === arrivage.code
+    || commandCodes.has(document.commande)
+    || demandeCodes.has(document.demande)
+    || ligneCodes.has(document.ligneDemande)
+  )).filter(document => {
     const name = String(document.nom || '').trim().toLocaleLowerCase('fr');
     if (systemFiles.has(name)) return false;
     const key = String(document.code || `${name}|${document.url || document.storagePath || ''}`);
