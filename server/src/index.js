@@ -2344,7 +2344,10 @@ async function upsertCommandeWorkflowConvertie({
     devisAccepteNom: selected.filename || '',
     devisAccepteWorkflowDocumentId: selected.documentId || '',
     devisAccepteDocument: crmDocuments.find(document => document.data?.ultexDocumentId === selected.documentId)?.code || '',
-    calculValide: selected.devisReference || referenceWorkflow || '',
+    // Never substitute the client/dossier code here: it is not a quote
+    // reference. If metadata is temporarily incomplete, leave the field
+    // empty until the selected-document sync repairs it.
+    calculValide: selected.devisReference || selected.filename || '',
     calculValideMontantMad: selected.totalMad ?? null,
     documents: documentCodes.join(', '),
     documentsNoms: documentNames,

@@ -62,11 +62,15 @@ const FicheCommande = ({ codeProp, code: codeFromProp }) => {
     {k: 'demande', l: 'Demande', render: () => commande.demande ? <a href={`#ficheDemande:${commande.demande}`}>{commande.demande}</a> : '—'},
     {k: 'condition', l: 'Condition'},
     {k: 'formuleUltex', l: 'Package commercial'},
-    {k: 'devisAccepte', l: 'Devis', render: (v) => v ? (
-      v.startsWith('data:') || v.startsWith('http')
-        ? <a href={v} target="_blank" rel="noreferrer">Voir la pièce jointe</a>
-        : v
-    ) : '—'},
+    {k: 'devisAccepte', l: 'Devis accepté (pièce jointe)', render: (v) => {
+      if (v && (v.startsWith('data:') || v.startsWith('http'))) {
+        return <a href={v} target="_blank" rel="noreferrer">Ouvrir {commande.devisAccepteNom || 'le devis PDF'}</a>;
+      }
+      if (commande.devisAccepteDocument) {
+        return <a href={`#ficheDocument:${commande.devisAccepteDocument}`}>{commande.devisAccepteNom || commande.devisAccepteDocument}</a>;
+      }
+      return v || commande.devisAccepteNom || '—';
+    }},
     {k: 'calculValide', l: 'Calcul validé (référence)'},
     {k: 'calculValideMontantMad', l: 'Montant du devis validé', render: v => Number(v) > 0 ? `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD` : '—'},
     {k: 'documents', l: 'Documents liés', render: () => {
