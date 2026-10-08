@@ -3,6 +3,7 @@ import { FileText, Receipt, Truck, FileSignature, Plus, Trash2, Download, Eye, C
 import Topbar from '../layout/Topbar';
 import Modal from '../common/Modal';
 import DataTable from '../common/DataTable';
+import SearchableSelect from '../common/SearchableSelect';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -94,14 +95,20 @@ function DeliveryLines({ lines, onChange }) {
 
 function Preview({ template, form }) {
   const total = form.totalAmount !== '' ? Number(form.totalAmount || 0) : (form.items || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const operationItems = (form.items || []).filter(item => item.category !== 'service' && (item.label || item.amount));
+  const serviceItems = (form.items || []).filter(item => item.category === 'service' && (item.label || item.amount));
+  const invoiceRows = [
+    { heading: 'Acompte', items: operationItems, start: 1 },
+    { heading: 'Prestation de service', items: serviceItems, start: operationItems.length + 1 },
+  ];
   return (
     <div className="fr-preview">
       <div className="fr-preview-brand"><b>ULTEx</b><span>{template?.transport ? `FRET ${template.transport.toUpperCase()}` : 'DOCUMENT CLIENT'}</span></div>
       <h3>{template?.label || 'Document'}</h3>
       <div className="fr-preview-meta"><span><b>Référence</b>{form.reference || 'Numérotation automatique'}</span><span><b>Date</b>{form.documentDate || '—'}</span><span><b>Client</b>{form.clientName || '—'} · {form.clientCode || '—'}</span></div>
-      {template?.family === 'facture' && <><p><b>Objet :</b> {form.product || '—'} · {form.originCountry || '—'} → Maroc</p><table><thead><tr><th>Libellé</th><th>Montant</th></tr></thead><tbody>{form.items.filter(item => item.label || item.amount).map((item, index) => <tr key={index}><td>{item.label || '—'}</td><td>{money(item.amount)}</td></tr>)}<tr className="fr-total"><td>Total</td><td>{money(total)}</td></tr></tbody></table></>}
+      {template?.family === 'facture' && <><p><b>Objet :</b> {form.product || '—'} · {form.originCountry || '—'} → Maroc</p><table><thead><tr><th>REF</th><th>LIBELLÉ</th><th>Valeur en MAD</th></tr></thead><tbody>{invoiceRows.map(group => <React.Fragment key={group.heading}><tr><td></td><td style={{ textAlign: 'center', textDecoration: 'underline', fontWeight: 700 }}>{group.heading}</td><td></td></tr>{group.items.map((item, index) => <tr key={`${group.heading}-${index}`}><td>{group.start + index}</td><td>{item.label || '—'}</td><td>{money(item.amount)}</td></tr>)}</React.Fragment>)}<tr className="fr-total"><td colSpan="2">Total en MAD</td><td>{money(total)}</td></tr></tbody></table></>}
       {template?.family === 'recu' && <p>Reçu de <b>{money(form.amount)}</b> pour {form.service || form.product || 'le service sélectionné'}, payé par {form.payerName || form.clientName || '—'} sous forme de {form.paymentMethod || '—'}.</p>}
-      {template?.family === 'livraison' && <table><thead><tr><th>Réf.</th><th>Description</th><th>Commandée</th><th>Livrée</th></tr></thead><tbody>{form.lines.map((line, index) => <tr key={index}><td>{line.reference}</td><td>{line.description || '—'}</td><td>{line.orderedQuantity || '—'} {line.unite}</td><td>{line.deliveredQuantity || '—'} {line.unite}</td></tr>)}</tbody></table>}
+      {template?.family === 'livraison' && <><p><b>Votre commande du :</b> {form.orderDate || '—'}</p><p><b>Adresse de stockage :</b> {form.storageAddress || form.address || '—'}</p><table><thead><tr><th>Référence</th><th>Description</th><th>Quantités commandées</th><th>Quantités livrées</th><th>Observations</th></tr></thead><tbody>{form.lines.map((line, index) => <tr key={index}><td>{line.reference}</td><td>{line.description || '—'}</td><td>{line.orderedQuantity || '—'} {line.unite}</td><td>{line.deliveredQuantity || '—'} {line.unite}</td><td>{line.observations || '—'}</td></tr>)}</tbody></table><p><b>Date de réception :</b> {form.receptionDate || '—'} &nbsp;&nbsp;&nbsp; <b>Colisage :</b></p><table><thead><tr><th>Colis</th><th>Poids</th><th>Les dimensions</th></tr></thead><tbody><tr><td>{form.packages || '—'}</td><td>{form.weight || '—'}</td><td>{form.dimensions || '***'}</td></tr></tbody></table></>}
       {template?.family === 'resiliation' && <p>Résiliation concernant {form.clientName || '—'}, le devis {form.quoteReference || '—'} et le contrat {form.contractReference || '—'}. Avance concernée : {money(form.advanceAmount)}.</p>}
       <small>Le PDF final conserve l’en-tête, les tableaux, les signatures et la mise en page du modèle fourni.</small>
     </div>
@@ -124,7 +131,7 @@ export default function FacturationRecus() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([chargerCollections(['clients', 'commandes', 'demandes', 'paiements', 'documents', 'facturationRecus']), fetchFacturationTemplates()])
+    Promise.all([chargerCollections(['clients', 'commandes', 'demandes', 'demandeLignes', 'paiements', 'documents', 'facturationRecus']), fetchFacturationTemplates()])
       .then(([, items]) => { if (active) setTemplates(items); })
       .catch(error => toast(error.message || 'Impossible de charger le module.'))
       .finally(() => { if (active) setLoading(false); });
@@ -153,8 +160,18 @@ export default function FacturationRecus() {
   const chooseOrder = code => {
     const order = commandes.find(item => item.code === code) || {};
     const demande = (db.demandes || []).find(item => item.code === order.demande) || {};
-    const lines = (order.lignes || []).map((line, index) => ({ reference: line.code || String(index + 1).padStart(5, '0'), description: line.nomProduit || line.designationTechnique || '', orderedQuantity: line.quantite || '', deliveredQuantity: line.quantite || '', unite: line.unite || 'pcs', observations: '' }));
-    setForm(previous => ({ ...previous, orderCode: code, orderReference: order.referenceMetier || code, purchaseOrderReference: order.referenceBonCommande || order.referenceMetier || code, requestCode: order.demande || '', dossierCode: order.dossier || demande.dossier || '', quoteReference: order.referenceDevis || order.devisReference || '', contractReference: order.referenceContrat || '', orderDate: order.dateCommande || order.dateConfirmation || previous.orderDate, product: order.objet || demande.objectifGeneral || lines.map(line => line.description).filter(Boolean).join(', '), originCountry: order.paysOrigine || demande.paysOrigine || previous.originCountry, lines: lines.length ? lines : previous.lines }));
+    const demandeLines = (db.demandeLignes || []).filter(line => line.demande === order.demande);
+    const sourceLines = (order.lignes || []).length ? order.lignes.map((line, index) => {
+      const demandeLine = demandeLines.find(item => item.code === line.code || item.idTechniqueSource === line.idTechniqueSource) || demandeLines[index] || {};
+      return { ...demandeLine, ...line };
+    }) : demandeLines;
+    const lines = sourceLines.map((line, index) => ({ reference: line.code || String(index + 1).padStart(5, '0'), description: line.nomProduit || line.designationTechnique || '', orderedQuantity: line.quantite || '', deliveredQuantity: line.quantite || '', unite: line.unite || 'pcs', observations: line.observations || '' }));
+    const cartons = sourceLines.reduce((sum, line) => sum + Number(line.nbCartons || line.nombreCartons || 0), 0);
+    const poids = sourceLines.reduce((sum, line) => sum + Number(line.poidsBrutTotal || line.poids || 0), 0);
+    const emballages = [...new Set(sourceLines.map(line => line.typeEmballage || line.typeColis).filter(Boolean))];
+    const dimensions = [...new Set(sourceLines.map(line => line.dimensionsCarton || line.dimensions || line.typeConteneur || line.conteneur).filter(Boolean))].join(' · ');
+    const colis = cartons > 0 ? `${cartons} ${emballages[0] || 'colis'}` : (order.packages || '');
+    setForm(previous => ({ ...previous, orderCode: code, orderReference: order.referenceMetier || code, purchaseOrderReference: order.referenceBonCommande || order.referenceMetier || code, requestCode: order.demande || '', dossierCode: order.dossier || demande.dossier || '', quoteReference: order.referenceDevis || order.devisReference || '', contractReference: order.referenceContrat || '', orderDate: order.dateCommande || order.dateConfirmation || previous.orderDate, product: order.objet || demande.objectifGeneral || lines.map(line => line.description).filter(Boolean).join(', '), originCountry: order.paysOrigine || demande.paysOrigine || previous.originCountry, packages: colis || previous.packages, weight: poids > 0 ? `${poids.toLocaleString('fr-FR')} KGS` : previous.weight, dimensions: dimensions || previous.dimensions, lines: lines.length ? lines : previous.lines }));
   };
 
   const choosePayment = code => {
@@ -179,7 +196,16 @@ export default function FacturationRecus() {
   };
 
   const contextFields = <div className="fr-form-grid">
-    <Field label="Client" required wide><select value={form.clientCode} onChange={event => chooseClient(event.target.value)}><option value="">— Sélectionner —</option>{clients.map(client => <option key={client.code} value={client.code}>{client.code} · {client.nom || client.raisonSociale || 'Sans nom'}</option>)}</select></Field>
+    <Field label="Client" required wide>
+      <SearchableSelect
+        id="facturation_client"
+        options={clients.map(client => ({ ...client, nomRecherche: client.nom || client.raisonSociale || 'Sans nom' }))}
+        value={form.clientCode}
+        onChange={chooseClient}
+        labelKey="nomRecherche"
+        placeholder="Tapez le nom ou le code client…"
+      />
+    </Field>
     <Field label="Commande liée"><select value={form.orderCode} onChange={event => chooseOrder(event.target.value)}><option value="">— Facultatif —</option>{commandes.map(order => <option key={order.code} value={order.code}>{order.referenceMetier || order.code}</option>)}</select></Field>
     {selectedTemplate?.family === 'recu' && <Field label="Paiement lié"><select value={form.paymentCode} onChange={event => choosePayment(event.target.value)}><option value="">— Facultatif —</option>{payments.map(payment => <option key={payment.code} value={payment.code}>{payment.code} · {money(payment.montant)}</option>)}</select></Field>}
     <Field label="Nom / raison sociale" value={form.clientName} onChange={value => update('clientName', value)} required /><Field label="Code client" value={form.clientCode} onChange={value => update('clientCode', value)} required />
@@ -191,7 +217,7 @@ export default function FacturationRecus() {
     {selectedTemplate?.family !== 'resiliation' && <Field label="Pays d’origine" value={form.originCountry} onChange={value => update('originCountry', value)} />}
     {selectedTemplate?.family === 'facture' && <><Field label="Objet / produit" value={form.product} onChange={value => update('product', value)} wide />{!selectedTemplate.partial && <Field label="Adresse de stockage" value={form.storageAddress} onChange={value => update('storageAddress', value)} wide />}<InvoiceLines items={form.items} onChange={value => update('items', value)} /><Field label="Total manuel (optionnel)" type="number" value={form.totalAmount} onChange={value => update('totalAmount', value)} placeholder="Calculé depuis les lignes" /><Field label="Banque"><select value={form.bankName === BANKS.bmce.bankName ? 'bmce' : 'cfg'} onChange={event => setForm(previous => ({ ...previous, ...BANKS[event.target.value] }))}><option value="cfg">Banque CFG</option><option value="bmce">BMCE</option></select></Field><Field label="Référence bancaire" value={form.bankReference} onChange={value => update('bankReference', value)} /><Field label="SWIFT" value={form.swift} onChange={value => update('swift', value)} /></>}
     {selectedTemplate?.family === 'recu' && <><Field label="Date du paiement" type="date" value={form.paymentDate} onChange={value => update('paymentDate', value)} /><Field label="Montant reçu — MAD" type="number" value={form.amount} onChange={value => update('amount', value)} required /><Field label="Service" value={form.service} onChange={value => update('service', value)} placeholder="Sourcing, négociation, confirmation…" /><Field label="Produit / objet" value={form.product} onChange={value => update('product', value)} /><Field label="Mode de paiement"><select value={form.paymentMethod} onChange={event => update('paymentMethod', event.target.value)}>{['Virement','Espèces','Chèque','Effet','Carte','Autre'].map(value => <option key={value}>{value}</option>)}</select></Field><Field label="Mode de transport" value={form.transportMode} onChange={value => update('transportMode', value)} />{selectedTemplate.tiers && <Field label="Nom de la personne qui a payé" value={form.payerName} onChange={value => update('payerName', value)} required />}<Field label="Référence devis" value={form.quoteReference} onChange={value => update('quoteReference', value)} /><Field label="Référence contrat" value={form.contractReference} onChange={value => update('contractReference', value)} /></>}
-    {selectedTemplate?.family === 'livraison' && <><Field label="Date de commande / dossier" type="date" value={form.orderDate} onChange={value => update('orderDate', value)} /><Field label="Date de réception" type="date" value={form.receptionDate} onChange={value => update('receptionDate', value)} /><Field label="Adresse de stockage" value={form.storageAddress} onChange={value => update('storageAddress', value)} wide /><DeliveryLines lines={form.lines} onChange={value => update('lines', value)} /><Field label="Colisage" value={form.packaging} onChange={value => update('packaging', value)} /><Field label="Nombre / type de colis" value={form.packages} onChange={value => update('packages', value)} /><Field label="Poids" value={form.weight} onChange={value => update('weight', value)} placeholder="ex. 100 KGS" /><Field label="Dimensions / conteneur" value={form.dimensions} onChange={value => update('dimensions', value)} /></>}
+    {selectedTemplate?.family === 'livraison' && <><Field label="Date de commande / dossier" type="date" value={form.orderDate} onChange={value => update('orderDate', value)} /><Field label="Date de réception" type="date" value={form.receptionDate} onChange={value => update('receptionDate', value)} /><Field label="Adresse de stockage" value={form.storageAddress} onChange={value => update('storageAddress', value)} wide /><DeliveryLines lines={form.lines} onChange={value => update('lines', value)} /><Field label="Colis" value={form.packages} onChange={value => update('packages', value)} placeholder="ex. 11 palettes" /><Field label="Poids" value={form.weight} onChange={value => update('weight', value)} placeholder="ex. 8 538 KGS" /></>}
     {selectedTemplate?.family === 'resiliation' && <><Field label="Référence commande" value={form.orderReference} onChange={value => update('orderReference', value)} /><Field label="Référence devis" value={form.quoteReference} onChange={value => update('quoteReference', value)} /><Field label="Référence bon de commande" value={form.purchaseOrderReference} onChange={value => update('purchaseOrderReference', value)} /><Field label="Référence contrat" value={form.contractReference} onChange={value => update('contractReference', value)} /><Field label="Date de commande" type="date" value={form.orderDate} onChange={value => update('orderDate', value)} /><Field label="Produit / objet" value={form.product} onChange={value => update('product', value)} wide /><Field label="Pays d’origine" value={form.originCountry} onChange={value => update('originCountry', value)} /><Field label="Mode de transport" value={form.transportMode} onChange={value => update('transportMode', value)} /><Field label="Montant de l’avance — MAD" type="number" value={form.advanceAmount} onChange={value => update('advanceAmount', value)} /><Field label="Date du paiement" type="date" value={form.paymentDate} onChange={value => update('paymentDate', value)} /><Field label="Dates / tranches de l’avance" value={form.advanceDates} onChange={value => update('advanceDates', value)} placeholder="ex. le 01/10/2026 en une tranche" wide />{selectedKey === 'resiliation_contrat' && <><Field label="Frais d’engagement — MAD" type="number" value={form.commitmentFee} onChange={value => update('commitmentFee', value)} /><Field label="Délai de remboursement" value={form.refundDelay} onChange={value => update('refundDelay', value)} /><Field label="Lieu de signature" value={form.place} onChange={value => update('place', value)} /></>}</>}
   </div>;
 

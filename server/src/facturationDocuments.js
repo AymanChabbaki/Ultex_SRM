@@ -105,6 +105,18 @@ function replaceByContains(xml, fragment, value, options) {
   return replaceParagraph(xml, text => text.includes(wanted), value, options);
 }
 
+function forceParagraphTextColor(xml, matcher, color) {
+  return xml.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, paragraph => {
+    if (!matcher(normalize(elementText(paragraph)))) return paragraph;
+    return paragraph.replace(/<w:rPr(?:\s[^>]*)?>[\s\S]*?<\/w:rPr>/g, properties => {
+      if (/<w:color(?:\s[^>]*)?\/>/.test(properties)) {
+        return properties.replace(/<w:color(?:\s[^>]*)?\/>/g, `<w:color w:val="${color}"/>`);
+      }
+      return properties.replace('</w:rPr>', `<w:color w:val="${color}"/></w:rPr>`);
+    });
+  });
+}
+
 function mapTable(xml, tableIndex, transform) {
   let index = -1;
   return xml.replace(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g, table => {
@@ -137,24 +149,60 @@ function fillRow(rowXml, values) {
   return values.reduce((xml, value, index) => replaceCell(xml, index, value), rowXml);
 }
 
-function replaceCellWithSingleParagraph(rowXml, cellIndex, value) {
+function cellParagraphs(cellXml) {
+  return [...cellXml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].map(match => match[0]);
+}
+
+function replaceCellParagraphs(rowXml, cellIndex, paragraphs) {
   let index = -1;
   return rowXml.replace(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g, cell => {
     index += 1;
     if (index !== cellIndex) return cell;
     const opening = cell.match(/^<w:tc(?:\s[^>]*)?>/)?.[0] || '<w:tc>';
     const properties = cell.match(/<w:tcPr(?:\s[^>]*)?>[\s\S]*?<\/w:tcPr>/)?.[0] || '';
-    const paragraphs = [...cell.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].map(match => match[0]);
-    const paragraph = paragraphs.find(candidate => /<w:t(?:\s[^>]*)?>/.test(candidate))
-      || paragraphs[0]
-      || '<w:p><w:r><w:t></w:t></w:r></w:p>';
-    return `${opening}${properties}${replaceElementText(paragraph, value)}</w:tc>`;
+    return `${opening}${properties}${paragraphs.join('')}</w:tc>`;
   });
 }
 
-function fillCompactRow(rowXml, values) {
-  const withoutFixedHeight = rowXml.replace(/<w:trHeight(?:\s[^>]*)?\/>/g, '');
-  return values.reduce((xml, value, index) => replaceCellWithSingleParagraph(xml, index, value), withoutFixedHeight);
+function paragraphPrototype(paragraphs, preferredIndex = 0) {
+  const populated = paragraphs.filter(paragraph => normalize(elementText(paragraph)));
+  return populated[preferredIndex] || populated[0] || paragraphs[preferredIndex] || paragraphs[0]
+    || '<w:p><w:r><w:t></w:t></w:r></w:p>';
+}
+
+/** Keep the template's grouped invoice row: one underlined group heading and
+ * aligned multiline values in the REF / LIBELLE / Valeur columns. */
+function fillInvoiceGroupRow(rowXml, heading, items, startReference) {
+  const cells = [...rowXml.matchAll(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g)].map(match => match[0]);
+  if (cells.length < 3) return rowXml;
+
+  const refParagraphs = cellParagraphs(cells[0]);
+  const labelParagraphs = cellParagraphs(cells[1]);
+  const valueParagraphs = cellParagraphs(cells[2]);
+  const refPrototype = paragraphPrototype(refParagraphs);
+  const headingPrototype = paragraphPrototype(labelParagraphs);
+  const labelPrototype = paragraphPrototype(labelParagraphs, 1);
+  const valuePrototype = paragraphPrototype(valueParagraphs);
+  const safeItems = items.length ? items : [{ label: '', amount: '' }];
+
+  const refs = [
+    replaceElementText(refPrototype, ''),
+    ...safeItems.map((_, index) => replaceElementText(refPrototype, items.length ? startReference + index : '')),
+  ];
+  const labels = [
+    replaceElementText(headingPrototype, heading),
+    ...safeItems.map(item => replaceElementText(labelPrototype, item.label || '')),
+  ];
+  const values = [
+    replaceElementText(valuePrototype, ''),
+    ...safeItems.map(item => replaceElementText(valuePrototype, item.label || Number(item.amount) ? formatMoney(item.amount) : '')),
+  ];
+
+  let next = rowXml.replace(/<w:trHeight(?:\s[^>]*)?\/>/g, '');
+  next = replaceCellParagraphs(next, 0, refs);
+  next = replaceCellParagraphs(next, 1, labels);
+  next = replaceCellParagraphs(next, 2, values);
+  return next;
 }
 
 function formatDate(value) {
@@ -174,24 +222,45 @@ function quantity(line, key) {
   return [amount, line?.unite || ''].filter(value => value !== '' && value !== null && value !== undefined).join(' ');
 }
 
-function identityCell(data, compact = false) {
-  const lines = [
-    `À : ${data.clientName || ''}`,
-    data.cin ? `CIN : ${data.cin}` : '',
-    data.ice ? `ICE : ${data.ice}` : '',
-    data.address ? `Adresse : ${data.address}` : '',
-    data.city ? `Ville : ${data.city}` : '',
-    `Code Client : ${data.clientCode || ''}`,
-    `Contact : ${data.phone || ''}`,
-  ].filter(Boolean);
-  return compact ? lines.join('\n') : lines.join('\n');
-}
-
 function fillIdentityTable(xml, data) {
   return mapTable(xml, 0, table => {
     const rows = splitRows(table);
     if (!rows.length) return table;
-    rows[0] = replaceCell(rows[0], 1, identityCell(data));
+    const cells = [...rows[0].matchAll(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g)].map(match => match[0]);
+    if (cells.length < 2) return table;
+    const paragraphs = cellParagraphs(cells[1]);
+    const prototype = index => paragraphs[index] || paragraphPrototype(paragraphs, Math.min(index, 1));
+    const body = [
+      replaceElementText(prototype(0), 'À '),
+      replaceElementText(prototype(1), `Nom du Client : ${data.clientName || ''}`),
+      replaceElementText(prototype(2), ''),
+      replaceElementText(prototype(3), `CIN : ${data.cin || ''}`),
+      replaceElementText(prototype(4), `Adresse : ${[data.address, data.city].filter(Boolean).join(', ')}`),
+      replaceElementText(prototype(5), `Code Client : ${data.clientCode || ''}`),
+      replaceElementText(prototype(6), `Contact : ${data.phone || ''}`),
+    ];
+    rows[0] = replaceCellParagraphs(rows[0], 1, body);
+    return replaceRows(table, rows);
+  });
+}
+
+function fillDeliveryIdentityTable(xml, data) {
+  return mapTable(xml, 0, table => {
+    const rows = splitRows(table);
+    if (!rows.length) return table;
+    const cells = [...rows[0].matchAll(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g)].map(match => match[0]);
+    if (cells.length < 2) return table;
+    const paragraphs = cellParagraphs(cells[1]);
+    const prototype = index => paragraphs[index] || paragraphPrototype(paragraphs, Math.min(index, 1));
+    const body = [
+      replaceElementText(prototype(0), 'A :'),
+      replaceElementText(prototype(1), data.clientName || ''),
+      replaceElementText(prototype(2), `Code client : ${data.clientCode || ''}`),
+      replaceElementText(prototype(3), `Adresse : ${[data.address, data.city].filter(Boolean).join(', ')}`),
+      replaceElementText(prototype(4), `CIN : ${data.cin || ''}`),
+      replaceElementText(prototype(5), `Téléphone : ${data.phone || ''}`),
+    ];
+    rows[0] = replaceCellParagraphs(rows[0], 1, body);
     return replaceRows(table, rows);
   });
 }
@@ -199,6 +268,7 @@ function fillIdentityTable(xml, data) {
 function fillReceipt(xml, data, definition) {
   xml = fillIdentityTable(xml, data);
   xml = replaceByPrefix(xml, 'Reçu de paiement N°', `Reçu de paiement N° : ${data.reference || ''}`);
+  xml = forceParagraphTextColor(xml, text => text.startsWith(normalize('Reçu de paiement N°')), '000000');
   const isConfirmation = definition.prefix === 'IMRPM/A';
   const paymentText = isConfirmation
     ? `La société ULTEx reconnaît avoir reçu le ${formatDate(data.paymentDate)}, la somme de ${formatMoney(data.amount)} de la part du client ${data.clientName || ''} correspondant au service d’importation ${data.product || data.service || ''} en provenance de ${data.originCountry || ''} vers le Maroc par transport ${data.transportMode || ''}, comme il est défini au devis N° ${data.quoteReference || ''} et le contrat de prestation de services N° ${data.contractReference || ''}.`
@@ -236,12 +306,12 @@ function fillCancellationContract(xml, data) {
 }
 
 function fillDelivery(xml, data) {
-  xml = fillIdentityTable(xml, data);
+  xml = fillDeliveryIdentityTable(xml, data);
   xml = replaceByPrefix(xml, 'Bon de livraison N°', `Bon de livraison N° ${data.reference || ''}`);
   xml = replaceByPrefix(xml, 'Votre commande de', `Votre commande du : ${formatDate(data.orderDate)}`);
   xml = replaceByPrefix(xml, 'Votre dossier de', `Votre dossier du : ${formatDate(data.orderDate)}`);
   xml = replaceByPrefix(xml, 'Adresse de stockage', `Adresse de stockage : ${data.storageAddress || data.address || ''}`);
-  xml = replaceByPrefix(xml, 'Date de réception', `Date de réception : ${formatDate(data.receptionDate)}    Colisage : ${data.packaging || ''}`);
+  xml = replaceByPrefix(xml, 'Date de réception', `Date de réception : ${formatDate(data.receptionDate)}                       Colisage :`);
 
   xml = mapTable(xml, 1, table => {
     const rows = splitRows(table);
@@ -257,13 +327,12 @@ function fillDelivery(xml, data) {
       quantity(line, 'deliveredQuantity'),
       line.observations || '',
     ]));
-    while (body.length < Math.max(1, prototypes.length)) body.push(fillRow(prototype, ['', '', '', '', '']));
     return replaceRows(table, [header, ...body]);
   });
 
   xml = mapTable(xml, 2, table => {
     const rows = splitRows(table);
-    if (rows[1]) rows[1] = fillRow(rows[1], [data.packages || data.packaging || '', data.weight || '', data.dimensions || '']);
+    if (rows[1]) rows[1] = fillRow(rows[1], [data.packages || '', data.weight || '', data.dimensions || '***']);
     return replaceRows(table, rows);
   });
   return xml;
@@ -294,20 +363,10 @@ function fillInvoice(xml, data, definition) {
   xml = mapTable(xml, 0, table => {
     const rows = splitRows(table);
     if (rows.length < 4) return table;
-    const operationRows = operation.map((item, index) => fillCompactRow(rows[1], [
-      index + 1,
-      item.label || '',
-      formatMoney(item.amount),
-    ]));
-    const serviceRows = service.map((item, index) => fillCompactRow(rows[2], [
-      operation.length + index + 1,
-      item.label || '',
-      formatMoney(item.amount),
-    ]));
-    const bodyRows = [...operationRows, ...serviceRows];
-    if (!bodyRows.length) bodyRows.push(fillCompactRow(rows[1], ['—', '—', formatMoney(0)]));
+    const operationRow = fillInvoiceGroupRow(rows[1], 'Acompte', operation, 1);
+    const serviceRow = fillInvoiceGroupRow(rows[2], 'Prestation de service', service, operation.length + 1);
     const totalRow = fillRow(rows[3], ['Total en MAD', formatMoney(total)]);
-    return replaceRows(table, [rows[0], ...bodyRows, totalRow]);
+    return replaceRows(table, [rows[0], operationRow, serviceRow, totalRow]);
   });
   return xml;
 }
