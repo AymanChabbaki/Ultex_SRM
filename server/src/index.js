@@ -884,9 +884,9 @@ app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
   // compared the way normaliserCodeClient() does: no spaces, uppercase, and
   // "L6919" equal to "6919".
   if (collection === 'clients' && closingStatus) {
-    const norm = (expr) => Prisma.sql`(CASE WHEN upper(regexp_replace(COALESCE(${expr}, ''), '\\s', '', 'g')) ~ '^L[0-9]+$'
-      THEN substr(upper(regexp_replace(${expr}, '\\s', '', 'g')), 2)
-      ELSE upper(regexp_replace(COALESCE(${expr}, ''), '\\s', '', 'g')) END)`;
+    const norm = (expr) => Prisma.sql`(CASE WHEN upper(regexp_replace(COALESCE(${expr}, ''), '[[:space:]]', '', 'g')) ~ '^L[0-9]+$'
+      THEN substr(upper(regexp_replace(${expr}, '[[:space:]]', '', 'g')), 2)
+      ELSE upper(regexp_replace(COALESCE(${expr}, ''), '[[:space:]]', '', 'g')) END)`;
     where.push(Prisma.sql`EXISTS (
       SELECT 1 FROM collection_items s
       WHERE s.collection = 'suivisClosing'
