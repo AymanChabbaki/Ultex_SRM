@@ -273,7 +273,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
                       const val = o[c[0]];
                       let content = val ?? "—";
                       if (c[2]) {
-                        const formatted = c[2](val, o);
+                        const formatted = c[2](val, o, db);
                         if (React.isValidElement(formatted)) {
                           content = formatted;
                         } else if (typeof formatted === 'string' && formatted.includes('<')) {
