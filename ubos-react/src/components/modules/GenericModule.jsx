@@ -14,6 +14,7 @@ import { supprimerEnregistrementSecurise } from '../../services/security';
 import { formatCreationDate } from '../../utils/creationDate';
 import { codeClientAffiche, GROUPES_CODES_CLIENT } from '../../utils/clientCodeGroups';
 import { fetchCollectionPage } from '../../services/api';
+import { STATUTS_PIPELINE_CLOSING } from '../../data/constants';
 
 const PERMISSION_REQUISE = {
   qualifierLead: 'valider',
@@ -30,6 +31,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
   
   const [recherche, setRecherche] = useState('');
   const [filtreStatut, setFiltreStatut] = useState('');
+  const [filtreClosing, setFiltreClosing] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editCode, setEditCode] = useState(null);
   const [groupeClients, setGroupeClients] = useState('L');
@@ -58,7 +60,8 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
           q: recherche,
           codeGroup: moduleId === 'clients' ? groupeClients : '',
           filterKey: filtreStatut ? M.statut : '',
-          filterValue: filtreStatut
+          filterValue: filtreStatut,
+          closingStatus: moduleId === 'clients' ? filtreClosing : ''
         });
         if (cancelled) return;
         setRemoteRows(result.items || []);
@@ -76,7 +79,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [M?.coll, M?.statut, moduleId, recherche, filtreStatut, groupeClients, remotePage, remotePageSize, collectionRevision]);
+  }, [M?.coll, M?.statut, moduleId, recherche, filtreStatut, filtreClosing, groupeClients, remotePage, remotePageSize, collectionRevision]);
 
   const { lignes, optsStatut } = useMemo(() => {
     if (!M) return { lignes: [], optsStatut: [] };
@@ -189,6 +192,14 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
           <select value={filtreStatut} onChange={(e) => { setFiltreStatut(e.target.value); setRemotePage(1); }}>
             <option value="">Tous les statuts</option>
             {optsStatut.map(o => (
+              <option key={o} value={o}>{o}</option>
+            ))}
+          </select>
+        )}
+        {moduleId === 'clients' && (
+          <select value={filtreClosing} onChange={(e) => { setFiltreClosing(e.target.value); setRemotePage(1); }}>
+            <option value="">Tous les statuts Closing</option>
+            {STATUTS_PIPELINE_CLOSING.map(o => (
               <option key={o} value={o}>{o}</option>
             ))}
           </select>

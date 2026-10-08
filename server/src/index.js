@@ -852,7 +852,8 @@ app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
   const codeGroup = String(req.query.codeGroup || '').toUpperCase();
   const filterKey = String(req.query.filterKey || '');
   const filterValue = String(req.query.filterValue || '').slice(0, 200);
-  const scopeHash = crypto.createHash('sha1').update(JSON.stringify({ collection, page, pageSize, q, codeGroup, filterKey, filterValue })).digest('hex');
+  const closingStatus = String(req.query.closingStatus || '').slice(0, 200);
+  const scopeHash = crypto.createHash('sha1').update(JSON.stringify({ collection, page, pageSize, q, codeGroup, filterKey, filterValue, closingStatus })).digest('hex');
   const cached = await cacheLire(`collection:${scopeHash}`);
   if (cached) {
     res.set('Server-Timing', `redis;dur=${Date.now() - startedAt}`);
@@ -876,6 +877,29 @@ app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
 
   if (filterValue && COLLECTION_FILTER_KEY_PATTERN.test(filterKey)) {
     where.push(Prisma.sql`data ->> ${filterKey} = ${filterValue}`);
+  }
+
+  // A client's Closing status lives on its suivisClosing rows, linked either
+  // by the explicit `client` ref or by the typed codeClient. Codes are
+  // compared the way normaliserCodeClient() does: no spaces, uppercase, and
+  // "L6919" equal to "6919".
+  if (collection === 'clients' && closingStatus) {
+    const norm = (expr) => Prisma.sql`(CASE WHEN upper(regexp_replace(COALESCE(${expr}, ''), '\\s', '', 'g')) ~ '^L[0-9]+$'
+      THEN substr(upper(regexp_replace(${expr}, '\\s', '', 'g')), 2)
+      ELSE upper(regexp_replace(COALESCE(${expr}, ''), '\\s', '', 'g')) END)`;
+    where.push(Prisma.sql`EXISTS (
+      SELECT 1 FROM collection_items s
+      WHERE s.collection = 'suivisClosing'
+        AND s.data ->> 'statutPipeline' = ${closingStatus}
+        AND COALESCE(s.data ->> 'archive', 'false') <> 'true'
+        AND (
+          s.data ->> 'client' = collection_items.code
+          OR (COALESCE(s.data ->> 'codeClient', '') <> '' AND (
+            ${norm(Prisma.sql`s.data ->> 'codeClient'`)} = ${norm(Prisma.sql`collection_items.code`)}
+            OR ${norm(Prisma.sql`s.data ->> 'codeClient'`)} = ${norm(Prisma.sql`collection_items.data ->> 'codeClientUltex'`)}
+          ))
+        )
+    )`);
   }
 
   try {
