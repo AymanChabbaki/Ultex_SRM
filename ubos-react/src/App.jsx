@@ -56,6 +56,7 @@ const EtudesCalcul = lazy(() => import('./components/custom/EtudesCalcul'));
 const PaiementsEcheances = lazy(() => import('./components/custom/PaiementsEcheances'));
 const FacturationRecus = lazy(() => import('./components/custom/FacturationRecus'));
 const DocumentsPartages = lazy(() => import('./components/custom/DocumentsPartages'));
+const DemandesConverties = lazy(() => import('./components/custom/DemandesConverties'));
 const GenericModule = lazy(() => import('./components/modules/GenericModule'));
 
 const IMPORT_COLLECTIONS = [
@@ -245,7 +246,7 @@ const Router = () => {
       case 'ficheDossier': return wrap(<FicheDossier codeProp={params} code={params} />, ['dossiers', 'clients', 'suivisClosing']);
       case 'ficheDemande': return wrap(<FicheDemande codeProp={params} code={params} />, ['audit', 'clients', 'commandes', 'demandeLignes', 'demandeRoutages', 'demandes', 'documents', 'paiements']);
       case 'ficheDemandeLigne': return wrap(<FicheDemandeLigne codeProp={params} code={params} />, ['demandeLignes', 'demandeRoutages', 'demandes', 'produits', 'taches']);
-      case 'ficheCommande': return wrap(<FicheCommande codeProp={params} code={params} />, ['arrivages', 'clients', 'commandes']);
+      case 'ficheCommande': return wrap(<FicheCommande codeProp={params} code={params} />, ['arrivages', 'clients', 'commandes', 'demandes', 'documents', 'paiements']);
       case 'ficheArrivage': return wrap(<FicheArrivage codeProp={params} code={params} />, ['analysesLimex', 'arrivages', 'clients', 'commandes', 'documents', 'fournisseurs', 'paiements', 'produits']);
       case 'ficheDocument': return wrap(<FicheDocument codeProp={params} code={params} />, ['documents']);
       case 'ficheFF': return wrap(<FicheFF codeProp={params} code={params} />, ['clients', 'documents', 'dossiers', 'facturesFinales']);
@@ -265,6 +266,7 @@ const Router = () => {
       case 'rapportLimexDirection': return wrap(<RapportLimexDirection />, ['arrivages', 'dossiers']);
       case 'facturationRecus': return <FacturationRecus />;
       case 'documentsPartages': return wrap(<DocumentsPartages />, ['documents']);
+      case 'demandesConverties': return wrap(<DemandesConverties />, ['clients', 'commandes', 'demandes', 'documents', 'paiements']);
 
       default:
         // Check if it's a generic module (clients, contacts, demandes, dossiers, documents, etc.)

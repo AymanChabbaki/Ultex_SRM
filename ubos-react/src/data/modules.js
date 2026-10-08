@@ -1056,13 +1056,14 @@ etudesCalcul:{label:"Études & Calcul", ic:Calculator, grp:"Mon espace"},
 paiementsEcheances:{label:"Paiements & Échéances", ic:Banknote, grp:"Mon espace"}
 ,
 facturationRecus:{label:"Facturation & reçus", ic:Receipt, grp:"Commercial"},
-documentsPartages:{label:"Documents partagés", ic:FolderOpen, grp:"Commercial"}
+documentsPartages:{label:"Documents partagés", ic:FolderOpen, grp:"Commercial"},
+demandesConverties:{label:"Demandes converties", ic:CheckSquare, grp:"Commercial"}
 };
 
 export const ORDRE_NAV = [
  ["Mon espace",["dashboard","tableauBordData","maJourneeClosing","maJourneeImane","suiviLimex","etudesCalcul","paiementsEcheances","monProgramme","mesTaches","mesObjectifs","devisAControler","coordinationMansouri","monPortefeuilleClosing","aQualifierClosing","monRapportJournalier","monAgenda","notifications","monProfil"]],
  ["Pilotage",["pilotageEquipe","quiFaitQuoi","ajouterTache","rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal","journalSecurite","etatClosing","suivisClosing"]],
- ["Commercial",["clients","contacts","demandes","commandes","offres","reclamations","facturationRecus","documentsPartages"]],
+ ["Commercial",["clients","contacts","demandes","demandesConverties","commandes","offres","reclamations","facturationRecus","documentsPartages"]],
  ["Études",["sourcings","etudes"]],
  ["LIMEX",["dashboardLimex","arrivages","rapportLimexDirection","suivisLimex","actionsLimex","instructionsLimex"]],
  ["Opérations",["analyses","transports","transits","certifs","transportsNat"]],

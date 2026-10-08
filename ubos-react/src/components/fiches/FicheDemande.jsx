@@ -10,7 +10,7 @@ import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
 import { pillStatut } from '../../utils/format';
 import { migrerLignesDemande, calculerIndicateursDemande } from '../../utils/demandes';
-import { STATUTS_LIGNE_DEMANDE } from '../../data/constants';
+import { FORMULES_ULTEX, STATUTS_LIGNE_DEMANDE } from '../../data/constants';
 import LigneModal from '../common/LigneModal';
 import { prochaineReferenceCommande, lignesCommandeDepuisDemande } from '../../utils/workflowArchitecture';
 import { syncPaymentToWorkflow } from '../../services/api';
@@ -19,7 +19,7 @@ import { notificationsNouvelleCommande } from '../../utils/arrivageWorkflow';
 const CONFIRMATION_COMMANDE = [
   { k: 'condition', l: 'Condition de confirmation', t: 'select', opts: ['Devis accepté','Bon de commande signé','Contrat signé','Acompte reçu','Preuve de paiement reçue','Validation exceptionnelle de la Direction'], req: 1 },
   { k: 'dateConfirmation', l: 'Date de confirmation', t: 'date', req: 1 },
-  { k: 'formuleUltex', l: 'Package commercial', t: 'select', opts: ['Sourcing','Accompagnement','Importation clé en main','Transport uniquement','Transit uniquement'], req: 1 },
+  { k: 'formuleUltex', l: 'Package commercial', t: 'select', opts: FORMULES_ULTEX, req: 1 },
   { k: 'datePaiement', l: 'Date du paiement', t: 'date', req: 1 },
   { k: 'montantPaiement', l: 'Montant payé — MAD', t: 'number', req: 1 },
   { k: 'modePaiement', l: 'Mode de paiement', t: 'select', opts: ['Virement','Espèces','Chèque','Effet','Carte','Autre'], req: 1 },
@@ -85,6 +85,11 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
     { k: 'sensOperation', l: "Sens de l'opération" },
     { k: 'etapeUltex', l: 'Étape Workflow' },
     { k: 'tagsPipeline', l: 'Tags Workflow' },
+    { k: 'closingEtat', l: 'État Closing de la demande' },
+    { k: 'closingStatus', l: 'Statut Closing détaillé' },
+    { k: 'commercialPackage', l: 'Package commercial synchronisé' },
+    { k: 'closingValidatedDevisReference', l: 'Devis validé avec le service' },
+    { k: 'paiementConfirme', l: 'Paiement confirmé', render: v => v ? <Pill type="Confirmé" texte="Confirmé" /> : <Pill type="À vérifier" texte="À vérifier" /> },
     { k: 'modeTransport', l: 'Mode de transport' },
     { k: 'montantVente', l: 'Dernier devis validé', render: v => v != null ? `${Number(v).toLocaleString('fr-FR')} MAD` : '—' },
     { k: 'montantAchat', l: 'Coût marchandise validé', render: v => v != null ? `${Number(v).toLocaleString('fr-FR')} MAD` : '—' },
@@ -218,7 +223,7 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
         <div className="outils">
           <b className="titre-fiche">{demande.referenceMetier || code}</b>
           <span className="spacer"></span>
-          {peut('ajouter') && (
+          {peut('ajouter') && commandesExistantes.length === 0 && demande.closingTag !== 'converti' && (
             <button className="btn vert" onClick={() => setShowConversion(true)}>Confirmer + créer commande</button>
           )}
           {peut('modifier') && <button className="btn" onClick={() => setShowEdit(true)}>Modifier</button>}

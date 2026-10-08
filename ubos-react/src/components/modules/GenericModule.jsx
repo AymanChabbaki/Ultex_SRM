@@ -14,7 +14,7 @@ import { supprimerEnregistrementSecurise } from '../../services/security';
 import { formatCreationDate } from '../../utils/creationDate';
 import { codeClientAffiche, GROUPES_CODES_CLIENT } from '../../utils/clientCodeGroups';
 import { fetchCollectionPage } from '../../services/api';
-import { STATUTS_PIPELINE_CLOSING } from '../../data/constants';
+import { ETATS_CLOSING_WORKFLOW } from '../../data/constants';
 
 const PERMISSION_REQUISE = {
   qualifierLead: 'valider',
@@ -61,7 +61,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
           codeGroup: moduleId === 'clients' ? groupeClients : '',
           filterKey: filtreStatut ? M.statut : '',
           filterValue: filtreStatut,
-          closingStatus: moduleId === 'clients' ? filtreClosing : ''
+          closingStatus: ['clients', 'demandes'].includes(moduleId) ? filtreClosing : ''
         });
         if (cancelled) return;
         setRemoteRows(result.items || []);
@@ -196,10 +196,10 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
             ))}
           </select>
         )}
-        {moduleId === 'clients' && (
+        {['clients', 'demandes'].includes(moduleId) && (
           <select value={filtreClosing} onChange={(e) => { setFiltreClosing(e.target.value); setRemotePage(1); }}>
-            <option value="">Tous les statuts Closing</option>
-            {STATUTS_PIPELINE_CLOSING.map(o => (
+            <option value="">Tous les états Closing des demandes</option>
+            {ETATS_CLOSING_WORKFLOW.map(o => (
               <option key={o} value={o}>{o}</option>
             ))}
           </select>

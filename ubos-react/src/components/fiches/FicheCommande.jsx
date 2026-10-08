@@ -61,12 +61,21 @@ const FicheCommande = ({ codeProp, code: codeFromProp }) => {
     {k: 'client', l: 'Client', render: () => <a href={`#ficheClient:${commande.client}`}>{client.nom || commande.client}</a>},
     {k: 'demande', l: 'Demande', render: () => commande.demande ? <a href={`#ficheDemande:${commande.demande}`}>{commande.demande}</a> : '—'},
     {k: 'condition', l: 'Condition'},
-    {k: 'formuleUltex', l: 'Formule'},
+    {k: 'formuleUltex', l: 'Package commercial'},
     {k: 'devisAccepte', l: 'Devis', render: (v) => v ? (
       v.startsWith('data:') || v.startsWith('http')
         ? <a href={v} target="_blank" rel="noreferrer">Voir la pièce jointe</a>
         : v
     ) : '—'},
+    {k: 'calculValide', l: 'Calcul validé (référence)'},
+    {k: 'calculValideMontantMad', l: 'Montant du devis validé', render: v => Number(v) > 0 ? `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD` : '—'},
+    {k: 'documents', l: 'Documents liés', render: () => {
+      const codes = String(commande.documents || '').split(',').map(value => value.trim()).filter(Boolean);
+      return codes.length ? <>{codes.map((docCode, index) => <React.Fragment key={docCode}>{index > 0 && ' · '}<a href={`#ficheDocument:${docCode}`}>{docCode}</a></React.Fragment>)}</> : '—';
+    }},
+    {k: 'statutPaiement', l: 'Paiement confirmé', render: s => <Pill type={s} texte={s || 'À vérifier'} />},
+    {k: 'montantPaiementConfirmeMad', l: 'Total payé confirmé', render: v => Number(v) > 0 ? `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD` : '—'},
+    {k: 'autoCreeeDepuisWorkflow', l: 'Origine', render: v => v ? 'Créée automatiquement depuis Workflow' : 'Création CRM'},
     {k: 'statut', l: 'Statut', render: (s) => <Pill type={s} texte={s} />}
   ];
 

@@ -360,6 +360,7 @@ async function creerIndexPerformance() {
     "CREATE INDEX IF NOT EXISTS collection_items_contacts_telephone_idx ON collection_items ((data->>'telephone')) WHERE collection = 'contacts'",
     "CREATE INDEX IF NOT EXISTS collection_items_demandes_client_idx ON collection_items ((data->>'client')) WHERE collection = 'demandes'",
     "CREATE INDEX IF NOT EXISTS collection_items_demandes_ultex_dossier_idx ON collection_items ((data->>'ultexDossierId')) WHERE collection = 'demandes'",
+    "CREATE UNIQUE INDEX IF NOT EXISTS collection_items_commandes_source_ultex_uidx ON collection_items ((data->>'sourceUltexDossierId')) WHERE collection = 'commandes' AND COALESCE(data->>'sourceUltexDossierId', '') <> ''",
     "CREATE INDEX IF NOT EXISTS collection_items_demande_lignes_demande_idx ON collection_items ((data->>'demande')) WHERE collection = 'demandeLignes'",
     "CREATE INDEX IF NOT EXISTS collection_items_demande_lignes_product_idx ON collection_items ((data->>'ultexProductId')) WHERE collection = 'demandeLignes'",
     "CREATE INDEX IF NOT EXISTS collection_items_documents_ultex_idx ON collection_items ((data->>'ultexDocumentId')) WHERE collection = 'documents'",
@@ -879,25 +880,21 @@ app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
     where.push(Prisma.sql`data ->> ${filterKey} = ${filterValue}`);
   }
 
-  // A client's Closing status lives on its suivisClosing rows, linked either
-  // by the explicit `client` ref or by the typed codeClient. Codes are
-  // compared the way normaliserCodeClient() does: no spaces, uppercase, and
-  // "L6919" equal to "6919".
+  // Closing is a state of a demande, not of a client. The Clients filter is
+  // therefore derived from linked demandes, while the Demandes screen can
+  // filter the authoritative Workflow state directly.
+  if (collection === 'demandes' && closingStatus) {
+    where.push(Prisma.sql`data ->> 'closingEtat' = ${closingStatus}`);
+  }
   if (collection === 'clients' && closingStatus) {
-    const norm = (expr) => Prisma.sql`(CASE WHEN upper(regexp_replace(COALESCE(${expr}, ''), '[[:space:]]', '', 'g')) ~ '^L[0-9]+$'
-      THEN substr(upper(regexp_replace(${expr}, '[[:space:]]', '', 'g')), 2)
-      ELSE upper(regexp_replace(COALESCE(${expr}, ''), '[[:space:]]', '', 'g')) END)`;
     where.push(Prisma.sql`EXISTS (
-      SELECT 1 FROM collection_items s
-      WHERE s.collection = 'suivisClosing'
-        AND s.data ->> 'statutPipeline' = ${closingStatus}
-        AND COALESCE(s.data ->> 'archive', 'false') <> 'true'
+      SELECT 1 FROM collection_items d
+      WHERE d.collection = 'demandes'
+        AND d.data ->> 'closingEtat' = ${closingStatus}
         AND (
-          s.data ->> 'client' = collection_items.code
-          OR (COALESCE(s.data ->> 'codeClient', '') <> '' AND (
-            ${norm(Prisma.sql`s.data ->> 'codeClient'`)} = ${norm(Prisma.sql`collection_items.code`)}
-            OR ${norm(Prisma.sql`s.data ->> 'codeClient'`)} = ${norm(Prisma.sql`collection_items.data ->> 'codeClientUltex'`)}
-          ))
+          d.data ->> 'client' = collection_items.code
+          OR d.data ->> 'codeClientUltex' = collection_items.code
+          OR d.data ->> 'codeClientUltex' = collection_items.data ->> 'codeClientUltex'
         )
     )`);
   }
@@ -2227,6 +2224,182 @@ async function genererCodeAtomique(pfx) {
   throw new Error(`Impossible de générer un code ${pfx} libre après 10000 tentatives`);
 }
 
+async function prochaineReferenceCommandeServeur(clientCode) {
+  const commandes = await prisma.collectionItem.findMany({
+    where: { collection: 'commandes', data: { path: ['client'], equals: clientCode } },
+    select: { data: true }
+  });
+  const suffixe = String(clientCode || 'SANS-CLIENT').trim();
+  const echappe = suffixe.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const motif = new RegExp(`^C(\\d+)-${echappe}$`);
+  const max = commandes.reduce((value, item) => {
+    const match = String(item.data?.referenceMetier || '').match(motif);
+    return match ? Math.max(value, Number(match[1])) : value;
+  }, 0);
+  return `C${max + 1}-${suffixe}`;
+}
+
+async function documentsCrmDuDossier(ultexDossierId) {
+  if (!ultexDossierId) return [];
+  return prisma.collectionItem.findMany({
+    where: { collection: 'documents', data: { path: ['ultexDossierId'], equals: ultexDossierId } },
+    orderBy: { createdAt: 'asc' }
+  });
+}
+
+function lignesCommandeDepuisProduitsSynchronises(products = []) {
+  return products.filter(Boolean).map((product, index) => ({
+    code: product.ultexProductId || `P${index + 1}`,
+    idTechniqueSource: product.ultexProductId || '',
+    nomProduit: product.nomProduit || '',
+    designationTechnique: product.designationTechnique || product.description || '',
+    quantite: product.quantite,
+    unite: product.unite,
+    prixUnitaire: product.prixUnitaire,
+    devise: product.devise,
+    incoterm: product.incoterm,
+    hsCodeUltex: product.hsCodeUltex,
+  }));
+}
+
+async function upsertPaiementsWorkflowConfirmes({ payment, client, demande, ultexDossierId }) {
+  const items = Array.isArray(payment?.items) ? payment.items : [];
+  const codes = [];
+  for (const item of items) {
+    const sourcePaymentId = String(item.id || '').trim();
+    if (!sourcePaymentId) continue;
+    let record = await prisma.collectionItem.findFirst({
+      where: {
+        collection: 'paiements',
+        data: { path: ['sourceWorkflowPaymentKey'], equals: `${ultexDossierId}:${sourcePaymentId}` }
+      }
+    });
+    const synced = {
+      client: client.code,
+      demande: demande.code,
+      ultexDossierId,
+      sourceWorkflowPaymentId: sourcePaymentId,
+      sourceWorkflowPaymentKey: `${ultexDossierId}:${sourcePaymentId}`,
+      nature: item.nature === 'service_request' ? 'Paiement de demande' : 'Paiement commande',
+      requestType: item.requestType || '',
+      montant: Number(item.amountMad || 0),
+      devise: 'MAD',
+      modePaiement: item.mode || 'Autre',
+      statut: 'Payé',
+      datePaiementEffectif: item.date || '',
+      reference: item.reference || '',
+      remarque: item.observation || '',
+      pieceJointe: item.attachment || '',
+      sourceSynchronisation: 'Workflow',
+    };
+    if (record) {
+      record = await prisma.collectionItem.update({
+        where: { collection_id: { collection: 'paiements', id: record.id } },
+        data: { data: { ...record.data, ...synced, id: record.code, code: record.code } }
+      });
+    } else {
+      const code = await genererCodeAtomique('PAY');
+      record = await prisma.collectionItem.create({
+        data: { collection: 'paiements', id: code, code, data: { id: code, code, ...synced, ts: Date.now() } }
+      });
+    }
+    codes.push(record.code);
+  }
+  return codes;
+}
+
+async function upsertCommandeWorkflowConvertie({
+  demande, client, ultexDossierId, referenceWorkflow, workflowUpdatedAt,
+  closingTag, closingEtat, closingStatus, selectedDevis,
+  commercialPackage, confirmedPayment, workflowDocumentIds, products,
+}) {
+  if (closingTag !== 'converti') return null;
+
+  let commande = await prisma.collectionItem.findFirst({
+    where: {
+      collection: 'commandes',
+      OR: [
+        { data: { path: ['sourceUltexDossierId'], equals: ultexDossierId } },
+        { data: { path: ['source_demande_id'], equals: demande.code } },
+        { data: { path: ['demande'], equals: demande.code } },
+      ]
+    }
+  });
+  const crmDocuments = await documentsCrmDuDossier(ultexDossierId);
+  const documentCodes = crmDocuments.map(document => document.code).filter(Boolean);
+  const documentNames = crmDocuments.map(document => document.data?.nom || document.code).filter(Boolean);
+  const payment = confirmedPayment && typeof confirmedPayment === 'object' ? confirmedPayment : {};
+  const selected = selectedDevis && typeof selectedDevis === 'object' ? selectedDevis : {};
+  const now = workflowUpdatedAt || new Date().toISOString();
+  const paymentCodes = await upsertPaiementsWorkflowConfirmes({ payment, client, demande, ultexDossierId });
+
+  const synchronized = {
+    client: client.code,
+    demande: demande.code,
+    source_demande_id: demande.code,
+    sourceUltexDossierId: ultexDossierId,
+    condition: commande?.data?.condition || 'Devis accepté',
+    formuleUltex: commande?.data?.formuleUltex || commercialPackage || 'Sur mesure',
+    devisAccepte: selected.url || selected.filename || '',
+    devisAccepteNom: selected.filename || '',
+    devisAccepteWorkflowDocumentId: selected.documentId || '',
+    devisAccepteDocument: crmDocuments.find(document => document.data?.ultexDocumentId === selected.documentId)?.code || '',
+    calculValide: selected.devisReference || referenceWorkflow || '',
+    calculValideMontantMad: selected.totalMad ?? null,
+    documents: documentCodes.join(', '),
+    documentsNoms: documentNames,
+    workflowDocumentIds: Array.isArray(workflowDocumentIds) ? workflowDocumentIds : [],
+    paiement: paymentCodes[0] || commande?.data?.paiement || '',
+    paiementCodes: paymentCodes.length ? paymentCodes : (commande?.data?.paiementCodes || []),
+    paiementConfirme: payment.confirmed === true,
+    montantPaiementConfirmeMad: Number(payment.totalMad || 0),
+    referencesPaiement: Array.isArray(payment.references) ? payment.references : [],
+    justificatifsPaiement: Array.isArray(payment.attachments) ? payment.attachments : [],
+    statutPaiement: payment.confirmed === true ? 'Confirmé' : 'À vérifier',
+    statut: commande?.data?.statut || 'Confirmée',
+    closingTag,
+    closingEtat: closingEtat || 'Converti / Gagné',
+    closingStatus: closingStatus || '',
+    dateConfirmation: commande?.data?.dateConfirmation || String(now).slice(0, 10),
+    dateConversionWorkflow: now,
+    lignes: Array.isArray(commande?.data?.lignes) && commande.data.lignes.length
+      ? commande.data.lignes
+      : lignesCommandeDepuisProduitsSynchronises(products),
+    sourceSynchronisation: 'Workflow',
+    autoCreeeDepuisWorkflow: commande ? commande.data?.autoCreeeDepuisWorkflow === true : true,
+  };
+
+  if (commande) {
+    commande = await prisma.collectionItem.update({
+      where: { collection_id: { collection: 'commandes', id: commande.id } },
+      data: { data: { ...commande.data, ...synchronized, code: commande.code, id: commande.code } }
+    });
+    return commande;
+  }
+
+  const code = await genererCodeAtomique('CMD');
+  const referenceMetier = await prochaineReferenceCommandeServeur(client.code);
+  const data = { id: code, code, referenceMetier, ...synchronized, ts: Date.now() };
+  try {
+    return await prisma.collectionItem.create({
+      data: { collection: 'commandes', id: code, code, data }
+    });
+  } catch (error) {
+    // Multiple CRM instances can receive the same Workflow retry at once.
+    // The expression index above is the final guard; the losing request
+    // simply refreshes the row created by the winner.
+    if (error.code !== 'P2002' && !String(error.message || '').toLowerCase().includes('duplicate')) throw error;
+    const concurrent = await prisma.collectionItem.findFirst({
+      where: { collection: 'commandes', data: { path: ['sourceUltexDossierId'], equals: ultexDossierId } }
+    });
+    if (!concurrent) throw error;
+    return prisma.collectionItem.update({
+      where: { collection_id: { collection: 'commandes', id: concurrent.id } },
+      data: { data: { ...concurrent.data, ...synchronized, id: concurrent.code, code: concurrent.code } }
+    });
+  }
+}
+
 // Finds the CollectionItem in a given collection previously created/updated
 // for this ULTEX dossier, keyed by an "ultexDossierId" field stashed inside
 // its JSON data -- not part of the CRM's own form schema, but CollectionItem
@@ -2458,6 +2631,8 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     // current pipeline stage + Data->Closing disposition tags, and the
     // product/transport fields for the dossiers collection below.
     codeClientUltex, typeDemande, sensOperation, etape, tagsPipeline,
+    closingTag, closingEtat, closingStatus, closingNotes,
+    selectedDevis, commercialPackage, confirmedPayment, workflowDocumentIds,
     produit, quantite, incoterm, paysOrigine, paysProvenance,
     modeTransport, cbm, poids, poidsNet, hsCode, annule, products = [],
     // Only ever sent from a VALIDATED devis (see _validated_devis_totals in
@@ -2465,7 +2640,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     // keep whatever was last known rather than blanking the figures while
     // a devis is being revised.
     montantVente, montantAchat,
-    workflowScope, isV2
+    workflowScope, isV2, workflowUpdatedAt
   } = req.body || {};
 
   if (!ultexDossierId || !nom) {
@@ -2657,6 +2832,21 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         etapeUltex: etape || demande.data.etapeUltex,
         ...(dataTagRecu ? { dataTag: dataTagLisible } : {}),
         tagsPipeline: tagsPipeline || demande.data.tagsPipeline,
+        // This is the demande's Closing state from Workflow. It must never
+        // be inferred from a client-level suivi Closing row.
+        closingTag: closingTag || null,
+        closingEtat: closingEtat || null,
+        closingStatus: closingStatus || null,
+        closingNotes: closingNotes || null,
+        closingValidatedDevisDocumentId: selectedDevis?.documentId || null,
+        closingValidatedDevisReference: selectedDevis?.devisReference || null,
+        closingValidatedDevisTotalMad: selectedDevis?.totalMad ?? null,
+        commercialPackage: commercialPackage || demande.data.commercialPackage,
+        paiementConfirme: confirmedPayment?.confirmed === true,
+        ...(closingTag === 'converti' ? {
+          statut: 'Confirmée',
+          dateConversionWorkflow: demande.data.dateConversionWorkflow || workflowUpdatedAt || new Date().toISOString(),
+        } : {}),
         // Workflow is authoritative for when this lead really arrived.
         // This repairs historical backfills that were previously stamped
         // with the day the reconciliation command happened to run.
@@ -2687,6 +2877,14 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         codeClientUltex: codeClientSynchronise || '',
         typeDemande: typeDemande || undefined, sensOperation: sensOperation || undefined,
         etapeUltex: etape || undefined, tagsPipeline: tagsPipeline || undefined,
+        closingTag: closingTag || null, closingEtat: closingEtat || null,
+        closingStatus: closingStatus || null, closingNotes: closingNotes || null,
+        closingValidatedDevisDocumentId: selectedDevis?.documentId || null,
+        closingValidatedDevisReference: selectedDevis?.devisReference || null,
+        closingValidatedDevisTotalMad: selectedDevis?.totalMad ?? null,
+        commercialPackage: commercialPackage || undefined,
+        paiementConfirme: confirmedPayment?.confirmed === true,
+        ...(closingTag === 'converti' ? { dateConversionWorkflow: workflowUpdatedAt || new Date().toISOString() } : {}),
         modeTransport: modeTransport || undefined,
         montantVente: montantVente != null ? montantVente : undefined,
         montantAchat: montantAchat != null ? montantAchat : undefined,
@@ -2697,7 +2895,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         objectifGeneral: objectifGeneral || '—', typeProjet: typeProjet || undefined,
         urgence: urgence || 'Normale',
         budgetGlobalEstime: budgetGlobalEstime != null ? budgetGlobalEstime : undefined,
-        statut: 'Nouvelle', remarqueGenerale: remarque || origineRemarque
+        statut: closingTag === 'converti' ? 'Confirmée' : 'Nouvelle', remarqueGenerale: remarque || origineRemarque
       };
       demande = await prisma.collectionItem.create({
         data: { collection: 'demandes', id: code, code, data }
@@ -2852,6 +3050,37 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       }
     }
 
+    // Closing conversion is the business trigger for an order. This upsert
+    // reuses the same source demande on every retry, so a repeated Workflow
+    // sync refreshes the accepted quote/payment/documents instead of asking
+    // Commercial to recreate the order or producing duplicates.
+    const commande = await upsertCommandeWorkflowConvertie({
+      demande,
+      client,
+      ultexDossierId,
+      referenceWorkflow,
+      workflowUpdatedAt,
+      closingTag,
+      closingEtat,
+      closingStatus,
+      selectedDevis,
+      commercialPackage,
+      confirmedPayment,
+      workflowDocumentIds,
+      products,
+    });
+    if (commande) {
+      demande = await prisma.collectionItem.update({
+        where: { collection_id: { collection: 'demandes', id: demande.id } },
+        data: { data: {
+          ...demande.data,
+          statut: 'Confirmée',
+          commandeCode: commande.code,
+          commandeAutoCreee: true,
+        } }
+      });
+    }
+
     if (hiddenV2Lead) {
       await prisma.collectionItem.delete({
         where: { collection_id: { collection: WORKFLOW_V2_COLLECTION, id: hiddenV2Lead.id } }
@@ -2864,6 +3093,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       client: { code: client.code },
       contact: { code: contact.code },
       demande: { code: demande.code },
+      commande: commande ? { code: commande.code, autoCreee: true } : null,
       lignes: syncedLines.map(code => ({ code }))
     });
   } catch (error) {
@@ -3216,6 +3446,33 @@ app.post('/api/sync/ultex/document', ultexSyncAuth, async (req, res) => {
       doc = await prisma.collectionItem.create({
         data: { collection: 'documents', id: code, code, data }
       });
+    }
+
+    // The converted order can be created a few milliseconds before its
+    // documents arrive through the separate document-sync queue. Attach the
+    // document here as well, making arrival order irrelevant.
+    if (ultexDossierId) {
+      const commande = await prisma.collectionItem.findFirst({
+        where: { collection: 'commandes', data: { path: ['sourceUltexDossierId'], equals: ultexDossierId } }
+      });
+      if (commande) {
+        const allDocuments = await documentsCrmDuDossier(ultexDossierId);
+        const documentCodes = allDocuments.map(item => item.code).filter(Boolean);
+        const selected = commande.data?.devisAccepteWorkflowDocumentId === ultexDocumentId;
+        await prisma.collectionItem.update({
+          where: { collection_id: { collection: 'commandes', id: commande.id } },
+          data: { data: {
+            ...commande.data,
+            documents: documentCodes.join(', '),
+            documentsNoms: allDocuments.map(item => item.data?.nom || item.code).filter(Boolean),
+            ...(selected ? {
+              devisAccepteDocument: doc.code,
+              devisAccepte: doc.data?.url || commande.data?.devisAccepte || '',
+              devisAccepteNom: doc.data?.nom || commande.data?.devisAccepteNom || '',
+            } : {}),
+          } }
+        });
+      }
     }
 
     res.json({ status: 'ok', document: { code: doc.code } });

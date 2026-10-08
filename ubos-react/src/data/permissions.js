@@ -30,7 +30,7 @@ export function peut(session, action) {
 
 const MODULES_LIBRES = ["dashboard", "monAgenda", "notifications", "rapports", "monProgramme", "mesTaches", "mesObjectifs", "monRapportJournalier", "monProfil"];
 const MODULES_DIRECTION = ["auditGlobal", "utilisateurs", "rapportDirection", "performance", "importCentre", "risquesClients", "objectifsData", "pilotageEquipe", "quiFaitQuoi", "ajouterTache", "journalSecurite", "etatClosing"];
-const MODULES_COMMERCIAL = ["facturationRecus", "documentsPartages"];
+const MODULES_COMMERCIAL = ["facturationRecus", "documentsPartages", "demandesConverties"];
 
 // Un coordinateur Closing travaille dans 4 espaces seulement (Ma journée,
 // Mon portefeuille Closing, Devis à contrôler, Coordination Mansouri) —

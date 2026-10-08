@@ -179,6 +179,17 @@ export const STATUTS_PIPELINE_CLOSING = [
   "Avance attendue", "Avance reçue",
   "Bloqué", "Pas intéressé", "Perdu / Abandonné", "Clôturé"
 ];
+export const ETATS_CLOSING_WORKFLOW = [
+  "Contacté", "En attente de réponse", "Devis envoyé", "Documents envoyés",
+  "En attente", "Modification", "Retour data", "Relance", "Visite bureau",
+  "Retour sourcing", "Devis par email", "Devis bureau",
+  "En attente d'un partenaire tiers", "En négociation active", "Informé",
+  "Modifications demandées", "Localisation Casablanca", "Localisation Marrakech",
+  "Non activé - Demande complexe et non bénéfique", "Offre chère",
+  "Offre envoyée, en attente de confirmation", "Pas intéressé",
+  "Pièces jointes envoyées", "Clôturé après inactivité", "Pending Decision",
+  "Annulé", "Annuler", "Clôturé", "Converti / Gagné"
+];
 export const PRIORITES_CLOSING = ["Critique", "Urgente", "Haute", "Normale", "Faible"];
 export const RESULTATS_CONTACT_CLOSING = ["Répondu","Pas répondu","Intéressé","Attente décision","Demande modification","Documents manquants","Attente paiement","À rappeler","Pas intéressé"];
 export const RETOURS_MANSOURI_CLOSING = ["Fait","Client contacté","Pas de réponse","Attente client","Blocage","À revoir avec Zoubida"];
