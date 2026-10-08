@@ -135,8 +135,15 @@ export function prefillArrivageDepuisCommandes(db, commandeCodes = [], courant =
   const demandes = valeursUniques(commandes.map(commande => commande.demande || commande.source_demande_id))
     .map(code => (db?.demandes || []).find(demande => demande.code === code))
     .filter(Boolean);
-  const clients = valeursUniques(commandes.map(commande => commande.client))
-    .map(code => (db?.clients || []).find(client => client.code === code) || { code, nom: code })
+  const referencesClients = valeursUniques([
+    ...commandes.map(commande => commande.client),
+    ...demandes.map(demande => demande.client || demande.codeClientUltex),
+  ]);
+  const clients = referencesClients
+    .map(reference => (db?.clients || []).find(client => (
+      normaliserIdentite(client.code) === normaliserIdentite(reference)
+      || normaliserIdentite(client.codeClientUltex) === normaliserIdentite(reference)
+    )))
     .filter(Boolean);
   const lignes = lignesArrivageDepuisCommandes(db, commandes);
   const paiements = (db?.paiements || []).filter(paiement => {
@@ -155,7 +162,7 @@ export function prefillArrivageDepuisCommandes(db, commandeCodes = [], courant =
   const totalPoids = lignes.reduce((somme, ligne) => somme + nombre(ligne.poidsBrutTotal || ligne.poids), 0);
   const totalCbm = lignes.reduce((somme, ligne) => somme + nombre(ligne.cbmTotal || ligne.cbm), 0);
   const montantDevis = commandes.reduce((somme, commande) => somme + nombre(
-    commande.totalImporteMad || commande.totalImporte || commande.calculValideMontantMad || commande.montantTotal || commande.valeurMarchandise,
+    commande.calculValideMontantMad || commande.closingValidatedDevisTotalMad || commande.montantDevisValideMad,
   ), 0);
   const produits = joindre(lignes.map(ligne => premiereValeur(
     ligne.nomProduit, ligne.produit, ligne.designationTechnique, ligne.description,
@@ -187,9 +194,19 @@ export function prefillArrivageDepuisCommandes(db, commandeCodes = [], courant =
   ].filter(Boolean).join(' · ');
 
   return {
-    nomInterne: courant.nomInterne || `${joindre(references, ' + ')} — ${joindre(clients.map(client => client.nom || client.code), ' / ')}`,
-    codeClientSource: joindre(clients.map(client => client.codeClientUltex || client.code), ' / '),
-    nomClientSource: joindre(clients.map(client => client.nom || client.raisonSociale || client.code), ' / '),
+    nomInterne: courant.nomInterne || [
+      joindre(references, ' + '),
+      joindre(clients.map(client => client.nom || client.raisonSociale), ' / '),
+    ].filter(Boolean).join(' — '),
+    codeClientSource: joindre(
+      clients.length ? clients.map(client => client.codeClientUltex || client.code) : referencesClients,
+      ' / ',
+    ),
+    nomClientSource: joindre([
+      ...clients.map(client => client.nom || client.raisonSociale),
+      ...commandes.map(commande => commande.nomClient || commande.clientNom),
+      ...demandes.map(demande => demande.nomClient || demande.clientNom),
+    ], ' / '),
     produitSource: produits,
     incotermSource: joindre(incoterms, ' / '),
     serviceSource: joindre(packages.length ? packages : demandes.map(demande => demande.typeDemande), ' / '),
