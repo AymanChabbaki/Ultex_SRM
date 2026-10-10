@@ -12,6 +12,7 @@ export const ACTIONS_REVUE_ARRIVAGE = Object.freeze({
   ENVOYER_YASSER: 'envoyer_yasser',
   RETOUR_IMANE: 'retour_imane',
   VALIDER: 'valider',
+  ANNULER_VALIDATION: 'annuler_validation',
 });
 
 const TRANSITIONS = {
@@ -39,6 +40,11 @@ const TRANSITIONS = {
     etat: ETATS_REVUE_ARRIVAGE.VALIDE,
     cible: '',
     label: 'Arrivage validé par Imane',
+  },
+  [ACTIONS_REVUE_ARRIVAGE.ANNULER_VALIDATION]: {
+    etat: ETATS_REVUE_ARRIVAGE.IMANE,
+    cible: 'Imane',
+    label: 'Validation annulée — retour à Imane',
   },
 };
 
@@ -264,6 +270,9 @@ export function actionsRevueArrivage(arrivage, role) {
   }
   if (etat === ETATS_REVUE_ARRIVAGE.YASSER && role === 'Yasser') {
     return [ACTIONS_REVUE_ARRIVAGE.RETOUR_IMANE];
+  }
+  if (etat === ETATS_REVUE_ARRIVAGE.VALIDE && role === 'Imane') {
+    return [ACTIONS_REVUE_ARRIVAGE.ANNULER_VALIDATION];
   }
   return [];
 }

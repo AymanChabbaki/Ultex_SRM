@@ -59,7 +59,20 @@ test('Imane can loop work through Yasser and validate only after it returns', ()
     role: 'Imane', auteur: 'Imane', note: '', date: now,
   });
   assert.equal(result.arrivage.circuitValidation, ETATS_REVUE_ARRIVAGE.VALIDE);
-  assert.deepEqual(actionsRevueArrivage(result.arrivage, 'Imane'), []);
+  assert.deepEqual(actionsRevueArrivage(result.arrivage, 'Imane'), [ACTIONS_REVUE_ARRIVAGE.ANNULER_VALIDATION]);
+
+  assert.throws(() => transitionRevueArrivage(result.arrivage, ACTIONS_REVUE_ARRIVAGE.ANNULER_VALIDATION, {
+    role: 'Imane', auteur: 'Imane', note: '', date: now,
+  }), /Ajoutez une note/);
+
+  result = transitionRevueArrivage(result.arrivage, ACTIONS_REVUE_ARRIVAGE.ANNULER_VALIDATION, {
+    role: 'Imane', auteur: 'Imane', note: 'Validation faite par erreur.', date: now,
+  });
+  assert.equal(result.arrivage.circuitValidation, ETATS_REVUE_ARRIVAGE.IMANE);
+  assert.equal(result.arrivage.circuitDestinataire, 'Imane');
+  assert.equal(result.arrivage.circuitHistorique[0].action, ACTIONS_REVUE_ARRIVAGE.ANNULER_VALIDATION);
+  assert.equal(result.arrivage.circuitHistorique[0].avant, ETATS_REVUE_ARRIVAGE.VALIDE);
+  assert.equal(result.arrivage.circuitHistorique[0].apres, ETATS_REVUE_ARRIVAGE.IMANE);
 });
 
 test('Direction and Yasser cannot act outside their assigned stage and handoffs require notes', () => {

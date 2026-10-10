@@ -150,6 +150,10 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   };
 
   const handleTransitionCircuit = (action) => {
+    if (
+      action === ACTIONS_REVUE_ARRIVAGE.ANNULER_VALIDATION
+      && !window.confirm("Annuler cette validation et remettre l'arrivage à examiner par Imane ?")
+    ) return;
     try {
       const result = transitionRevueArrivage(arrivage, action, {
         role: roleCircuit,
@@ -249,6 +253,9 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
                 )}
                 {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.VALIDER) && (
                   <button className="btn vert" onClick={() => handleTransitionCircuit(ACTIONS_REVUE_ARRIVAGE.VALIDER)}>Valider l'arrivage</button>
+                )}
+                {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.ANNULER_VALIDATION) && (
+                  <button className="btn doux" onClick={() => handleTransitionCircuit(ACTIONS_REVUE_ARRIVAGE.ANNULER_VALIDATION)}>Annuler la validation</button>
                 )}
               </div>
             </div>
