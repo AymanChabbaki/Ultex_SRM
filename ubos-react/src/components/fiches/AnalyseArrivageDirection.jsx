@@ -36,6 +36,8 @@ const STATUS_CLASS = {
   'À corriger': 'limex-status-danger',
   Manquant: 'limex-status-danger',
   'À recevoir': 'limex-status-info',
+  'Réponse saisie': 'limex-status-info',
+  Reçu: 'limex-status-ok',
   Bloquant: 'limex-status-blocked',
   'N/A': 'limex-status-neutral',
 };
@@ -328,6 +330,15 @@ export default function AnalyseArrivageDirection({ arrivage }) {
 
   const renderAnalysis = () => (
     <>
+      {draft.imaneComplementResponse && (
+        <section className="limex-direction-form">
+          <h3>Réponse générale d'Imane</h3>
+          <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{draft.imaneComplementResponse}</p>
+          <small>
+            {draft.imaneComplementRespondedBy || 'Imane'} · {displayDateTime(draft.imaneComplementRespondedAt)}
+          </small>
+        </section>
+      )}
       <div className="limex-analysis-layout">
         <div className="limex-sections-panel">
           <h3>Rubriques d'analyse</h3>
@@ -432,7 +443,12 @@ export default function AnalyseArrivageDirection({ arrivage }) {
             <div className="limex-request-list">
               {(draft.complementRequests || []).length ? (draft.complementRequests || []).slice().reverse().map(request => (
                 <button key={request.id} onClick={() => changeSection(LIMEX_DIRECTION_SECTIONS.findIndex(sectionItem => sectionItem.id === request.sectionId))}>
-                  <span><b>{request.label}</b><small>{request.requestedBy || 'Direction'} · {displayDate(request.requestedAt)}</small></span>{statusLabel(request.status)}
+                  <span>
+                    <b>{request.label}</b>
+                    <small>{request.requestedBy || 'Direction'} · {displayDate(request.requestedAt)}</small>
+                    {request.response && <small>Réponse Imane : {request.response}</small>}
+                  </span>
+                  {statusLabel(request.status)}
                 </button>
               )) : <p className="limex-empty">Aucune demande créée. Utilisez « Demander » sur un point de contrôle.</p>}
             </div>
@@ -499,7 +515,7 @@ export default function AnalyseArrivageDirection({ arrivage }) {
         <div>
           <label>Validation Direction
             <select value={draft.directionValidation || 'En attente'} disabled={!canEdit} onChange={event => updateDraft({ directionValidation: event.target.value })}>
-              {['En attente', 'Analysé', 'Complément requis', 'Validé sous réserve', 'Bloqué'].map(value => <option key={value}>{value}</option>)}
+              {['En attente', 'Analysé', 'Complément requis', 'À revérifier', 'Validé sous réserve', 'Bloqué'].map(value => <option key={value}>{value}</option>)}
             </select>
           </label>
           <label>Analysé par<input value={draft.analysePar || userCourant || ''} disabled /></label>

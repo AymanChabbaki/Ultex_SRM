@@ -1,4 +1,4 @@
-import { lignesArrivageDepuisCommandes } from './arrivageWorkflow';
+import { lignesArrivageDepuisCommandes } from './arrivageWorkflow.js';
 
 const joinValues = values => [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))].join(', ');
 
@@ -370,4 +370,65 @@ export function missingDirectionInformation(draft) {
       ? { sectionId: section.id, section: section.title, label: item.label, status: control.status }
       : null;
   }).filter(Boolean));
+}
+
+export function applyImaneComplementResponses(
+  analysis,
+  answers = {},
+  generalResponse = '',
+  { author = 'Imane', date = new Date().toISOString(), sent = false } = {},
+) {
+  const requests = analysis?.complementRequests || [];
+  const missingRequestIds = [];
+  const answeredRequests = [];
+  const controls = Object.fromEntries(
+    Object.entries(analysis?.controls || {}).map(([sectionId, rows]) => [
+      sectionId,
+      Object.fromEntries(Object.entries(rows || {}).map(([itemId, control]) => [itemId, { ...control }])),
+    ]),
+  );
+
+  const complementRequests = requests.map(request => {
+    if (request.status === 'Reçu') return request;
+    const rawAnswer = answers[request.id];
+    const response = String(typeof rawAnswer === 'object' ? rawAnswer?.text : rawAnswer || '').trim();
+    const responseDocumentCode = String(typeof rawAnswer === 'object' ? rawAnswer?.documentCode : '').trim();
+    if (!response) {
+      missingRequestIds.push(request.id);
+      return request;
+    }
+    answeredRequests.push({ ...request, response, responseDocumentCode });
+    if (request.sectionId && request.itemId && controls[request.sectionId]?.[request.itemId]) {
+      controls[request.sectionId][request.itemId] = {
+        ...controls[request.sectionId][request.itemId],
+        current: response,
+        status: 'À vérifier',
+        ...(responseDocumentCode ? { documentCode: responseDocumentCode } : {}),
+      };
+    }
+    return {
+      ...request,
+      response,
+      responseDocumentCode,
+      status: sent ? 'Reçu' : 'Réponse saisie',
+      respondedBy: author,
+      respondedAt: date,
+    };
+  });
+
+  return {
+    record: {
+      ...analysis,
+      controls,
+      complementRequests,
+      imaneComplementResponse: String(generalResponse || '').trim(),
+      imaneComplementRespondedBy: author,
+      imaneComplementRespondedAt: date,
+      status: sent ? 'Complément fourni' : 'Réponses en préparation',
+      directionValidation: sent ? 'À revérifier' : 'Complément requis',
+      updatedAt: date,
+    },
+    missingRequestIds,
+    answeredRequests,
+  };
 }

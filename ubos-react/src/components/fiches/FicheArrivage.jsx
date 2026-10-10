@@ -11,6 +11,7 @@ import ModuleForm from '../modules/ModuleForm';
 import AnalyseArrivageDirection from './AnalyseArrivageDirection';
 import { MODS } from '../../data/modules';
 import { pill } from '../../utils/format';
+import { applyImaneComplementResponses } from '../../utils/arrivageDirectionAnalysis';
 import {
   ACTIONS_REVUE_ARRIVAGE, actionsRevueArrivage, destinataireImane, destinataireYasser,
   ETATS_REVUE_ARRIVAGE, prefillArrivageDepuisCommandes, roleRevueArrivage,
@@ -36,6 +37,8 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   const [showAjouterFrais, setShowAjouterFrais] = useState(false);
   const [showLierDocument, setShowLierDocument] = useState(false);
   const [noteCircuit, setNoteCircuit] = useState('');
+  const [complementAnswers, setComplementAnswers] = useState({});
+  const [generalComplementResponse, setGeneralComplementResponse] = useState('');
 
   useEffect(() => {
     const c = codeProp || codeFromProp;
@@ -50,6 +53,19 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   }, [codeProp, codeFromProp, window.location.hash]);
 
   const arrivage = (db?.arrivages || []).find(a => a.code === code);
+  const directionAnalysis = (db?.analysesLimex || []).find(item => item.arrivage === code);
+
+  useEffect(() => {
+    const initialAnswers = {};
+    (directionAnalysis?.complementRequests || []).forEach(request => {
+      initialAnswers[request.id] = {
+        text: request.response || '',
+        documentCode: request.responseDocumentCode || '',
+      };
+    });
+    setComplementAnswers(initialAnswers);
+    setGeneralComplementResponse(directionAnalysis?.imaneComplementResponse || '');
+  }, [code, directionAnalysis]);
 
   if (!arrivage) {
     return (
@@ -103,6 +119,14 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   const roleCircuit = roleRevueArrivage(session);
   const actionsCircuit = actionsRevueArrivage(arrivage, roleCircuit);
   const historiqueCircuit = arrivage.circuitHistorique || [];
+  const complementRequests = directionAnalysis?.complementRequests || [];
+  const hasComplementWorkflow = roleCircuit === 'Imane'
+    && arrivage.circuitValidation === ETATS_REVUE_ARRIVAGE.IMANE
+    && (
+      ['Complément demandé', 'Réponses en préparation'].includes(directionAnalysis?.status)
+      || directionAnalysis?.directionValidation === 'Complément requis'
+      || complementRequests.some(request => request.status !== 'Reçu')
+    );
 
   const sauverArrivage = (patch, message) => {
     const nextArrivage = { ...arrivage, ...patch };
@@ -151,6 +175,13 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
 
   const handleTransitionCircuit = (action) => {
     if (
+      hasComplementWorkflow
+      && [ACTIONS_REVUE_ARRIVAGE.ENVOYER_DIRECTION, ACTIONS_REVUE_ARRIVAGE.VALIDER].includes(action)
+    ) {
+      toast('Répondez aux informations demandées dans le formulaire puis transmettez-les à la Direction.');
+      return;
+    }
+    if (
       action === ACTIONS_REVUE_ARRIVAGE.ANNULER_VALIDATION
       && !window.confirm("Annuler cette validation et remettre l'arrivage à examiner par Imane ?")
     ) return;
@@ -180,6 +211,84 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
       toast(result.entree.libelle);
     } catch (error) {
       toast(error.message || "Impossible d'effectuer cette action.");
+    }
+  };
+
+  const handleComplementAnswer = (requestId, patch) => {
+    setComplementAnswers(current => ({
+      ...current,
+      [requestId]: { ...(current[requestId] || {}), ...patch },
+    }));
+  };
+
+  const saveComplementResponses = async (sendToDirection = false) => {
+    if (!directionAnalysis || !hasComplementWorkflow) {
+      toast('Aucune demande de complément active pour cet arrivage.');
+      return;
+    }
+    const now = new Date().toISOString();
+    const result = applyImaneComplementResponses(
+      directionAnalysis,
+      complementAnswers,
+      generalComplementResponse,
+      { author: userCourant || 'Imane', date: now, sent: sendToDirection },
+    );
+    if (sendToDirection && result.missingRequestIds.length) {
+      const missingLabels = complementRequests
+        .filter(request => result.missingRequestIds.includes(request.id))
+        .map(request => request.label)
+        .join(', ');
+      toast(`Complétez toutes les réponses avant l'envoi : ${missingLabels}.`);
+      return;
+    }
+    if (
+      sendToDirection
+      && !complementRequests.length
+      && !String(generalComplementResponse || '').trim()
+    ) {
+      toast('Saisissez la réponse aux compléments demandés par la Direction.');
+      return;
+    }
+
+    const analysesLimex = (db.analysesLimex || []).map(item => (
+      item.code === directionAnalysis.code || item.arrivage === code ? result.record : item
+    ));
+    if (!sendToDirection) {
+      await updateDB({
+        ...db,
+        analysesLimex,
+        arrivages: (db.arrivages || []).map(item => item.code === code
+          ? { ...item, analyseLimexStatut: result.record.status, analyseLimexMaj: now }
+          : item),
+      });
+      audit('Arrivages / LIMEX', 'Réponses aux compléments enregistrées', code, 'analyseLimexStatut', directionAnalysis.status || '—', result.record.status);
+      toast('Réponses enregistrées. Vous pouvez continuer plus tard ou les transmettre à la Direction.');
+      return;
+    }
+
+    const responseLines = result.answeredRequests.map(request => `• ${request.label} : ${request.response}`);
+    if (String(generalComplementResponse || '').trim()) {
+      responseLines.push(`• Réponse générale : ${String(generalComplementResponse).trim()}`);
+    }
+    const note = `Compléments fournis par Imane :\n${responseLines.join('\n')}`;
+    try {
+      const transition = transitionRevueArrivage(arrivage, ACTIONS_REVUE_ARRIVAGE.ENVOYER_DIRECTION, {
+        role: 'Imane', auteur: userCourant || 'Imane', note, date: now,
+      });
+      transition.entree.libelle = 'Compléments fournis et transmis à la Direction';
+      transition.arrivage.circuitHistorique[0].libelle = transition.entree.libelle;
+      transition.arrivage.analyseLimexStatut = result.record.status;
+      transition.arrivage.analyseLimexMaj = now;
+      await updateDB({
+        ...db,
+        analysesLimex,
+        arrivages: (db.arrivages || []).map(item => item.code === code ? transition.arrivage : item),
+      });
+      audit('Arrivages / LIMEX', transition.entree.libelle, code, 'circuitValidation', transition.entree.avant, transition.entree.apres);
+      notifier('Direction', `${transition.entree.libelle} — ${code}\n${note}\nLien : #ficheArrivage:${code}`, 'Arrivages / LIMEX');
+      toast(transition.entree.libelle);
+    } catch (error) {
+      toast(error.message || "Impossible de transmettre les compléments à la Direction.");
     }
   };
 
@@ -216,6 +325,59 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
           <p>{arrivage.actionSuivante || 'Aucune action définie'}</p>
         </div>
 
+        {hasComplementWorkflow && (
+          <div className="bloc-fiche large" style={{ border: '2px solid var(--or)', background: 'var(--fond-jaune)' }}>
+            <h4>Informations demandées par la Direction</h4>
+            <p style={{ whiteSpace: 'pre-wrap' }}>
+              {directionAnalysis.complements || 'La Direction attend des informations complémentaires pour poursuivre son analyse.'}
+            </p>
+
+            {complementRequests.map(request => (
+              <div className="panneau" key={request.id} style={{ padding: '12px', marginBottom: '10px' }}>
+                <div style={{ marginBottom: '8px' }}>
+                  <b>{request.label}</b>
+                  <div className="qui">{request.section || 'Analyse Direction'} · {request.detail || 'Information à compléter'}</div>
+                </div>
+                <div className="champ large">
+                  <label>Réponse d'Imane</label>
+                  <textarea
+                    rows="3"
+                    value={complementAnswers[request.id]?.text || ''}
+                    onChange={event => handleComplementAnswer(request.id, { text: event.target.value })}
+                    placeholder="Saisissez l'information demandée, la correction effectuée ou la référence utile…"
+                  />
+                </div>
+                <div className="champ large">
+                  <label>Document justificatif lié (optionnel)</label>
+                  <select
+                    value={complementAnswers[request.id]?.documentCode || ''}
+                    onChange={event => handleComplementAnswer(request.id, { documentCode: event.target.value })}
+                  >
+                    <option value="">— Aucun document sélectionné —</option>
+                    {documents.map(document => (
+                      <option key={document.code} value={document.code}>{document.nom || document.code}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ))}
+
+            <div className="champ large">
+              <label>Réponse générale / informations supplémentaires</label>
+              <textarea
+                rows="4"
+                value={generalComplementResponse}
+                onChange={event => setGeneralComplementResponse(event.target.value)}
+                placeholder="Ajoutez ici les informations qui ne correspondent pas à un point précis…"
+              />
+            </div>
+            <div className="outils" style={{ marginBottom: 0, flexWrap: 'wrap' }}>
+              <button className="btn doux" onClick={() => saveComplementResponses(false)}>Enregistrer et continuer plus tard</button>
+              <button className="btn or" onClick={() => saveComplementResponses(true)}>Transmettre les compléments à la Direction</button>
+            </div>
+          </div>
+        )}
+
         <div className="bloc-fiche large" style={{ border: '1px solid var(--or)' }}>
           <h4>Circuit de validation LIMEX</h4>
           <div className="stats" style={{ marginBottom: '14px' }}>
@@ -242,7 +404,7 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
                 {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.DEMARRER) && (
                   <button className="btn or" onClick={() => handleTransitionCircuit(ACTIONS_REVUE_ARRIVAGE.DEMARRER)}>Envoyer à Imane</button>
                 )}
-                {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.ENVOYER_DIRECTION) && (
+                {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.ENVOYER_DIRECTION) && !hasComplementWorkflow && (
                   <button className="btn or" onClick={() => handleTransitionCircuit(ACTIONS_REVUE_ARRIVAGE.ENVOYER_DIRECTION)}>Envoyer à la Direction pour analyse</button>
                 )}
                 {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.ENVOYER_YASSER) && (
@@ -251,7 +413,7 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
                 {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.RETOUR_IMANE) && (
                   <button className="btn or" onClick={() => handleTransitionCircuit(ACTIONS_REVUE_ARRIVAGE.RETOUR_IMANE)}>Travail terminé — retourner à Imane</button>
                 )}
-                {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.VALIDER) && (
+                {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.VALIDER) && !hasComplementWorkflow && (
                   <button className="btn vert" onClick={() => handleTransitionCircuit(ACTIONS_REVUE_ARRIVAGE.VALIDER)}>Valider l'arrivage</button>
                 )}
                 {actionsCircuit.includes(ACTIONS_REVUE_ARRIVAGE.ANNULER_VALIDATION) && (

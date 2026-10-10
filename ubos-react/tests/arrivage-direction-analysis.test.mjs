@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 
 import {
+  applyImaneComplementResponses,
   LIMEX_DIRECTION_SECTIONS,
   buildDirectionAnalysisContext,
   createDirectionAnalysisDraft,
@@ -58,6 +59,29 @@ test('draft highlights missing information and computes progress and summary', (
   assert.equal(summary.total, LIMEX_DIRECTION_SECTIONS.reduce((total, section) => total + section.items.length, 0));
 });
 
+test('Imane can answer every Direction request and return it for verification', () => {
+  const draft = createDirectionAnalysisDraft(db, arrivage);
+  draft.complementRequests = [{
+    id: 'CMP1', sectionId: 'commercial', itemId: 'packing-list', section: 'Documents commerciaux',
+    label: 'Packing List', detail: 'Ajouter la Packing List définitive', status: 'En attente',
+  }];
+  const result = applyImaneComplementResponses(
+    draft,
+    { CMP1: { text: 'Packing List reçue et contrôlée.', documentCode: 'DOC1' } },
+    'Le fournisseur a confirmé la version finale.',
+    { author: 'Imane', date: '2026-10-10T11:00:00.000Z', sent: true },
+  );
+
+  assert.deepEqual(result.missingRequestIds, []);
+  assert.equal(result.record.status, 'Complément fourni');
+  assert.equal(result.record.directionValidation, 'À revérifier');
+  assert.equal(result.record.complementRequests[0].status, 'Reçu');
+  assert.equal(result.record.complementRequests[0].response, 'Packing List reçue et contrôlée.');
+  assert.equal(result.record.controls.commercial['packing-list'].current, 'Packing List reçue et contrôlée.');
+  assert.equal(result.record.controls.commercial['packing-list'].documentCode, 'DOC1');
+  assert.equal(result.record.controls.commercial['packing-list'].status, 'À vérifier');
+});
+
 test('Direction arrival screen persists analysis and returns the workflow to Imane', () => {
   const source = fs.readFileSync(new URL('../src/components/fiches/AnalyseArrivageDirection.jsx', import.meta.url), 'utf8');
   const apiSource = fs.readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');
@@ -70,6 +94,8 @@ test('Direction arrival screen persists analysis and returns the workflow to Ima
   assert.match(source, /VÉRIFICATION PAR PRODUIT/);
   assert.match(source, /<th>Action<\/th>/);
   assert.match(source, /Demandes de complément/);
+  assert.match(source, /Réponse générale d'Imane/);
+  assert.match(source, /Réponse Imane :/);
   assert.match(source, /Contrôle & validation/);
   assert.match(source, /Plan d'exécution proposé/);
   assert.match(source, /openDocument\(document\)/);
@@ -78,5 +104,7 @@ test('Direction arrival screen persists analysis and returns the workflow to Ima
   assert.match(source, /sectionMissing\.slice\(0, 10\)/);
   assert.match(apiSource, /export async function openStoredDocument/);
   assert.match(arrivalSource, /roleCircuit === 'Direction'/);
+  assert.match(arrivalSource, /Informations demandées par la Direction/);
+  assert.match(arrivalSource, /Transmettre les compléments à la Direction/);
   assert.match(appSource, /\['analysesLimex', 'arrivages'/);
 });
