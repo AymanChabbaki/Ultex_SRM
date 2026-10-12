@@ -12,6 +12,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { createClient } from 'redis';
 import { createRequire } from 'module';
 import { lLeadHandler } from './sheetsLLeads.js';
+import { metaExportV2LeadHandler } from './metaExportV2Leads.js';
 import { reserveNextNumericClientCode } from './clientCodes.js';
 import { serializeCollectionRows } from './dashboardRows.js';
 import { FACTURATION_TEMPLATES, convertDocxToPdf, generateFacturationDocx, publicTemplateDefinitions } from './facturationDocuments.js';
@@ -263,7 +264,7 @@ async function invaliderCache() {
 }
 
 function mutationAffecteDashboardData(req) {
-  if (req.path.startsWith('/api/sync/sheets/lead')) return true;
+  if (req.path.startsWith('/api/sync/sheets/')) return true;
   if (req.path.startsWith('/api/sync/ultex/dossier')) return true;
   if (req.path.startsWith('/api/security/sheet-test-') || req.path.startsWith('/api/security/workflow-test-')) return true;
   if (req.path.startsWith('/api/clients/')) return true;
@@ -3118,6 +3119,11 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
 // the same number, and the sync is idempotent on sheetLeadId so an Apps
 // Script retry never creates a duplicate lead.
 app.post('/api/sync/sheets/lead-l', ultexSyncAuth, lLeadHandler(prisma));
+
+// Meta export forms are accepted only by the isolated V2 backend. The public
+// URL is /api-v2/sync/sheets/meta-export-v2; the reverse proxy rewrites it to
+// this /api route inside ubos_backend_v2_prod.
+app.post('/api/sync/sheets/meta-export-v2', ultexSyncAuth, metaExportV2LeadHandler(prisma, CRM_INSTANCE));
 
 app.post('/api/sync/sheets/lead', ultexSyncAuth, async (req, res) => {
   const {
