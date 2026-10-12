@@ -7,7 +7,7 @@ import { destinataireEstMoi } from '../../data/permissions';
 import { MODS, ORDRE_NAV } from '../../data/modules';
 import { COLLS } from '../../data/constants';
 import Logo from '../common/Logo';
-import { DownloadIcon, UploadIcon } from '../common/Icons';
+import { CloseIcon, DownloadIcon, SearchIcon, UploadIcon } from '../common/Icons';
 import { useSidebar } from './Layout';
 import { restaurerSecurise } from '../../services/security';
 import { IS_CRM_V2 } from '../../lib/v2';
@@ -21,6 +21,7 @@ const Sidebar = ({ ouvert }) => {
   const isCollapsed = sidebarCtx?.collapsed;
 
   const [currentHash, setCurrentHash] = useState(window.location.hash.replace('#', '') || 'dashboard');
+  const [pageSearch, setPageSearch] = useState('');
 
   useEffect(() => {
     const onHashChange = () => {
@@ -76,20 +77,53 @@ const Sidebar = ({ ouvert }) => {
     reader.readAsText(file);
   };
 
+  const isDataUser = !estDirection() && (session?.services || []).includes('Data');
+  const navigationLabel = (id) => {
+    const module = MODS[id];
+    if (!module) return '';
+    if (id !== 'dashboard') return module.label;
+    return isDataUser ? 'Tableau de bord Data' : estDirection() ? module.label : 'Mon tableau de bord';
+  };
+  const normalizedSearch = pageSearch
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('fr');
+  const navigationGroups = ORDRE_NAV.map(([grp, ids]) => ({
+    grp,
+    ids: ids.filter(id => {
+      if (!moduleVisible(id) || id === 'tableauBordData') return false;
+      if (!normalizedSearch) return true;
+      const searchableText = `${navigationLabel(id)} ${grp}`
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('fr');
+      return searchableText.includes(normalizedSearch);
+    }),
+  })).filter(group => group.ids.length > 0);
+
   return (
     <aside id="aside" className={`${ouvert ? 'ouvert' : ''} ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="logo-aside-container">
         <Logo size={isCollapsed ? "small" : "medium"} light />
       </div>
+      <div className="sidebar-page-search">
+        <SearchIcon size={15} aria-hidden="true" />
+        <input
+          type="search"
+          value={pageSearch}
+          onChange={event => setPageSearch(event.target.value)}
+          placeholder="Rechercher une page…"
+          aria-label="Rechercher une page dans le menu"
+        />
+        {pageSearch && (
+          <button type="button" onClick={() => setPageSearch('')} aria-label="Effacer la recherche">
+            <CloseIcon size={14} />
+          </button>
+        )}
+      </div>
       <nav id="nav">
-        {ORDRE_NAV.map(([grp, ids]) => {
-          const isDataUser = !estDirection() && (session?.services || []).includes('Data');
-          // The main Dashboard already renders the Data dashboard for Data
-          // users. Keep the dedicated hash route for Direction deep links,
-          // but never show a second dashboard entry in the sidebar.
-          const visibles = ids.filter(id => moduleVisible(id) && id !== 'tableauBordData');
-          if (!visibles.length) return null;
-          
+        {navigationGroups.map(({ grp, ids: visibles }) => {
           return (
             <React.Fragment key={grp}>
               <div className="grp">{grp}</div>
@@ -97,9 +131,7 @@ const Sidebar = ({ ouvert }) => {
                 const M = MODS[id];
                 if (!M) return null;
                 const nb = nbNonLues();
-                const label = id === 'dashboard'
-                  ? (isDataUser ? 'Tableau de bord Data' : estDirection() ? M.label : 'Mon tableau de bord')
-                  : M.label;
+                const label = navigationLabel(id);
                 return (
                   <a key={id} href={`#${id}`} className={currentHash === id ? "on" : ""} title={label}>
                     <span className="ic"><M.ic size={16} /></span>
@@ -111,6 +143,9 @@ const Sidebar = ({ ouvert }) => {
             </React.Fragment>
           );
         })}
+        {normalizedSearch && navigationGroups.length === 0 && (
+          <div className="sidebar-search-empty">Aucune page trouvée</div>
+        )}
       </nav>
       <div className="aside-pied">
         <button onClick={exporterJSON} title="Télécharger la sauvegarde complète (JSON)" className="btn-aside-action">
