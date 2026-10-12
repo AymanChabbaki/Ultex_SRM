@@ -106,5 +106,9 @@ test('Direction arrival screen persists analysis and returns the workflow to Ima
   assert.match(arrivalSource, /roleCircuit === 'Direction'/);
   assert.match(arrivalSource, /Informations demandées par la Direction/);
   assert.match(arrivalSource, /Transmettre les compléments à la Direction/);
+  assert.match(arrivalSource, /handleUploadComplementDocument/);
+  assert.match(arrivalSource, /Téléverser depuis WhatsApp/);
+  assert.match(arrivalSource, /arrivage: code/);
+  assert.match(arrivalSource, /documentCode: document\.code/);
   assert.match(appSource, /\['analysesLimex', 'arrivages'/);
 });

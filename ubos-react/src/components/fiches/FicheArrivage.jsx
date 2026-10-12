@@ -11,6 +11,7 @@ import ModuleForm from '../modules/ModuleForm';
 import AnalyseArrivageDirection from './AnalyseArrivageDirection';
 import { MODS } from '../../data/modules';
 import { pill } from '../../utils/format';
+import { categorieDepuisFichier, lireFichierDataUrl } from '../../utils/fileData';
 import { applyImaneComplementResponses } from '../../utils/arrivageDirectionAnalysis';
 import {
   ACTIONS_REVUE_ARRIVAGE, actionsRevueArrivage, destinataireImane, destinataireYasser,
@@ -26,7 +27,7 @@ const FRAIS_CHAMPS = [
 ];
 
 const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
-  const { db, updateDB, audit, notifier, userCourant } = useDB();
+  const { db, updateDB, genCode, audit, notifier, userCourant } = useDB();
   const { peut, session } = useAuth();
   const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
@@ -39,6 +40,7 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   const [noteCircuit, setNoteCircuit] = useState('');
   const [complementAnswers, setComplementAnswers] = useState({});
   const [generalComplementResponse, setGeneralComplementResponse] = useState('');
+  const [uploadingComplementId, setUploadingComplementId] = useState('');
 
   useEffect(() => {
     const c = codeProp || codeFromProp;
@@ -221,6 +223,47 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
     }));
   };
 
+  const handleUploadComplementDocument = async (request, event) => {
+    const fichier = event.target.files?.[0];
+    event.target.value = '';
+    if (!fichier) return;
+
+    setUploadingComplementId(request.id);
+    try {
+      const document = {
+        code: genCode('DOC'),
+        nom: fichier.name,
+        type: categorieDepuisFichier(fichier),
+        typeFichier: fichier.type || 'Fichier',
+        fichier: await lireFichierDataUrl(fichier),
+        taille: fichier.size,
+        arrivage: code,
+        commentaire: `Reçu par WhatsApp — complément Direction : ${request.label}`,
+        statut: 'Reçu',
+        version: 1,
+        par: userCourant || 'Imane',
+        dateAjout: new Date().toISOString(),
+        ts: Date.now(),
+      };
+
+      await updateDB({ ...db, documents: [document, ...(db.documents || [])] });
+      handleComplementAnswer(request.id, { documentCode: document.code });
+      audit(
+        'Arrivages / LIMEX',
+        'Document WhatsApp ajouté',
+        code,
+        'document',
+        '—',
+        `${document.code} · ${document.nom} · ${request.label}`,
+      );
+      toast(`${document.nom} ajouté à l'arrivage et sélectionné pour cette réponse.`);
+    } catch (error) {
+      toast(error.message || "Impossible d'ajouter le document WhatsApp.");
+    } finally {
+      setUploadingComplementId('');
+    }
+  };
+
   const saveComplementResponses = async (sendToDirection = false) => {
     if (!directionAnalysis || !hasComplementWorkflow) {
       toast('Aucune demande de complément active pour cet arrivage.');
@@ -349,15 +392,30 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
                 </div>
                 <div className="champ large">
                   <label>Document justificatif lié (optionnel)</label>
-                  <select
-                    value={complementAnswers[request.id]?.documentCode || ''}
-                    onChange={event => handleComplementAnswer(request.id, { documentCode: event.target.value })}
-                  >
-                    <option value="">— Aucun document sélectionné —</option>
-                    {documents.map(document => (
-                      <option key={document.code} value={document.code}>{document.nom || document.code}</option>
-                    ))}
-                  </select>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '8px', alignItems: 'center' }}>
+                    <select
+                      value={complementAnswers[request.id]?.documentCode || ''}
+                      onChange={event => handleComplementAnswer(request.id, { documentCode: event.target.value })}
+                    >
+                      <option value="">— Sélectionner un document existant —</option>
+                      {documents.map(document => (
+                        <option key={document.code} value={document.code}>{document.nom || document.code}</option>
+                      ))}
+                    </select>
+                    <label
+                      className="btn mini or"
+                      style={{ cursor: uploadingComplementId === request.id ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      {uploadingComplementId === request.id ? 'Téléversement…' : '+ Téléverser depuis WhatsApp'}
+                      <input
+                        type="file"
+                        style={{ display: 'none' }}
+                        disabled={Boolean(uploadingComplementId)}
+                        onChange={event => handleUploadComplementDocument(request, event)}
+                      />
+                    </label>
+                  </div>
+                  <small>Choisissez un document déjà lié ou ajoutez directement le fichier reçu par WhatsApp.</small>
                 </div>
               </div>
             ))}
