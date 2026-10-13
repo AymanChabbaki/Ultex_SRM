@@ -20,6 +20,33 @@ import { categorieDepuisFichier, lireFichierDataUrl } from '../../utils/fileData
 import { supprimerClientTestGoogleSheets } from '../../services/security';
 import { codeClientAffiche } from '../../utils/clientCodeGroups';
 
+const normaliserNumeroWhatsApp = (numero) => {
+  let chiffres = String(numero || '').replace(/\D/g, '');
+  if (chiffres.startsWith('00')) chiffres = chiffres.slice(2);
+  if (chiffres.startsWith('0')) chiffres = `212${chiffres.slice(1)}`;
+  if (/^[5-8]\d{8}$/.test(chiffres)) chiffres = `212${chiffres}`;
+  return chiffres;
+};
+
+const lienWhatsAppClient = (numero, client) => {
+  const telephone = normaliserNumeroWhatsApp(numero);
+  if (!telephone) return '';
+  const nom = String(client?.nom || '').trim();
+  const salutation = nom ? `السلام عليكم ${nom}،` : 'السلام عليكم،';
+  const message = `${salutation} حنا ULTEx، كنتواصلو معاكم بخصوص الطلب ديالكم.`;
+  return `https://wa.me/${telephone}?text=${encodeURIComponent(message)}`;
+};
+
+const afficherNumeroWhatsApp = (numero, client) => {
+  const href = lienWhatsAppClient(numero, client);
+  if (!href) return '—';
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" title="Ouvrir la conversation WhatsApp">
+      {numero}
+    </a>
+  );
+};
+
 const ONGLETS_360 = [
   ["identite", "1. Identité"],
   ["commercial", "2. Profil commercial"],
@@ -47,7 +74,8 @@ const CHAMPS_IDENTITE = [
   {k:"type",l:"Type"}, {k:"nom",l:"Nom"}, {k:"codeClientUltex",l:"Code client ULTEX"}, {k:"raisonSociale",l:"Raison sociale"},
   {k:"ice",l:"ICE"}, {k:"idFiscal",l:"Identifiant fiscal (IF)"}, {k:"rc",l:"RC"}, {k:"cnss",l:"CNSS"},
   {k:"adresse",l:"Adresse"}, {k:"ville",l:"Ville"}, {k:"pays",l:"Pays"},
-  {k:"telephone",l:"Téléphone"}, {k:"whatsapp",l:"WhatsApp"}, {k:"email",l:"E-mail"},
+  {k:"telephone",l:"Téléphone",render:afficherNumeroWhatsApp},
+  {k:"whatsapp",l:"WhatsApp",render:afficherNumeroWhatsApp}, {k:"email",l:"E-mail"},
   {k:"siteWeb",l:"Site web"}, {k:"googleMaps",l:"Lien Google Maps"}, {k:"gps",l:"Coordonnées GPS"},
   {k:"reseauxSociaux",l:"Réseaux sociaux"}, {k:"dateCreation",l:"Date de création"},
   {k:"responsableCommercial",l:"Responsable commercial"}, {k:"representantLegal",l:"Représentant légal"},
