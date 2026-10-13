@@ -470,6 +470,7 @@ td .acts{display:flex;gap:6px;flex-wrap:wrap}
 .filter-table-table th{vertical-align:top}
 .filter-table-table .table-cell-truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .filter-table-table .table-cell-truncate>a,.filter-table-table .table-cell-truncate>span:not(.pill){display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;white-space:nowrap}
+.filter-table-table .table-cell-truncate>.audit-notes-full{display:block;max-width:100%;overflow:visible;text-overflow:clip;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45}
 .filter-table-table .table-actions-cell{overflow:visible;white-space:normal}
 .filter-table-table .table-actions-cell .btn{margin:2px 4px 2px 0}
 .filter-table-table.rapports-table{width:100%;min-width:640px;table-layout:fixed}

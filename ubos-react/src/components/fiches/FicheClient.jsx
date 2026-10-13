@@ -493,7 +493,9 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
             {key:'version', label:'Version état', render:v => v ? 'V' + v : '—'},
             {key:'utilisateur', label:'Utilisateur'}, {key:'action', label:'Action'},
             {key:'avant', label:'État précédent'}, {key:'etat', label:'État'},
-            {key:'etape', label:'Étape'}, {key:'notes', label:'Notes'}, {key:'echeance', label:'Échéance'},
+            {key:'etape', label:'Étape'},
+            {key:'notes', label:'Notes', render:value => <span className="audit-notes-full">{value || '—'}</span>},
+            {key:'echeance', label:'Échéance'},
           ]} data={[...(client.historiqueSuivi || [])].reverse()} />
           <DataTable 
             columns={[
