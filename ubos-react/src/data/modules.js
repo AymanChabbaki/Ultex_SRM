@@ -133,7 +133,13 @@ clients:{label:"Clients", ic:Building2, grp:"Commercial", coll:"clients", pfx:"C
  ],
  avantSauve: (DB, o) => { if(o.nbRelances===undefined) o.nbRelances = 0; },
  fiche:"ficheClient",
- cols:[["nom","Nom"],["telephone","Téléphone"],["ville","Ville"],["segment","Segment",v=>pillStatut(v)]],
+ cols:[
+  ["nom","Nom"],
+  ["telephone","Téléphone"],
+  ["ville","Ville"],
+  ["segment","Segment",v=>pillStatut(v)],
+  ["dataTag","État Data",(v,o)=>v?pill(`${Number(o.etatVersion||0)>0?`V${Number(o.etatVersion)} · `:""}${v}`,"p-bleu"):"—"]
+ ],
  actions:[
   {txt:"Fiche", cls:"btn mini or", fn:"ouvrirFicheClient"},
   {txt:"Darf / Fichiers", cls:"btn mini doux", fn:(code)=>{ window.location.hash = `#ficheClient:${code}:docs`; }}
