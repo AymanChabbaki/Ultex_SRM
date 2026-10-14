@@ -452,7 +452,6 @@ dossiers:{label:"Dossiers", ic:FolderKanban, grp:"Commercial", coll:"dossiers", 
 
 sourcings:{label:"Sourcing", ic:PackageSearch, grp:"Études", coll:"sourcings", pfx:"SRC", statut:"statut",
  champs:[
-  {k:"dossier",l:"Dossier",t:"ref",coll:"dossiers",cle:"produit",req:1},
   {k:"fournisseur",l:"Fournisseur",t:"ref",coll:"fournisseurs",cle:"nom"},
   {k:"prixFOB",l:"Prix FOB unitaire (USD)",t:"number"},
   {k:"moq",l:"MOQ",t:"text"},
@@ -460,7 +459,7 @@ sourcings:{label:"Sourcing", ic:PackageSearch, grp:"Études", coll:"sourcings", 
   {k:"statut",l:"Statut",t:"select",opts:["En cours","Offre reçue","Recommandé","Clôturé"]},
   {k:"remarque",l:"Notes de négociation",t:"textarea",large:1}
  ],
- cols:[["dossier","Dossier",v=>`<span class="pill p-gris">${esc(v||"—")}</span>`],["fournisseur","Fournisseur",(v,o,DB)=>esc(refLabel(DB, "fournisseurs",v,"nom"))],["prixFOB","FOB (USD)"],["delai","Délai"],["statut","Statut",v=>pillStatut(v)]]},
+ cols:[["fournisseur","Fournisseur",(v,o,DB)=>esc(refLabel(DB, "fournisseurs",v,"nom"))],["prixFOB","FOB (USD)"],["moq","MOQ"],["delai","Délai"],["statut","Statut",v=>pillStatut(v)]]},
 
 etudes:{label:"Études & Chiffrage", ic:Calculator, grp:"Études", coll:"etudes", pfx:"SIM", statut:"recommandation",
  champs:[
