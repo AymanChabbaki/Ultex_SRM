@@ -7,8 +7,34 @@ export function normalizeLeadPhone(value) {
   return phone;
 }
 
-function inputError(message, status = 400) {
-  return Object.assign(new Error(message), { status });
+function inputError(message, status = 400, code = 'INVALID_SHEET_LEAD') {
+  return Object.assign(new Error(message), { status, code });
+}
+
+const lLeadErrorLogState = new Map();
+const L_LEAD_ERROR_LOG_WINDOW_MS = 60_000;
+
+function logLLeadSyncError({ status, sheetLeadId, code, message }) {
+  const now = Date.now();
+  const key = `${status}:${code}:${message}`;
+  const previous = lLeadErrorLogState.get(key);
+  if (previous && now - previous.loggedAt < L_LEAD_ERROR_LOG_WINDOW_MS) {
+    previous.suppressed += 1;
+    return;
+  }
+  const suppressedSuffix = previous?.suppressed
+    ? ` suppressed=${previous.suppressed}`
+    : '';
+  console.error(
+    `L-sheet lead sync failed: status=${status} id=${sheetLeadId} code=${code} reason=${message}${suppressedSuffix}`,
+  );
+  lLeadErrorLogState.set(key, { loggedAt: now, suppressed: 0 });
+  // Validation messages are bounded, but keep the process cache bounded too.
+  if (lLeadErrorLogState.size > 100) {
+    const oldestKey = [...lLeadErrorLogState.entries()]
+      .sort((left, right) => left[1].loggedAt - right[1].loggedAt)[0]?.[0];
+    if (oldestKey) lLeadErrorLogState.delete(oldestKey);
+  }
 }
 
 export function validateSheetLead(body = {}) {
@@ -218,8 +244,27 @@ export function lLeadHandler(prisma) {
   return async (req, res) => {
     try { res.json(await syncLLead(prisma, req.body)); }
     catch (error) {
-      console.error('L-sheet lead sync failed:', error.code || error.status || 'internal');
-      res.status(error.status || 500).json({ error: error.status ? error.message : 'Synchronisation impossible. Réessayez avec le même CRM_SYNC_ID.' });
+      const status = Number(error.status) || 500;
+      const retryable = status >= 500 || status === 408 || status === 429;
+      const sheetLeadId = String(req.body?.sheetLeadId || 'sans-identifiant').slice(0, 250);
+      const publicMessage = error.status
+        ? error.message
+        : 'Synchronisation impossible. Réessayez avec le même CRM_SYNC_ID.';
+      // Include the safe row identifier and validation reason. The previous
+      // log only printed "400", which made a bad Sheet row impossible to
+      // diagnose while its one-minute trigger flooded the container logs.
+      logLLeadSyncError({
+        status,
+        sheetLeadId,
+        code: error.code || 'internal',
+        message: publicMessage,
+      });
+      res.status(status).json({
+        error: publicMessage,
+        code: error.code || (retryable ? 'SYNC_TEMPORARY_FAILURE' : 'INVALID_SHEET_LEAD'),
+        retryable,
+        sheetLeadId,
+      });
     }
   };
 }

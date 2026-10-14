@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import { nextLNumberFromCurrentClients, normalizeLeadPhone, validateSheetLead } from '../src/sheetsLLeads.js';
+import { lLeadHandler, nextLNumberFromCurrentClients, normalizeLeadPhone, validateSheetLead } from '../src/sheetsLLeads.js';
 
 const indexSource = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
 
@@ -90,6 +90,57 @@ test('validateSheetLead: rejects an oversized field (basic payload hardening)', 
 
 test('validateSheetLead: rejects a non-string/number field type', () => {
   assert.throws(() => validateSheetLead(baseLead({ nom: { evil: true } })), /invalide/);
+});
+
+test('validation failures tell the Sheet not to retry permanently bad rows', async () => {
+  const handler = lLeadHandler({});
+  const response = {
+    statusCode: 200,
+    payload: null,
+    status(value) { this.statusCode = value; return this; },
+    json(value) { this.payload = value; return this; },
+  };
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    await handler({ body: baseLead({ telephone: 'incorrect' }) }, response);
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.payload.retryable, false);
+  assert.equal(response.payload.code, 'INVALID_SHEET_LEAD');
+  assert.equal(response.payload.sheetLeadId, 'sheet1!row2');
+  assert.match(response.payload.error, /Téléphone invalide/);
+});
+
+test('repeated identical validation failures are rate-limited in server logs', async () => {
+  const handler = lLeadHandler({});
+  const makeResponse = () => ({
+    status(value) { this.statusCode = value; return this; },
+    json(value) { this.payload = value; return this; },
+  });
+  const messages = [];
+  const originalError = console.error;
+  console.error = (...parts) => messages.push(parts.join(' '));
+  try {
+    await handler({ body: baseLead({ produit: '' }) }, makeResponse());
+    await handler({ body: baseLead({ produit: '' }) }, makeResponse());
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(messages.length, 1);
+  assert.match(messages[0], /Identifiant, nom et produit requis/);
+});
+
+test('Apps Script retries only temporary errors and caps each scanner batch', () => {
+  for (const filename of ['google_sheets_l_formulaire.gs', 'google_sheets_l_landing.gs']) {
+    const script = fs.readFileSync(new URL(`../integrations/${filename}`, import.meta.url), 'utf8');
+    assert.match(script, /maxRowsPerScan:\s*25/);
+    assert.match(script, /ERREUR TEMPORAIRE/);
+    assert.match(script, /ERREUR VALIDATION/);
+    assert.doesNotMatch(script, /\/\^ERREUR\\b\/\.test\(status\)/);
+  }
 });
 
 test('L allocation never reuses a deleted or skipped gap', () => {

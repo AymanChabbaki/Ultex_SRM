@@ -5,6 +5,7 @@
 const ULTEX_L_CONFIG = Object.freeze({
   format: 'landing_page', defaultSheetName: '',
   endpoint: 'https://crm.ultex.ma/api/sync/sheets/lead-l', headerRow: 1,
+  maxRowsPerScan: 25,
 });
 
 function onOpen() {
@@ -50,7 +51,7 @@ function autoriserConnexionCRM() {
 
 function modifierLeadULTEX(event) { if (!event || !event.range) return; const sheet = event.range.getSheet(); if (!isTargetSheet_(sheet) || event.range.getRow() <= headerRow_()) return; const tech = firstTechnicalColumn_(sheet); if (tech && event.range.getColumn() >= tech) return; withLock_(() => syncRows_(sheet, event.range.getRow(), event.range.getNumRows(), false)); }
 function nouveauLeadFormulaireULTEX(event) { if (!event || !event.range || !isTargetSheet_(event.range.getSheet())) return; withLock_(() => syncRows_(event.range.getSheet(), event.range.getRow(), event.range.getNumRows(), false)); }
-function scannerNouveauxLeads() { const sheet = targetSheet_(); withLock_(() => { ensureTechnicalColumns_(sheet); const map = headerMap_(sheet); const first = headerRow_() + 1; const count = Math.max(0, sheet.getLastRow() - headerRow_()); if (!count) return; const statuses = sheet.getRange(first, requiredColumn_(map, 'crm_sync_status'), count, 1).getDisplayValues(); statuses.forEach(([status], i) => { if (!status || /^ERREUR\b/.test(status)) syncRows_(sheet, first + i, 1, false); }); }); }
+function scannerNouveauxLeads() { const sheet = targetSheet_(); withLock_(() => { ensureTechnicalColumns_(sheet); const map = headerMap_(sheet); const first = headerRow_() + 1; const count = Math.max(0, sheet.getLastRow() - headerRow_()); if (!count) return; const statuses = sheet.getRange(first, requiredColumn_(map, 'crm_sync_status'), count, 1).getDisplayValues(); let processed = 0; statuses.forEach(([status], i) => { if (processed >= ULTEX_L_CONFIG.maxRowsPerScan) return; if (!status || /^ERREUR TEMPORAIRE\b/.test(status)) { syncRows_(sheet, first + i, 1, false); processed += 1; } }); }); }
 function synchroniserLigneActive() { const sheet = SpreadsheetApp.getActiveSheet(); if (!isTargetSheet_(sheet)) throw new Error('Cette feuille n’est pas la feuille configurée.'); withLock_(() => syncRows_(sheet, SpreadsheetApp.getActiveRange().getRow(), 1, true)); }
 function importerSelection() { const range = SpreadsheetApp.getActiveRange(); const sheet = range.getSheet(); if (!isTargetSheet_(sheet)) throw new Error('Cette feuille n’est pas la feuille configurée.'); const start = Math.max(range.getRow(), headerRow_() + 1); const count = Math.max(0, range.getLastRow() - start + 1); if (count) withLock_(() => syncRows_(sheet, start, count, true)); }
 function syncRows_(sheet, startRow, count, force) { ensureTechnicalColumns_(sheet); const map = headerMap_(sheet); const last = Math.min(sheet.getLastRow(), startRow + count - 1); for (let row = Math.max(startRow, headerRow_() + 1); row <= last; row += 1) syncRow_(sheet, row, map, force); }
@@ -79,11 +80,17 @@ function postLead_(sheet, row, map, payload, statusCell) {
     if (!key) throw new Error('Ajoutez CRM_SYNC_API_KEY dans les propriétés du script.');
     const response = UrlFetchApp.fetch(props.getProperty('CRM_SYNC_URL') || ULTEX_L_CONFIG.endpoint, { method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'X-ULTEX-SYNC-KEY': key }, payload: JSON.stringify(payload) });
     const body = JSON.parse(response.getContentText() || '{}');
-    if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) throw new Error(body.error || `Erreur HTTP ${response.getResponseCode()}`);
+    const responseCode = response.getResponseCode();
+    if (responseCode < 200 || responseCode >= 300) {
+      const retryable = body.retryable === true || responseCode === 408 || responseCode === 429 || responseCode >= 500;
+      const prefix = retryable ? 'ERREUR TEMPORAIRE' : 'ERREUR VALIDATION';
+      statusCell.setValue(`${prefix} — ${String(body.error || `Erreur HTTP ${responseCode}`).slice(0, 300)}`);
+      return;
+    }
     sheet.getRange(row, requiredColumn_(map, 'crm_client_code')).setValue(body.client.code);
     sheet.getRange(row, requiredColumn_(map, 'crm_demande_code')).setValue(body.demande.code);
     statusCell.setValue(`OK — ${body.client.code} — ${timestamp_()}`);
-  } catch (error) { statusCell.setValue(`ERREUR — ${String(error.message || error).slice(0, 300)}`); }
+  } catch (error) { statusCell.setValue(`ERREUR TEMPORAIRE — ${String(error.message || error).slice(0, 300)}`); }
 }
 
 function targetSheet_() { const name = PropertiesService.getScriptProperties().getProperty('CRM_SHEET_NAME') || ULTEX_L_CONFIG.defaultSheetName; return name ? SpreadsheetApp.getActive().getSheetByName(name) : SpreadsheetApp.getActiveSheet(); }

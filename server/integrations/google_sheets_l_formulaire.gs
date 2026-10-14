@@ -7,6 +7,7 @@ const ULTEX_L_CONFIG = Object.freeze({
   defaultSheetName: '',
   endpoint: 'https://crm.ultex.ma/api/sync/sheets/lead-l',
   headerRow: 1,
+  maxRowsPerScan: 25,
 });
 
 /**
@@ -131,8 +132,16 @@ function scannerNouveauxLeads() {
     if (!count) return;
     const statusCol = requiredColumn_(map, 'crm_sync_status');
     const statuses = sheet.getRange(first, statusCol, count, 1).getDisplayValues();
+    let processed = 0;
     statuses.forEach(([status], index) => {
-      if (!status || /^ERREUR\b/.test(status)) syncRows_(sheet, first + index, 1, false);
+      // Permanent validation errors require a human correction and must not
+      // hit the CRM every minute. Only blank rows and explicitly temporary
+      // failures are retried automatically.
+      if (processed >= ULTEX_L_CONFIG.maxRowsPerScan) return;
+      if (!status || /^ERREUR TEMPORAIRE\b/.test(status)) {
+        syncRows_(sheet, first + index, 1, false);
+        processed += 1;
+      }
     });
   });
 }
@@ -207,12 +216,18 @@ function postLead_(sheet, row, map, payload, statusCell) {
       headers: { 'X-ULTEX-SYNC-KEY': key }, payload: JSON.stringify(payload),
     });
     const body = JSON.parse(response.getContentText() || '{}');
-    if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) throw new Error(body.error || `Erreur HTTP ${response.getResponseCode()}`);
+    const responseCode = response.getResponseCode();
+    if (responseCode < 200 || responseCode >= 300) {
+      const retryable = body.retryable === true || responseCode === 408 || responseCode === 429 || responseCode >= 500;
+      const prefix = retryable ? 'ERREUR TEMPORAIRE' : 'ERREUR VALIDATION';
+      statusCell.setValue(`${prefix} — ${String(body.error || `Erreur HTTP ${responseCode}`).slice(0, 300)}`);
+      return;
+    }
     sheet.getRange(row, requiredColumn_(map, 'crm_client_code')).setValue(body.client.code);
     sheet.getRange(row, requiredColumn_(map, 'crm_demande_code')).setValue(body.demande.code);
     statusCell.setValue(`OK — ${body.client.code} — ${timestamp_()}`);
   } catch (error) {
-    statusCell.setValue(`ERREUR — ${String(error.message || error).slice(0, 300)}`);
+    statusCell.setValue(`ERREUR TEMPORAIRE — ${String(error.message || error).slice(0, 300)}`);
   }
 }
 
