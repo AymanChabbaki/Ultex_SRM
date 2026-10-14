@@ -69,6 +69,13 @@ services:
       JWT_SECRET: "ubos_prod_jwt_secret_98765"
       ULTEX_SYNC_API_KEY: "a1fdd91e9a1c867ee14423c8140fa5cb228e6d7b0d0abbaf"
       ULTEX_WORKFLOW_PAYMENT_SYNC_URL: "${ULTEX_WORKFLOW_PAYMENT_SYNC_URL:-https://workflow.ultex.ma/api/v1/crm-sync/payment}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_SECURE: "${SMTP_SECURE:-false}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      SECURITY_EMAIL: "${SECURITY_EMAIL:-ultexcompany1@gmail.com}"
       UPLOADS_DIR: /app/uploads
     ports:
       - '5050:5000'
@@ -99,6 +106,13 @@ services:
       JWT_SECRET: "ubos_prod_jwt_secret_98765"
       ULTEX_SYNC_API_KEY: "a1fdd91e9a1c867ee14423c8140fa5cb228e6d7b0d0abbaf"
       ULTEX_WORKFLOW_PAYMENT_SYNC_URL: "${ULTEX_WORKFLOW_PAYMENT_SYNC_URL:-https://workflow.ultex.ma/api/v1/crm-sync/payment}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_SECURE: "${SMTP_SECURE:-false}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      SECURITY_EMAIL: "${SECURITY_EMAIL:-ultexcompany1@gmail.com}"
       UPLOADS_DIR: /app/uploads
     ports:
       - '5051:5000'

@@ -42,6 +42,8 @@ const ELEVATION_SECRET = process.env.ELEVATION_SECRET || 'ubos_elevation_secret_
 const ULTEX_SYNC_API_KEY = process.env.ULTEX_SYNC_API_KEY || 'ubos_ultex_sync_key_2026';
 const ULTEX_WORKFLOW_PAYMENT_SYNC_URL = process.env.ULTEX_WORKFLOW_PAYMENT_SYNC_URL || '';
 const SECURITY_EMAIL = process.env.SECURITY_EMAIL || 'ultexcompany1@gmail.com';
+const SMTP_PORT = Number(process.env.SMTP_PORT) || 587;
+const SMTP_SECURE = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' || SMTP_PORT === 465;
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const ELEVATION_TTL_SECONDS = 15 * 60;
@@ -58,8 +60,8 @@ if (!process.env.JWT_SECRET) {
 const mailTransporter = (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD)
   ? nodemailer.createTransport({
       host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: false,
+      port: SMTP_PORT,
+      secure: SMTP_SECURE,
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD }
     })
   : null;
@@ -125,12 +127,13 @@ function construireEmailOtp(code, action, demandeur) {
 async function envoyerOtpParEmail(code, action, demandeur) {
   const { sujet, texte, html } = construireEmailOtp(code, action, demandeur);
   if (!mailTransporter) {
-    console.warn(`⚠️ SMTP non configuré — code OTP (${action}, demandé par ${demandeur}) : ${code}`);
-    return;
+    const error = new Error('Service e-mail de sécurité non configuré');
+    error.code = 'SMTP_NOT_CONFIGURED';
+    throw error;
   }
   try {
-    await mailTransporter.sendMail({
-      from: `"UBOS — Sécurité ULTEx" <${process.env.SMTP_USER}>`,
+    const info = await mailTransporter.sendMail({
+      from: process.env.SMTP_FROM || `"UBOS — Sécurité ULTEx" <${process.env.SMTP_USER}>`,
       to: SECURITY_EMAIL,
       subject: sujet,
       text: texte,
@@ -143,9 +146,16 @@ async function envoyerOtpParEmail(code, action, demandeur) {
         contentType: 'image/svg+xml'
       }]
     });
+    if (Array.isArray(info.rejected) && info.rejected.length > 0 && (!info.accepted || info.accepted.length === 0)) {
+      throw new Error(`Destinataire refusé: ${info.rejected.join(', ')}`);
+    }
+    return info;
   } catch (e) {
     console.error('⚠️ Échec envoi e-mail OTP:', e.message);
-    console.warn(`Code OTP (${action}, demandé par ${demandeur}) : ${code}`);
+    const error = new Error("Le fournisseur e-mail n'a pas accepté le code de sécurité");
+    error.code = 'SMTP_SEND_FAILED';
+    error.cause = e;
+    throw error;
   }
 }
 
@@ -677,16 +687,28 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
 app.post('/api/security/otp/request', authMiddleware, async (req, res) => {
   const { action } = req.body || {};
   if (!action) return res.status(400).json({ error: 'Action requise' });
+  let otp = null;
   try {
     const code = genererCodeOtp();
     const codeHash = bcrypt.hashSync(code, 10);
     const expiresAt = new Date(Date.now() + OTP_TTL_MS);
-    await authPrisma.otpCode.create({ data: { codeHash, requestedBy: req.auth.id, action, expiresAt } });
+    otp = await authPrisma.otpCode.create({ data: { codeHash, requestedBy: req.auth.id, action, expiresAt } });
     await envoyerOtpParEmail(code, action, req.auth.identifiant || req.auth.nomComplet || req.auth.id);
     await ecrireJournalSecurite({ action: `Demande de code OTP (${action})`, utilisateur: req.auth.nomComplet || req.auth.identifiant, module: 'Sécurité', resultat: 'Code envoyé', ip: req.ip });
     res.json({ status: 'sent', expiresInSeconds: OTP_TTL_MS / 1000 });
   } catch (error) {
-    console.error('OTP request error:', error);
+    if (otp?.id) {
+      await authPrisma.otpCode.delete({ where: { id: otp.id } }).catch((cleanupError) => {
+        console.error('OTP cleanup error:', cleanupError.message);
+      });
+    }
+    console.error('OTP request error:', error.code || error.message);
+    if (error.code === 'SMTP_NOT_CONFIGURED') {
+      return res.status(503).json({ error: 'Envoi du code indisponible : SMTP non configuré sur le serveur.' });
+    }
+    if (error.code === 'SMTP_SEND_FAILED') {
+      return res.status(502).json({ error: "Le serveur e-mail n'a pas accepté le code. Vérifiez la configuration SMTP." });
+    }
     res.status(500).json({ error: "Erreur lors de l'envoi du code de sécurité" });
   }
 });
