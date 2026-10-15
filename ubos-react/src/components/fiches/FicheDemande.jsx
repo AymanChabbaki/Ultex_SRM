@@ -143,10 +143,6 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
       toast('La confirmation client et un paiement confirmé avec un montant valide sont obligatoires.');
       return;
     }
-    if (!demande.ultexDossierId) {
-      toast("Cette demande n'est pas liée à un dossier Workflow — synchronisation du paiement impossible.");
-      return;
-    }
     const paiement = {
       code: genCode('PAY'),
       client: demande.client,
@@ -185,8 +181,10 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
       demandes: (db.demandes || []).map(d => d.code === code ? { ...d, statut: 'Confirmée' } : d)
     };
     await updateDB(nextDb);
-    let workflowSynced = true;
-    try {
+    // Most CRM demandes have no Workflow dossier; that must not block the
+    // commande — the payment is simply not mirrored to the Workflow reliquat.
+    let workflowStatus = demande.ultexDossierId ? 'synced' : 'unlinked';
+    if (demande.ultexDossierId) try {
       await syncPaymentToWorkflow({
         ultex_dossier_id: demande.ultexDossierId,
         crm_payment_id: paiement.code,
@@ -199,7 +197,7 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
         justificatif: paiement.pieceJointe,
       });
     } catch (error) {
-      workflowSynced = false;
+      workflowStatus = 'failed';
       toast(`${error.message}. Le paiement reste enregistré dans le CRM.`);
     }
     audit('Commandes', 'Conversion depuis demande confirmée', commande.code, 'source_demande_id', '—', demande.code, demande.code);
@@ -209,7 +207,12 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
     });
     setShowConversion(false);
     window.location.hash = `ficheCommande:${commande.code}`;
-    toast(`Commande ${commande.referenceMetier} créée.${workflowSynced ? ' Paiement synchronisé avec le Reliquat Workflow.' : ' Paiement à resynchroniser avec Workflow.'}`);
+    const workflowMessage = {
+      synced: ' Paiement synchronisé avec le Reliquat Workflow.',
+      failed: ' Paiement à resynchroniser avec Workflow.',
+      unlinked: ' Demande non liée à un dossier Workflow : paiement enregistré dans le CRM uniquement.',
+    }[workflowStatus];
+    toast(`Commande ${commande.referenceMetier} créée.${workflowMessage}`);
   };
 
   const routagesDemande = (db.demandeRoutages || []).filter(r => r.demande === code).sort((a, b) => (b.dateEnvoi || 0) - (a.dateEnvoi || 0));
