@@ -334,6 +334,24 @@ function collectionCodeExpression() {
   return Prisma.sql`COALESCE(NULLIF(code, ''), NULLIF(data->>'codeClientUltex', ''), id)`;
 }
 
+function collectionOrderExpression(sortKey, sortDir) {
+  const direction = sortDir === 'desc' ? Prisma.raw('DESC') : Prisma.raw('ASC');
+  if (sortKey === 'code') {
+    const code = collectionCodeExpression();
+    return Prisma.sql`
+      regexp_replace(upper(${code}), '[0-9].*$', '') ${direction},
+      NULLIF(substring(${code} from '([0-9]+)'), '')::numeric ${direction} NULLS LAST,
+      upper(${code}) ${direction},
+      "createdAt" DESC
+    `;
+  }
+  if (sortKey === 'createdAt') return Prisma.sql`"createdAt" ${direction}, id ${direction}`;
+  if (sortKey && COLLECTION_FILTER_KEY_PATTERN.test(sortKey)) {
+    return Prisma.sql`lower(COALESCE(data ->> ${sortKey}, '')) ${direction}, "createdAt" DESC`;
+  }
+  return Prisma.sql`CASE WHEN data->>'ts' ~ '^[0-9]+$' THEN (data->>'ts')::bigint ELSE 0 END DESC, "createdAt" DESC`;
+}
+
 async function reparerIdentitesClientsLGoogleSheets() {
   // The CollectionItem `code` column is the canonical CRM identity. Older
   // browser snapshots could overwrite only JSON metadata and produce rows
@@ -877,7 +895,12 @@ app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
   const filterKey = String(req.query.filterKey || '');
   const filterValue = String(req.query.filterValue || '').slice(0, 200);
   const closingStatus = String(req.query.closingStatus || '').slice(0, 200);
-  const scopeHash = crypto.createHash('sha1').update(JSON.stringify({ collection, page, pageSize, q, codeGroup, filterKey, filterValue, closingStatus })).digest('hex');
+  const requestedSortKey = String(req.query.sortKey || '');
+  const sortKey = requestedSortKey === 'code' || requestedSortKey === 'createdAt' || COLLECTION_FILTER_KEY_PATTERN.test(requestedSortKey)
+    ? requestedSortKey
+    : '';
+  const sortDir = String(req.query.sortDir || '').toLowerCase() === 'desc' ? 'desc' : 'asc';
+  const scopeHash = crypto.createHash('sha1').update(JSON.stringify({ collection, page, pageSize, q, codeGroup, filterKey, filterValue, closingStatus, sortKey, sortDir })).digest('hex');
   const cached = await cacheLire(`collection:${scopeHash}`);
   if (cached) {
     res.set('Server-Timing', `redis;dur=${Date.now() - startedAt}`);
@@ -925,12 +948,13 @@ app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
   try {
     const clause = Prisma.join(where, ' AND ');
     const offset = (page - 1) * pageSize;
+    const orderBy = collectionOrderExpression(sortKey, sortDir);
     const [rows, countRows, groupRows] = await Promise.all([
       prisma.$queryRaw(Prisma.sql`
         SELECT id, code, data, "createdAt"
         FROM collection_items
         WHERE ${clause}
-        ORDER BY CASE WHEN data->>'ts' ~ '^[0-9]+$' THEN (data->>'ts')::bigint ELSE 0 END DESC, "createdAt" DESC
+        ORDER BY ${orderBy}
         LIMIT ${pageSize} OFFSET ${offset}
       `),
       prisma.$queryRaw(Prisma.sql`

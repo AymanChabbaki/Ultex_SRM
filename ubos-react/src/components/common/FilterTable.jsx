@@ -63,10 +63,14 @@ export default function FilterTable({
   pagination = true,
   pageSize = DEFAULT_PAGE_SIZE,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
+  sortState,
+  onSortChange,
   ...props
 }) {
   const [filters, setFilters] = useState({});
-  const [sort, setSort] = useState({ index: -1, direction: 1 });
+  const [localSort, setLocalSort] = useState({ index: -1, direction: 1 });
+  const sort = sortState || localSort;
+  const remoteSort = typeof onSortChange === 'function';
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(normalizedPageSize(pageSize));
   const sections = flatten(children);
@@ -95,7 +99,7 @@ export default function FilterTable({
 
   const filteredRows = rows => {
     const matches = rows.filter(row => Object.entries(filters).every(([index, value]) => valueAt(row, Number(index)).toLocaleLowerCase('fr').includes(value.toLocaleLowerCase('fr'))));
-    return sort.index >= 0 ? [...matches].sort(compare) : matches;
+    return !remoteSort && sort.index >= 0 ? [...matches].sort(compare) : matches;
   };
 
   let bodyOffset = 0;
@@ -154,7 +158,9 @@ export default function FilterTable({
         const enabled = !/^(Actions?|Fichier)$/i.test(label.trim()) && !header.props.colSpan;
         return React.cloneElement(header, { key: column, title: header.props.title || label }, <>
           {enabled ? <><span className="table-print-label">{header.props.children}</span><button type="button" className="table-sort-button" onClick={() => {
-            setSort({ index: column, direction: sort.index === column ? -sort.direction : 1 });
+            const nextSort = { index: column, direction: sort.index === column ? -sort.direction : 1 };
+            if (remoteSort) onSortChange(nextSort);
+            else setLocalSort(nextSort);
             setPage(1);
           }} aria-label={`Trier par ${label}`}>{header.props.children} <span aria-hidden="true">{sort.index === column ? sort.direction === 1 ? '↑' : '↓' : '↕'}</span></button></> : header.props.children}
           {enabled && <input className="table-column-filter" type="search" aria-label={`Filtrer ${label}`} placeholder="Filtrer…" value={filters[column] || ''} onChange={event => {

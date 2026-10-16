@@ -43,6 +43,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
   const [remoteGroupCounts, setRemoteGroupCounts] = useState({ L: 0, A: 0, R: 0, '#': 0 });
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [remoteError, setRemoteError] = useState('');
+  const [remoteSort, setRemoteSort] = useState({ index: -1, key: '', direction: 1 });
 
   const M = MODS[moduleId];
   const collectionRevision = M ? db[M.coll] : null;
@@ -61,7 +62,9 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
           codeGroup: moduleId === 'clients' ? groupeClients : '',
           filterKey: filtreStatut ? M.statut : '',
           filterValue: filtreStatut,
-          closingStatus: ['clients', 'demandes'].includes(moduleId) ? filtreClosing : ''
+          closingStatus: ['clients', 'demandes'].includes(moduleId) ? filtreClosing : '',
+          sortKey: remoteSort.key,
+          sortDir: remoteSort.direction === -1 ? 'desc' : 'asc'
         });
         if (cancelled) return;
         setRemoteRows(result.items || []);
@@ -79,12 +82,13 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [M?.coll, M?.statut, moduleId, recherche, filtreStatut, filtreClosing, groupeClients, remotePage, remotePageSize, collectionRevision]);
+  }, [M?.coll, M?.statut, moduleId, recherche, filtreStatut, filtreClosing, groupeClients, remotePage, remotePageSize, remoteSort.key, remoteSort.direction, collectionRevision]);
 
   const { lignes, optsStatut } = useMemo(() => {
     if (!M) return { lignes: [], optsStatut: [] };
     
-    let l = remoteRows.slice().sort((a, b) => {
+    let l = remoteRows.slice();
+    if (!remoteSort.key) l.sort((a, b) => {
       if (moduleId === 'produits') {
         const hsOrder = String(a.hsCode || 'ZZZZZZ').localeCompare(String(b.hsCode || 'ZZZZZZ'), 'fr', { numeric: true });
         if (hsOrder !== 0) return hsOrder;
@@ -97,7 +101,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
     if (typeof opts === "function") opts = opts(db);
     
     return { lignes: l, optsStatut: opts };
-  }, [db, M, moduleId, remoteRows]);
+  }, [db, M, moduleId, remoteRows, remoteSort.key]);
 
   if (!M) return <div>Module introuvable</div>;
 
@@ -232,7 +236,16 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
       <div className="panneau">
         {remoteError && <div className="note-verrou">{remoteError}</div>}
         <div className="defile">
-          <FilterTable pagination={false}>
+          <FilterTable
+            pagination={false}
+            sortState={{ index: remoteSort.index, direction: remoteSort.direction }}
+            onSortChange={({ index, direction }) => {
+              const key = index === 0 ? 'code' : index === 1 ? 'createdAt' : (M.cols || [])[index - 2]?.[0] || '';
+              if (!key) return;
+              setRemoteSort({ index, key, direction });
+              setRemotePage(1);
+            }}
+          >
             <thead>
               <tr>
                 <th>Code</th>
