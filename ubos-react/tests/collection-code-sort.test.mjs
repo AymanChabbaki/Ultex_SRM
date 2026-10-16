@@ -16,6 +16,8 @@ test('le clic sur Code demande un tri global au serveur', () => {
 
 test('le serveur trie les codes par préfixe puis par numéro avant la pagination', () => {
   assert.match(backend, /function collectionOrderExpression/);
+  assert.match(backend, /collection === 'clients'[\s\S]*data->>'codeClientUltex'[\s\S]*NULLIF\(code, ''\)/);
+  assert.match(backend, /collectionOrderExpression\(collection, sortKey, sortDir\)/);
   assert.match(backend, /substring\(\$\{code\} from '\(\[0-9\]\+\)'\)/);
   assert.match(backend, /ORDER BY \$\{orderBy\}[\s\S]*LIMIT \$\{pageSize\}/);
   assert.match(backend, /sortKey, sortDir/);

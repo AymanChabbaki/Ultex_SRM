@@ -330,14 +330,19 @@ const BOOTSTRAP_COLLECTIONS = [];
 
 const COLLECTION_FILTER_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 
-function collectionCodeExpression() {
-  return Prisma.sql`COALESCE(NULLIF(code, ''), NULLIF(data->>'codeClientUltex', ''), id)`;
+function collectionCodeExpression(collection = '') {
+  // Client rows can keep a historical internal id such as C000669 while the
+  // user-facing ULTEX code is 9599. Lists, tabs and sorting must follow the
+  // visible business code; other collections keep their own record code.
+  return collection === 'clients'
+    ? Prisma.sql`COALESCE(NULLIF(data->>'codeClientUltex', ''), NULLIF(code, ''), id)`
+    : Prisma.sql`COALESCE(NULLIF(code, ''), id)`;
 }
 
-function collectionOrderExpression(sortKey, sortDir) {
+function collectionOrderExpression(collection, sortKey, sortDir) {
   const direction = sortDir === 'desc' ? Prisma.raw('DESC') : Prisma.raw('ASC');
   if (sortKey === 'code') {
-    const code = collectionCodeExpression();
+    const code = collectionCodeExpression(collection);
     return Prisma.sql`
       regexp_replace(upper(${code}), '[0-9].*$', '') ${direction},
       NULLIF(substring(${code} from '([0-9]+)'), '')::numeric ${direction} NULLS LAST,
@@ -916,7 +921,7 @@ app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
   }
 
   if (collection === 'clients' && ['L', 'A', 'R', '#'].includes(codeGroup)) {
-    const codeExpression = collectionCodeExpression();
+    const codeExpression = collectionCodeExpression(collection);
     where.push(codeGroup === '#'
       ? Prisma.sql`${codeExpression} !~* '^[LAR]'`
       : Prisma.sql`${codeExpression} ~* ${`^${codeGroup}`}`);
@@ -948,7 +953,7 @@ app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
   try {
     const clause = Prisma.join(where, ' AND ');
     const offset = (page - 1) * pageSize;
-    const orderBy = collectionOrderExpression(sortKey, sortDir);
+    const orderBy = collectionOrderExpression(collection, sortKey, sortDir);
     const [rows, countRows, groupRows] = await Promise.all([
       prisma.$queryRaw(Prisma.sql`
         SELECT id, code, data, "createdAt"
@@ -965,9 +970,9 @@ app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
       collection === 'clients'
         ? prisma.$queryRaw(Prisma.sql`
             SELECT CASE
-              WHEN ${collectionCodeExpression()} ~* '^L' THEN 'L'
-              WHEN ${collectionCodeExpression()} ~* '^A' THEN 'A'
-              WHEN ${collectionCodeExpression()} ~* '^R' THEN 'R'
+              WHEN ${collectionCodeExpression('clients')} ~* '^L' THEN 'L'
+              WHEN ${collectionCodeExpression('clients')} ~* '^A' THEN 'A'
+              WHEN ${collectionCodeExpression('clients')} ~* '^R' THEN 'R'
               ELSE '#'
             END AS groupe, COUNT(*)::int AS total
             FROM collection_items
