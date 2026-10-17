@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import ModuleForm from '../modules/ModuleForm';
+import ArrivageChat from '../arrivages/ArrivageChat';
 import { MODS } from '../../data/modules';
 import { openStoredDocument } from '../../services/api';
 import {
@@ -26,7 +27,7 @@ import './AnalyseArrivageDirection.css';
 
 const TAB_ITEMS = [
   ['analysis', 'Analyse LIMEX'], ['orders', 'Commandes liées'], ['products', 'Produits'],
-  ['suppliers', 'Fournisseurs'], ['documents', 'Documents'], ['history', 'Historique'],
+  ['suppliers', 'Fournisseurs'], ['documents', 'Documents'], ['chat', 'Discussion'], ['history', 'Historique'],
 ];
 
 const STATUS_CLASS = {
@@ -572,6 +573,7 @@ export default function AnalyseArrivageDirection({ arrivage }) {
   );
 
   const renderTableTab = () => {
+    if (activeTab === 'chat') return <ArrivageChat arrivageCode={arrivage.code} />;
     if (activeTab === 'orders') return (
       <section className="limex-tab-card"><h3>Commandes liées</h3><table><thead><tr><th>Commande</th><th>Client</th><th>Condition</th><th>Package</th><th>Statut</th></tr></thead><tbody>{context.commandes.map(order => <tr key={order.code}><td><a href={`#ficheCommande:${order.code}`}>{order.referenceMetier || order.code}</a></td><td>{context.clients.find(client => client.code === order.client)?.nom || order.client || '—'}</td><td>{order.condition || '—'}</td><td>{order.formuleUltex || '—'}</td><td>{statusLabel(order.statut || 'En traitement')}</td></tr>)}</tbody></table></section>
     );

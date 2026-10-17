@@ -1,0 +1,101 @@
+.arrivage-chat {
+  background: #fff;
+  border: 1px solid #d9e3ef;
+  border-radius: 12px;
+  box-shadow: 0 5px 18px rgba(24, 61, 105, .06);
+  display: grid;
+  gap: 0;
+  margin: 10px 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.arrivage-chat-header {
+  align-items: center;
+  background: #f5f9ff;
+  border-bottom: 1px solid #e0e8f2;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.arrivage-chat-header h3 {
+  align-items: center;
+  color: #173d70;
+  display: flex;
+  font-size: 15px;
+  gap: 7px;
+  margin: 0;
+}
+
+.arrivage-chat-header p {
+  color: #697a91;
+  font-size: 11px;
+  margin: 3px 0 0 25px;
+}
+
+.arrivage-chat-live,
+.arrivage-chat-reconnect {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 6px;
+  padding: 5px 9px;
+}
+
+.arrivage-chat-live { background: #e7f8ef; color: #19784f; }
+.arrivage-chat-reconnect { background: #fff3d6; color: #8a6500; }
+.arrivage-chat-live i,
+.arrivage-chat-reconnect i { background: currentColor; border-radius: 50%; height: 7px; width: 7px; }
+
+.arrivage-chat-list {
+  background: #f7f9fc;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  max-height: 390px;
+  min-height: 220px;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.arrivage-chat-compact .arrivage-chat-list { max-height: 320px; min-height: 180px; }
+
+.arrivage-chat-list article {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid #dfe7f0;
+  border-radius: 5px 13px 13px 13px;
+  box-shadow: 0 2px 7px rgba(25, 56, 92, .05);
+  max-width: min(78%, 720px);
+  padding: 9px 11px;
+}
+
+.arrivage-chat-list article.mine {
+  align-self: flex-end;
+  background: #e5f1ff;
+  border-color: #bfd8f2;
+  border-radius: 13px 5px 13px 13px;
+}
+
+.arrivage-chat-meta { align-items: center; display: flex; gap: 7px; margin-bottom: 5px; }
+.arrivage-chat-meta b { color: #173d70; font-size: 11px; }
+.arrivage-chat-meta span { color: #718096; font-size: 9px; font-weight: 700; }
+.arrivage-chat-meta time { color: #8795a8; font-size: 9px; margin-left: auto; white-space: nowrap; }
+.arrivage-chat-list article p { color: #27384f; font-size: 13px; line-height: 1.45; margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.arrivage-chat-empty { align-self: center; color: #7c899a; font-size: 12px; margin: auto; text-align: center; }
+
+.arrivage-chat-compose { align-items: flex-end; background: #fff; display: grid; gap: 9px; grid-template-columns: 1fr auto; padding: 12px 14px 7px; }
+.arrivage-chat-compose textarea { border: 1px solid #ccd8e6; border-radius: 9px; font: inherit; min-height: 62px; padding: 10px; resize: vertical; }
+.arrivage-chat-compose textarea:focus { border-color: #3481c9; box-shadow: 0 0 0 3px rgba(52, 129, 201, .12); outline: none; }
+.arrivage-chat-compose .btn { align-items: center; display: inline-flex; gap: 6px; justify-content: center; min-height: 40px; }
+.arrivage-chat-hint { color: #8795a8; padding: 0 14px 10px; }
+
+@media (max-width: 680px) {
+  .arrivage-chat-header { align-items: flex-start; gap: 8px; }
+  .arrivage-chat-list article { max-width: 92%; }
+  .arrivage-chat-compose { grid-template-columns: 1fr; }
+  .arrivage-chat-compose .btn { width: 100%; }
+}

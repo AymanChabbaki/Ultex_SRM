@@ -13,8 +13,9 @@ import { migrerLignesDemande, calculerIndicateursDemande } from '../../utils/dem
 import { FORMULES_ULTEX, STATUTS_LIGNE_DEMANDE } from '../../data/constants';
 import LigneModal from '../common/LigneModal';
 import { prochaineReferenceCommande, lignesCommandeDepuisDemande } from '../../utils/workflowArchitecture';
-import { syncPaymentToWorkflow } from '../../services/api';
+import { fetchCollectionPage, syncPaymentToWorkflow } from '../../services/api';
 import { notificationsNouvelleCommande } from '../../utils/arrivageWorkflow';
+import { canonicalDemandeCode, findDemandeByIdentifier } from '../../utils/demandeIdentity';
 
 const CONFIRMATION_COMMANDE = [
   { k: 'condition', l: 'Condition de confirmation', t: 'select', opts: ['Devis accepté','Bon de commande signé','Contrat signé','Acompte reçu','Preuve de paiement reçue','Validation exceptionnelle de la Direction'], req: 1 },
@@ -30,7 +31,7 @@ const CONFIRMATION_COMMANDE = [
 ];
 
 const FicheDemande = ({ codeProp, code: codeFromProp }) => {
-  const { db, updateDB, genCode, audit, notifier, userCourant } = useDB();
+  const { db, updateDB, genCode, audit, notifier, userCourant, hydraterEnregistrements } = useDB();
   const { peut } = useAuth();
   const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
@@ -39,6 +40,7 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
   const [showLierDocument, setShowLierDocument] = useState(false);
   const [onglet, setOnglet] = useState('lignes');
   const [showConversion, setShowConversion] = useState(false);
+  const [lookupComplete, setLookupComplete] = useState(false);
 
   useEffect(() => {
     const c = codeProp || codeFromProp;
@@ -52,25 +54,62 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
     }
   }, [codeProp, codeFromProp, window.location.hash]);
 
-  const demande = (db?.demandes || []).find(d => d.code === code);
-  const lignes = (db?.demandeLignes || []).filter(l => l.demande === code);
+  const demande = findDemandeByIdentifier(db?.demandes, code);
+  const demandeCode = canonicalDemandeCode(demande, code);
+  const lignes = (db?.demandeLignes || []).filter(l => {
+    const linked = String(l.demande || '').trim().toLowerCase();
+    return linked === String(demandeCode).toLowerCase()
+      || linked === String(demande?.referenceMetier || '').trim().toLowerCase();
+  });
+
+  useEffect(() => {
+    if (!code) {
+      setLookupComplete(true);
+      return undefined;
+    }
+    if (demande) {
+      setLookupComplete(true);
+      if (demandeCode && demandeCode !== code) {
+        window.location.hash = `ficheDemande:${demandeCode}`;
+      }
+      return undefined;
+    }
+
+    let cancelled = false;
+    setLookupComplete(false);
+    fetchCollectionPage('demandes', { q: code, page: 1, pageSize: 100 })
+      .then(payload => {
+        if (cancelled) return;
+        const found = findDemandeByIdentifier(payload.items || [], code);
+        if (found) {
+          hydraterEnregistrements('demandes', [found]);
+          const canonical = canonicalDemandeCode(found, code);
+          if (canonical !== code) {
+            window.location.hash = `ficheDemande:${canonical}`;
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLookupComplete(true); });
+    return () => { cancelled = true; };
+  }, [code, demande, demandeCode, hydraterEnregistrements]);
 
   useEffect(() => {
     if (!demande) return;
     const migrees = migrerLignesDemande(db, demande);
     if (migrees.length) {
       updateDB({ ...db, demandeLignes: [...(db.demandeLignes || []), ...migrees] });
-      audit('Demandes', 'Migration des lignes (ancien format)', code, 'demandeLignes', '—', `${migrees.length} ligne(s) migrée(s)`, code);
+      audit('Demandes', 'Migration des lignes (ancien format)', demandeCode, 'demandeLignes', '—', `${migrees.length} ligne(s) migrée(s)`, demandeCode);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code, demande?.code]);
+  }, [demandeCode, demande?.code]);
 
   if (!demande) {
     return (
       <div>
         <Topbar titre="Fiche Demande" />
         <div className="panneau">
-          <div className="vide"><b>Demande introuvable</b> {code ? `(${code})` : ''} n'existe pas.</div>
+          <div className="vide"><b>{lookupComplete ? 'Demande introuvable' : 'Chargement de la demande…'}</b> {lookupComplete && code ? `(${code}) n'existe pas.` : ''}</div>
         </div>
       </div>
     );
@@ -108,16 +147,16 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
 
   const ind = calculerIndicateursDemande(lignes);
 
-  const historique = (db.audit || []).filter(a => a.objet === code || a.dossier === code)
+  const historique = (db.audit || []).filter(a => a.objet === demandeCode || a.dossier === demandeCode)
     .sort((a, b) => (b.ts || 0) - (a.ts || 0));
 
   const handleAjouterProduit = () => {
     const newCode = genCode('DL');
     const clientCode = demande.client || 'SANS-CLIENT';
     const n = (db.demandeLignes || []).filter(l => String(l.referenceMetier || '').endsWith(`-${clientCode}`)).length + 1;
-    const brouillon = { code: newCode, referenceMetier: `P${n}-${clientCode}`, demande: code, statut: STATUTS_LIGNE_DEMANDE[0], ts: Date.now() };
+    const brouillon = { code: newCode, referenceMetier: `P${n}-${clientCode}`, demande: demandeCode, statut: STATUTS_LIGNE_DEMANDE[0], ts: Date.now() };
     updateDB({ ...db, demandeLignes: [brouillon, ...(db.demandeLignes || [])] });
-    audit('Demandes', 'Ajout produit', newCode, '—', '—', 'Nouvelle ligne', code);
+    audit('Demandes', 'Ajout produit', newCode, '—', '—', 'Nouvelle ligne', demandeCode);
     window.location.hash = `ficheDemandeLigne:${newCode}`;
   };
 
@@ -132,11 +171,11 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
       demandeLignes: (db.demandeLignes || []).filter(l => l.code !== ligne.code),
       demandeRoutages: (db.demandeRoutages || []).filter(r => r.ligne !== ligne.code),
     });
-    audit('Demandes', 'Suppression produit', ligne.code, 'demandeLignes', libelle, 'Supprimé', code);
+    audit('Demandes', 'Suppression produit', ligne.code, 'demandeLignes', libelle, 'Supprimé', demandeCode);
     toast(`Produit ${libelle} supprimé de la demande.`);
   };
 
-  const commandesExistantes = (db.commandes || []).filter(c => (c.source_demande_id || c.demande) === code);
+  const commandesExistantes = (db.commandes || []).filter(c => findDemandeByIdentifier([demande], c.source_demande_id || c.demande));
 
   const handleConvertirCommande = async (confirmation) => {
     if (!confirmation.condition || confirmation.statutPaiement !== 'Confirmé' || !(Number(confirmation.montantPaiement) > 0)) {
@@ -178,7 +217,7 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
       ...db,
       paiements: [paiement, ...(db.paiements || [])],
       commandes: [commande, ...(db.commandes || [])],
-      demandes: (db.demandes || []).map(d => d.code === code ? { ...d, statut: 'Confirmée' } : d)
+      demandes: (db.demandes || []).map(d => canonicalDemandeCode(d) === demandeCode ? { ...d, statut: 'Confirmée' } : d)
     };
     await updateDB(nextDb);
     // Most CRM demandes have no Workflow dossier; that must not block the
@@ -215,16 +254,16 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
     toast(`Commande ${commande.referenceMetier} créée.${workflowMessage}`);
   };
 
-  const routagesDemande = (db.demandeRoutages || []).filter(r => r.demande === code).sort((a, b) => (b.dateEnvoi || 0) - (a.dateEnvoi || 0));
+  const routagesDemande = (db.demandeRoutages || []).filter(r => r.demande === demandeCode).sort((a, b) => (b.dateEnvoi || 0) - (a.dateEnvoi || 0));
   const lignesParCode = Object.fromEntries(lignes.map(l => [l.code, l]));
 
   return (
     <div>
-      <Topbar titre={`Demande : ${demande.referenceMetier || code}`} />
+      <Topbar titre={`Demande : ${demande.referenceMetier || demandeCode}`} />
       <div className="panneau">
 
         <div className="outils">
-          <b className="titre-fiche">{demande.referenceMetier || code}</b>
+          <b className="titre-fiche">{demande.referenceMetier || demandeCode}</b>
           <span className="spacer"></span>
           {peut('ajouter') && commandesExistantes.length === 0 && demande.closingTag !== 'converti' && (
             <button className="btn vert" onClick={() => setShowConversion(true)}>Confirmer + créer commande</button>
@@ -235,7 +274,7 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
           <ModuleForm
             moduleId="demandes"
             MODS={MODS}
-            recordCode={code}
+            recordCode={demandeCode}
             onClose={() => setShowEdit(false)}
           />
         )}
@@ -355,7 +394,7 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
                 { key: 'nom', label: 'Nom' },
                 { key: 'categorie', label: 'Catégorie' }
               ]}
-              data={db.documents?.filter(d => d.demande === code) || []}
+              data={db.documents?.filter(d => d.demande === demandeCode || d.demande === demande.referenceMetier) || []}
             />
           </div>
         )}
@@ -382,7 +421,7 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
           <ModuleForm
             moduleId="documents"
             MODS={MODS}
-            initialData={{ demande: code }}
+            initialData={{ demande: demandeCode }}
             onClose={() => setShowLierDocument(false)}
           />
         )}

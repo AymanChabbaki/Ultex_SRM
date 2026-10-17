@@ -278,7 +278,14 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
                   )}
                   <tr>
                     <td className="code">
-                      {M.fiche ? <a href={`#${M.fiche}:${o.code}`}>{moduleId === 'clients' ? codeClientAffiche(o) : (o.referenceMetier || o.code)}</a> : (o.referenceMetier || o.code)}
+                      {M.fiche ? (
+                        <a
+                          href={`#${M.fiche}:${o.code}`}
+                          onClick={() => hydraterEnregistrements(M.coll, [o])}
+                        >
+                          {moduleId === 'clients' ? codeClientAffiche(o) : (o.referenceMetier || o.code)}
+                        </a>
+                      ) : (o.referenceMetier || o.code)}
                     </td>
                     <td>{formatCreationDate(o)}</td>
                     {(M.cols || []).map(c => {

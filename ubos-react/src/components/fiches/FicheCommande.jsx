@@ -10,6 +10,7 @@ import ModuleForm from '../modules/ModuleForm';
 import { MODS } from '../../data/modules';
 import Modal from '../common/Modal';
 import LigneModal from '../common/LigneModal';
+import { canonicalDemandeCode, findDemandeByIdentifier } from '../../utils/demandeIdentity';
 
 const CHAMPS_LIGNE_COMMANDE = [
   {k:'nomProduit',l:'Produit',t:'text',req:1}, {k:'designationTechnique',l:'Désignation',t:'textarea'},
@@ -56,10 +57,12 @@ const FicheCommande = ({ codeProp, code: codeFromProp }) => {
   }
 
   const client = db.clients?.find(c => c.code === commande.client) || {};
+  const demandeLiee = findDemandeByIdentifier(db.demandes, commande.demande || commande.source_demande_id);
+  const demandeCode = canonicalDemandeCode(demandeLiee, commande.demande || commande.source_demande_id);
 
   const mainFields = [
     {k: 'client', l: 'Client', render: () => <a href={`#ficheClient:${commande.client}`}>{client.nom || commande.client}</a>},
-    {k: 'demande', l: 'Demande', render: () => commande.demande ? <a href={`#ficheDemande:${commande.demande}`}>{commande.demande}</a> : '—'},
+    {k: 'demande', l: 'Demande', render: () => demandeCode ? <a href={`#ficheDemande:${demandeCode}`}>{demandeLiee?.referenceMetier || demandeCode}</a> : '—'},
     {k: 'condition', l: 'Condition'},
     {k: 'formuleUltex', l: 'Package commercial'},
     {k: 'devisAccepte', l: 'Devis accepté (pièce jointe)', render: (v) => {

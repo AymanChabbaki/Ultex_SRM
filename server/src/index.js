@@ -171,6 +171,8 @@ let redisClient = null;
 let redisSubscriber = null;
 const DATA_DASHBOARD_CHANNEL = 'crm:data-dashboard:changes';
 const dataDashboardStreams = new Set();
+const ARRIVAGE_CHAT_CHANNEL = `crm:${CRM_INSTANCE}:arrivage-chat`;
+const arrivageChatStreams = new Map();
 
 function diffuserChangementData(payload) {
   const frame = `event: change\ndata: ${JSON.stringify(payload)}\n\n`;
@@ -181,6 +183,34 @@ function diffuserChangementData(payload) {
       dataDashboardStreams.delete(response);
     }
   }
+}
+
+function diffuserMessageArrivage(payload) {
+  const code = String(payload?.arrivage || '');
+  if (!code) return;
+  const streams = arrivageChatStreams.get(code);
+  if (!streams?.size) return;
+  const frame = `event: message\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const response of streams) {
+    try {
+      response.write(frame);
+    } catch {
+      streams.delete(response);
+    }
+  }
+  if (!streams.size) arrivageChatStreams.delete(code);
+}
+
+async function publierMessageArrivage(payload) {
+  if (redisClient?.isReady && redisSubscriber?.isReady) {
+    try {
+      await redisClient.publish(ARRIVAGE_CHAT_CHANNEL, JSON.stringify(payload));
+      return;
+    } catch (error) {
+      console.error('Redis arrival chat publish:', error.message);
+    }
+  }
+  diffuserMessageArrivage(payload);
 }
 
 async function publierChangementData(req) {
@@ -220,6 +250,14 @@ async function initialiserRedis() {
           diffuserChangementData(JSON.parse(message));
         } catch {
           diffuserChangementData({ type: 'crm-change', at: new Date().toISOString() });
+        }
+      });
+      await subscriber.subscribe(ARRIVAGE_CHAT_CHANNEL, message => {
+        try {
+          diffuserMessageArrivage(JSON.parse(message));
+        } catch {
+          // A malformed Pub/Sub frame is ignored; persisted chat history
+          // remains authoritative and the browser will reload it on reconnect.
         }
       });
       redisSubscriber = subscriber;
@@ -321,7 +359,7 @@ const COLLS = [
   "tacheEtapes", "rapportsJournaliers", "journalSecurite",
   "suivisClosing",
   "suivisLimex", "actionsLimex", "instructionsLimex", "documentsComptablesCasa",
-  "facturationRecus"
+  "facturationRecus", "arrivageMessages"
 ];
 
 // Login only needs identity, notifications, sequences and a short audit tail.
@@ -504,6 +542,37 @@ async function authMiddleware(req, res, next) {
     next();
   } catch (error) {
     return res.status(401).json({ error: 'Session invalide ou expirée' });
+  }
+}
+
+function normaliserIdentiteChat(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function roleMessagerieArrivage(user) {
+  const identity = normaliserIdentiteChat(`${user?.identifiant || ''} ${user?.nomComplet || ''}`);
+  if (identity.includes('imane')) return 'Imane';
+  if (identity.includes('oumaima')) return 'Oumaima · Direction';
+  if (identity.includes('yasser') || identity.includes('yassir')) return 'Yasser';
+  return '';
+}
+
+async function requireArrivageChatAccess(req, res, next) {
+  try {
+    const user = req.crmUser || await authPrisma.user.findUnique({ where: { id: req.auth.id } });
+    const chatRole = roleMessagerieArrivage(user);
+    if (!user?.actif || !chatRole) {
+      return res.status(403).json({ error: 'Discussion réservée à Imane, Oumaima et Yasser' });
+    }
+    req.crmUser = user;
+    req.arrivageChatRole = chatRole;
+    return next();
+  } catch (error) {
+    console.error('Arrival chat access check error:', error);
+    return res.status(500).json({ error: "Impossible de vérifier l'accès à la discussion" });
   }
 }
 
@@ -1002,6 +1071,109 @@ app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
     console.error('Collection page error:', error);
     res.status(500).json({ error: 'Erreur lors du chargement de la collection' });
   }
+});
+
+function codeArrivageValide(value) {
+  const code = String(value || '').trim();
+  return code && code.length <= 120 ? code : '';
+}
+
+function serialiserMessageArrivage(row) {
+  return {
+    id: row.id,
+    code: row.code,
+    createdAt: row.createdAt?.toISOString?.() || row.data?.createdAt,
+    ...row.data,
+  };
+}
+
+app.get('/api/arrivages/:code/chat', authMiddleware, requireArrivageChatAccess, async (req, res) => {
+  const arrivage = codeArrivageValide(req.params.code);
+  if (!arrivage) return res.status(400).json({ error: "Code d'arrivage invalide" });
+  try {
+    const rows = await prisma.collectionItem.findMany({
+      where: { collection: 'arrivageMessages', dossier: arrivage },
+      orderBy: { createdAt: 'desc' },
+      take: 300,
+    });
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ items: rows.reverse().map(serialiserMessageArrivage) });
+  } catch (error) {
+    console.error('Arrival chat history error:', error);
+    return res.status(500).json({ error: "Impossible de charger la discussion de l'arrivage" });
+  }
+});
+
+app.post('/api/arrivages/:code/chat', authMiddleware, requireArrivageChatAccess, async (req, res) => {
+  const arrivage = codeArrivageValide(req.params.code);
+  const text = String(req.body?.text || '').trim();
+  if (!arrivage) return res.status(400).json({ error: "Code d'arrivage invalide" });
+  if (!text) return res.status(400).json({ error: 'Le message est vide' });
+  if (text.length > 2000) return res.status(400).json({ error: 'Le message dépasse 2 000 caractères' });
+
+  try {
+    const exists = await prisma.collectionItem.findFirst({
+      where: {
+        collection: 'arrivages',
+        OR: [{ code: arrivage }, { id: arrivage }],
+      },
+      select: { id: true },
+    });
+    if (!exists) return res.status(404).json({ error: 'Arrivage introuvable' });
+
+    const now = new Date();
+    const id = crypto.randomUUID();
+    const code = `MSG-ARR-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    const data = {
+      id,
+      code,
+      arrivage,
+      text,
+      authorId: req.crmUser.id,
+      author: req.crmUser.nomComplet || req.crmUser.identifiant || '—',
+      authorRole: req.arrivageChatRole,
+      createdAt: now.toISOString(),
+      ts: now.getTime(),
+    };
+    const row = await prisma.collectionItem.create({
+      data: { collection: 'arrivageMessages', id, code, dossier: arrivage, data },
+    });
+    const message = serialiserMessageArrivage(row);
+    await publierMessageArrivage(message);
+    return res.status(201).json({ message });
+  } catch (error) {
+    console.error('Arrival chat send error:', error);
+    return res.status(500).json({ error: "Impossible d'envoyer le message" });
+  }
+});
+
+app.get('/api/arrivages/:code/chat/stream', authMiddleware, requireArrivageChatAccess, (req, res) => {
+  const arrivage = codeArrivageValide(req.params.code);
+  if (!arrivage) return res.status(400).json({ error: "Code d'arrivage invalide" });
+
+  res.status(200);
+  res.set({
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.flushHeaders?.();
+  res.write(`event: ready\ndata: ${JSON.stringify({ connected: true, arrivage })}\n\n`);
+
+  const streams = arrivageChatStreams.get(arrivage) || new Set();
+  streams.add(res);
+  arrivageChatStreams.set(arrivage, streams);
+
+  const heartbeat = setInterval(() => {
+    try { res.write(`: keepalive ${Date.now()}\n\n`); } catch {}
+  }, 20000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    streams.delete(res);
+    if (!streams.size) arrivageChatStreams.delete(arrivage);
+  });
 });
 
 app.get('/api/audit', authMiddleware, async (req, res) => {

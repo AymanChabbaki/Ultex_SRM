@@ -9,6 +9,7 @@ import Modal from '../common/Modal';
 import LigneModal from '../common/LigneModal';
 import ModuleForm from '../modules/ModuleForm';
 import AnalyseArrivageDirection from './AnalyseArrivageDirection';
+import ArrivageChat from '../arrivages/ArrivageChat';
 import { MODS } from '../../data/modules';
 import { pill } from '../../utils/format';
 import { categorieDepuisFichier, lireFichierDataUrl } from '../../utils/fileData';
@@ -367,6 +368,8 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
           <h4>Action suivante</h4>
           <p>{arrivage.actionSuivante || 'Aucune action définie'}</p>
         </div>
+
+        <ArrivageChat arrivageCode={code} compact />
 
         {hasComplementWorkflow && (
           <div className="bloc-fiche large" style={{ border: '2px solid var(--or)', background: 'var(--fond-jaune)' }}>

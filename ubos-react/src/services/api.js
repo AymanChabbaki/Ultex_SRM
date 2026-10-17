@@ -59,6 +59,63 @@ export async function fetchCollectionPage(collection, params = {}) {
   return await res.json();
 }
 
+export async function fetchArrivageChatMessages(arrivageCode) {
+  const res = await fetch(`${API_URL}/arrivages/${encodeURIComponent(arrivageCode)}/chat`, {
+    headers: { ...authHeaders() },
+    cache: 'no-store',
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || "Impossible de charger la discussion de l'arrivage");
+  return body;
+}
+
+export async function sendArrivageChatMessage(arrivageCode, text) {
+  const res = await fetch(`${API_URL}/arrivages/${encodeURIComponent(arrivageCode)}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ text }),
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || "Impossible d'envoyer le message");
+  return body.message;
+}
+
+export async function subscribeArrivageChat(arrivageCode, onMessage, { signal, onReady } = {}) {
+  const res = await fetch(`${API_URL}/arrivages/${encodeURIComponent(arrivageCode)}/chat/stream`, {
+    headers: { Accept: 'text/event-stream', ...authHeaders() },
+    cache: 'no-store',
+    signal,
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  if (!res.ok || !res.body) throw new Error('Discussion en direct indisponible');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+    let boundary = buffer.indexOf('\n\n');
+    while (boundary >= 0) {
+      const frame = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const event = frame.split('\n').find(line => line.startsWith('event:'))?.slice(6).trim();
+      const raw = frame.split('\n')
+        .filter(line => line.startsWith('data:'))
+        .map(line => line.slice(5).trim())
+        .join('\n');
+      let payload = null;
+      try { payload = raw ? JSON.parse(raw) : null; } catch {}
+      if (event === 'ready') onReady?.(payload);
+      if (event === 'message') onMessage?.(payload);
+      boundary = buffer.indexOf('\n\n');
+    }
+  }
+}
+
 export async function fetchWorkflowV2Leads(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
