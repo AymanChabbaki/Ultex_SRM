@@ -15,10 +15,10 @@ test('arrival chat is persistent, authenticated and streamed in real time', () =
   assert.match(server, /\/api\/arrivages\/:code\/chat\/stream/);
   assert.match(server, /requireArrivageChatAccess/);
   assert.match(server, /ARRIVAGE_CHAT_CHANNEL/);
-  assert.match(server, /Discussion réservée à Imane, Oumaima et Yasser/);
+  assert.match(server, /Discussion réservée à Imane, Oumaima, Yasser et Nissrin/);
 });
 
-test('Imane, Oumaima and Yasser can use the same arrival conversation UI', () => {
+test('Imane, Oumaima, Yasser and Nissrin can use the same arrival conversation UI', () => {
   const chat = read('ubos-react/src/components/arrivages/ArrivageChat.jsx');
   const arrival = read('ubos-react/src/components/fiches/FicheArrivage.jsx');
   const direction = read('ubos-react/src/components/fiches/AnalyseArrivageDirection.jsx');
@@ -27,6 +27,8 @@ test('Imane, Oumaima and Yasser can use the same arrival conversation UI', () =>
   assert.match(chat, /identity\.includes\('imane'\)/);
   assert.match(chat, /identity\.includes\('oumaima'\)/);
   assert.match(chat, /identity\.includes\('yasser'\)/);
+  assert.match(chat, /identity\.includes\('nisrine'\)/);
+  assert.match(chat, /Imane · Oumaima · Yasser · Nissrin/);
   assert.match(arrival, /<ArrivageChat arrivageCode=\{code\}/);
   assert.match(direction, /\['chat', 'Discussion'\]/);
   assert.match(api, /text\/event-stream/);

@@ -19,6 +19,7 @@ function participantRole(session) {
   if (identity.includes('imane')) return 'Imane';
   if (identity.includes('oumaima')) return 'Oumaima · Direction';
   if (identity.includes('yasser') || identity.includes('yassir')) return 'Yasser';
+  if (identity.includes('nisrine') || identity.includes('nissrin') || identity.includes('nissrine')) return 'Nissrin';
   return '';
 }
 
@@ -132,7 +133,7 @@ export default function ArrivageChat({ arrivageCode, compact = false }) {
       <header className="arrivage-chat-header">
         <div>
           <h3><MessageCircle size={18} /> Discussion de l'arrivage</h3>
-          <p>Imane · Oumaima · Yasser</p>
+          <p>Imane · Oumaima · Yasser · Nissrin</p>
         </div>
         <span className={live ? 'arrivage-chat-live' : 'arrivage-chat-reconnect'}>
           <i /> {live ? 'En direct' : 'Reconnexion…'}
@@ -171,7 +172,7 @@ export default function ArrivageChat({ arrivageCode, compact = false }) {
             }
           }}
           rows={compact ? 2 : 3}
-          placeholder={`Écrire à Imane, Oumaima et Yasser au sujet de ${arrivageCode}…`}
+          placeholder={`Écrire à Imane, Oumaima, Yasser et Nissrin au sujet de ${arrivageCode}…`}
         />
         <button type="button" className="btn" disabled={!draft.trim() || sending} onClick={submit}>
           <Send size={16} /> {sending ? 'Envoi…' : 'Envoyer'}

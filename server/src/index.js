@@ -557,6 +557,7 @@ function roleMessagerieArrivage(user) {
   if (identity.includes('imane')) return 'Imane';
   if (identity.includes('oumaima')) return 'Oumaima · Direction';
   if (identity.includes('yasser') || identity.includes('yassir')) return 'Yasser';
+  if (identity.includes('nisrine') || identity.includes('nissrin') || identity.includes('nissrine')) return 'Nissrin';
   return '';
 }
 
@@ -565,7 +566,7 @@ async function requireArrivageChatAccess(req, res, next) {
     const user = req.crmUser || await authPrisma.user.findUnique({ where: { id: req.auth.id } });
     const chatRole = roleMessagerieArrivage(user);
     if (!user?.actif || !chatRole) {
-      return res.status(403).json({ error: 'Discussion réservée à Imane, Oumaima et Yasser' });
+      return res.status(403).json({ error: 'Discussion réservée à Imane, Oumaima, Yasser et Nissrin' });
     }
     req.crmUser = user;
     req.arrivageChatRole = chatRole;
