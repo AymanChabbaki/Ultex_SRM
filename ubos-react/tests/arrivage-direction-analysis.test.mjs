@@ -7,6 +7,8 @@ import {
   LIMEX_DIRECTION_SECTIONS,
   buildDirectionAnalysisContext,
   createDirectionAnalysisDraft,
+  directionFinalCheck,
+  freezeDirectionAnalysisVersion,
   missingDirectionInformation,
   sectionProgress,
   summarizeDirectionAnalysis,
@@ -31,9 +33,12 @@ const db = {
 test('Direction analysis contains the complete 14-phase LIMEX structure', () => {
   assert.equal(LIMEX_DIRECTION_SECTIONS.length, 14);
   assert.deepEqual(LIMEX_DIRECTION_SECTIONS.map(section => section.id), [
-    'general', 'technique', 'fournisseur', 'commercial', 'origine-valeur', 'douane', 'paiements',
-    'production', 'transport', 'chargement', 'transit', 'declaration', 'livraison', 'risques',
+    'general', 'technique', 'fournisseur', 'production', 'commercial', 'origine-valeur', 'douane',
+    'paiements', 'transport', 'chargement', 'transit', 'declaration', 'livraison', 'risques',
   ]);
+  assert.equal(LIMEX_DIRECTION_SECTIONS.find(section => section.id === 'fournisseur').items.length, 1);
+  assert.ok(LIMEX_DIRECTION_SECTIONS.find(section => section.id === 'technique').productScoped);
+  assert.ok(LIMEX_DIRECTION_SECTIONS.find(section => section.id === 'douane').productScoped);
 });
 
 test('arrival data is consolidated from linked commandes, clients, suppliers and documents', () => {
@@ -48,8 +53,8 @@ test('arrival data is consolidated from linked commandes, clients, suppliers and
 test('draft highlights missing information and computes progress and summary', () => {
   const draft = createDirectionAnalysisDraft(db, arrivage);
   assert.equal(draft.controls.commercial.proforma.status, 'À vérifier');
-  assert.equal(draft.controls.commercial['packing-list'].status, 'À recevoir');
-  assert.ok(missingDirectionInformation(draft).some(item => item.label === 'Packing List'));
+  assert.equal(draft.controls.chargement['packing-list'].status, 'Pas encore disponible');
+  assert.ok(missingDirectionInformation(draft).some(item => item.label === 'Packing List définitive'));
 
   draft.controls.general.commandes.status = 'Conforme';
   const progress = sectionProgress(draft, 'general');
@@ -62,8 +67,8 @@ test('draft highlights missing information and computes progress and summary', (
 test('Imane can answer every Direction request and return it for verification', () => {
   const draft = createDirectionAnalysisDraft(db, arrivage);
   draft.complementRequests = [{
-    id: 'CMP1', sectionId: 'commercial', itemId: 'packing-list', section: 'Documents commerciaux',
-    label: 'Packing List', detail: 'Ajouter la Packing List définitive', status: 'En attente',
+    id: 'CMP1', sectionId: 'chargement', itemId: 'packing-list', section: 'Chargement et expédition',
+    label: 'Packing List définitive', detail: 'Ajouter la Packing List définitive', status: 'En attente de complément',
   }];
   const result = applyImaneComplementResponses(
     draft,
@@ -77,9 +82,18 @@ test('Imane can answer every Direction request and return it for verification', 
   assert.equal(result.record.directionValidation, 'À revérifier');
   assert.equal(result.record.complementRequests[0].status, 'Reçu');
   assert.equal(result.record.complementRequests[0].response, 'Packing List reçue et contrôlée.');
-  assert.equal(result.record.controls.commercial['packing-list'].current, 'Packing List reçue et contrôlée.');
-  assert.equal(result.record.controls.commercial['packing-list'].documentCode, 'DOC1');
-  assert.equal(result.record.controls.commercial['packing-list'].status, 'À vérifier');
+  assert.equal(result.record.controls.chargement['packing-list'].current, 'Packing List reçue et contrôlée.');
+  assert.equal(result.record.controls.chargement['packing-list'].documentCode, 'DOC1');
+  assert.equal(result.record.controls.chargement['packing-list'].status, 'À vérifier');
+});
+
+test('final transmission is gated and freezes an immutable version', () => {
+  const draft = createDirectionAnalysisDraft(db, arrivage);
+  assert.equal(directionFinalCheck(draft).canSubmit, false);
+  const frozen = freezeDirectionAnalysisVersion({ ...draft, status: 'Analyse transmise' }, 'Oumaima', '2026-10-19T12:00:00.000Z');
+  assert.equal(frozen.lastFrozenVersion, 1);
+  assert.equal(frozen.versionNumber, 2);
+  assert.equal(frozen.versions[0].frozenBy, 'Oumaima');
 });
 
 test('Direction arrival screen persists analysis and returns the workflow to Imane', () => {
@@ -90,14 +104,19 @@ test('Direction arrival screen persists analysis and returns the workflow to Ima
   assert.match(source, /analysesLimex: replaceAnalysis\(record\)/);
   assert.match(source, /ACTIONS_REVUE_ARRIVAGE\.RETOUR_IMANE/);
   assert.match(source, /destinataireImane\(db\)/);
-  assert.match(source, /Terminer l'analyse et transmettre à Imane/);
-  assert.match(source, /VÉRIFICATION PAR PRODUIT/);
+  assert.match(source, /Analyse terminée → Transmettre à Imane/);
+  assert.match(source, /VÉRIFICATION PRODUIT PAR PRODUIT/);
   assert.match(source, /<th>Action<\/th>/);
   assert.match(source, /Demandes de complément/);
   assert.match(source, /Réponse générale d'Imane/);
   assert.match(source, /Réponse Imane :/);
   assert.match(source, /Contrôle & validation/);
-  assert.match(source, /Plan d'exécution proposé/);
+  assert.match(source, /Instructions transmises à Imane/);
+  assert.doesNotMatch(source, /Plan d'exécution proposé/);
+  assert.match(source, /Enregistrement automatique/);
+  assert.match(source, /freezeDirectionAnalysisVersion/);
+  assert.match(source, /limex-current-value/);
+  assert.doesNotMatch(source, /onChange=\{event => updateControl\(item\.id, \{ current:/);
   assert.match(source, /openDocument\(document\)/);
   assert.doesNotMatch(source, /href=\{`#ficheDocument:/);
   assert.doesNotMatch(source, /<aside/);

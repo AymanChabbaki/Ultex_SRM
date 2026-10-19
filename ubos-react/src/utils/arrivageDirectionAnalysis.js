@@ -21,10 +21,24 @@ const docItem = (id, label, words) => ({ id, label, expectedDocument: true, read
 ) });
 
 export const LIMEX_DIRECTION_STATUSES = [
-  'Non vérifié', 'Conforme', 'À vérifier', 'À corriger', 'Manquant', 'À recevoir', 'Bloquant', 'N/A',
+  'Non examiné', 'Pas encore disponible', 'Conforme', 'À vérifier', 'À corriger', 'Information manquante',
+  'En attente de complément', 'Bloquant', 'Non applicable',
 ];
 
-export const LIMEX_DIRECTION_SECTIONS = [
+const STATUS_ALIASES = {
+  'Non vérifié': 'Non examiné',
+  Manquant: 'Information manquante',
+  'À recevoir': 'Information manquante',
+  'En attente': 'En attente de complément',
+  'N/A': 'Non applicable',
+};
+
+export const canonicalDirectionStatus = value => STATUS_ALIASES[value] || value || 'Non examiné';
+
+const isMaritime = context => /maritime|fcl|lcl|conteneur/i.test(String(context.modeTransport || ''));
+const isAir = context => /a[eé]rien|air|express/i.test(String(context.modeTransport || ''));
+
+const LEGACY_LIMEX_DIRECTION_SECTIONS = [
   {
     id: 'general', title: 'Informations générales',
     items: [
@@ -137,8 +151,8 @@ export const LIMEX_DIRECTION_SECTIONS = [
     items: [
       { id: 'emballage', label: 'Emballage final', read: c => c.productDimensions },
       { id: 'colis', label: 'Nombre de colis / cartons', read: c => c.packages },
-      { id: 'conteneur', label: 'Conteneur / équipement', read: c => c.container },
-      { id: 'plomb', label: 'N° de plomb', read: c => c.seal },
+      { id: 'conteneur', label: 'Conteneur / équipement', read: c => c.container, applies: isMaritime },
+      { id: 'plomb', label: 'N° de plomb', read: c => c.seal, applies: isMaritime },
       { id: 'etd', label: 'Date de départ prévue (ETD)', read: c => c.etd },
       docItem('bl-draft', 'BL / AWB draft', ['bl draft', 'draft bl', 'awb draft']),
     ],
@@ -149,7 +163,8 @@ export const LIMEX_DIRECTION_SECTIONS = [
       { id: 'tracking', label: 'N° de suivi', read: c => c.tracking },
       { id: 'eta', label: 'ETA prévue / actualisée', read: c => c.eta },
       { id: 'bl-maitre', label: 'BL maître / AWB', read: c => joinValues([c.masterBl, c.awb]) },
-      { id: 'bl-house', label: 'BL house', read: c => c.houseBl },
+      { id: 'bl-house', label: 'BL house', read: c => c.houseBl, applies: isMaritime },
+      { id: 'awb', label: 'AWB aérien', read: c => c.awb, applies: isAir },
       { id: 'agent', label: 'Agent destination', read: c => c.destinationAgent },
       { id: 'port', label: "Port / aéroport d'arrivée", read: c => c.destination },
     ],
@@ -188,6 +203,110 @@ export const LIMEX_DIRECTION_SECTIONS = [
       { id: 'recommandation', label: 'Recommandation finale Direction', read: c => c.recommendation },
     ],
   },
+];
+
+// Order and controls approved in the Direction review dated 19/10/2026.
+// Phases 09-14 keep their existing scope until the second review document arrives.
+export const LIMEX_DIRECTION_SECTIONS = [
+  {
+    id: 'general', title: 'Informations générales',
+    items: [
+      { id: 'commandes', label: 'Commandes rattachées', read: c => c.commandReferences },
+      { id: 'clients', label: 'Clients concernés', read: c => c.clientNames },
+      { id: 'produits', label: 'Produits concernés', read: c => c.productNames },
+      { id: 'operation', label: "Type d'opération", read: c => firstValue(c.arrivage.type, 'Import') },
+      { id: 'mode', label: 'Mode de transport', read: c => c.modeTransport },
+      { id: 'destination', label: 'Destination (port / aéroport et ville)', read: c => c.destination },
+      { id: 'eta', label: 'Date cible / ETA', read: c => c.eta },
+    ],
+  },
+  {
+    id: 'technique', title: 'Documents techniques produit', productScoped: true,
+    items: [
+      { id: 'designation', label: 'Désignation détaillée', read: c => c.productDescriptions },
+      { id: 'marque-logo', label: 'Marque / logo', read: c => c.productBrands },
+      { id: 'reference', label: 'Références / modèles', read: c => c.productReferences },
+      { id: 'usage', label: 'Usage du produit', read: c => c.productUsage },
+      { id: 'matiere', label: 'Matière / composition', read: c => c.productMaterials },
+      docItem('fiche-technique', 'Fiche technique', ['fiche technique', 'technical data', 'datasheet']),
+      docItem('photos', 'Photos du produit', ['photo', 'image', 'catalogue']),
+    ],
+  },
+  {
+    id: 'fournisseur', title: 'Fournisseur',
+    items: [{ id: 'identite', label: 'Identité du fournisseur', read: c => c.supplierNames }],
+  },
+  {
+    id: 'production', title: 'Production et disponibilité',
+    items: [
+      { id: 'pret', label: 'Marchandise prête', read: c => c.goodsReady },
+      { id: 'delai', label: 'Délai de production (jours)', read: c => c.productionLeadTime },
+      { id: 'debut', label: 'Date de lancement production', read: c => c.productionStart },
+      { id: 'fin', label: 'Date de fin prévisionnelle', read: c => c.productionEnd },
+      { id: 'inspection', label: 'Inspection / contrôle qualité', read: c => c.inspection },
+      { id: 'echantillon', label: 'Échantillon', read: c => c.samples },
+    ],
+  },
+  {
+    id: 'commercial', title: 'Proforma et documents commerciaux',
+    items: [
+      docItem('proforma', 'Proforma reçue', ['proforma', 'pi-']),
+      { id: 'description', label: 'Description sur la proforma', read: c => c.productDescriptions },
+      { id: 'quantite', label: 'Quantité et unité', read: c => c.quantities },
+      { id: 'prix-unitaire', label: 'Prix unitaire et devise', read: c => c.unitPrices },
+      { id: 'total-proforma', label: 'Total proforma (calculé)', read: c => c.proformaTotal },
+      { id: 'shipping', label: 'Frais de shipping', read: c => c.shippingCosts },
+    ],
+  },
+  {
+    id: 'origine-valeur', title: 'Origine, Incoterm et valeur',
+    items: [
+      { id: 'origine', label: "Pays d'origine", read: c => c.origin },
+      { id: 'provenance', label: 'Pays de provenance', read: c => c.provenance },
+      { id: 'incoterm', label: 'Incoterm négocié + lieu convenu', read: c => c.incoterms },
+      { id: 'valeur', label: 'Valeur marchandise (total proforma)', read: c => c.goodsValue },
+      { id: 'taux-change', label: 'Taux de change', read: c => c.exchangeRate },
+      { id: 'valeur-mad', label: 'Valeur convertie en MAD', read: c => c.goodsValueMad },
+      { id: 'valeur-douane', label: 'Valeur en douane estimée', read: c => c.customsValue },
+      { id: 'fret', label: 'Fret jusqu’au Maroc', read: c => c.shippingCosts },
+      { id: 'assurance', label: 'Assurance', read: c => c.insurance },
+      docItem('origine-doc', "Certificat d'origine", ['certificat origine', "certificat d'origine", 'certificate of origin']),
+    ],
+  },
+  {
+    id: 'douane', title: 'Position tarifaire et réglementation', productScoped: true,
+    items: [
+      { id: 'hs', label: 'HS Code marocain (10 chiffres)', read: c => c.hsCodes },
+      { id: 'droits', label: 'Droits et taxes estimés', read: c => c.customsTaxes },
+      { id: 'conformite', label: 'Contrôle de conformité', read: c => joinValues([c.regulations, c.laboratory]) },
+      { id: 'regime-import', label: "Régime à l'import", read: c => joinValues([c.authorizations, c.restrictions]) },
+      { id: 'certificats', label: 'Certificats requis', read: c => c.certifications },
+    ],
+  },
+  {
+    id: 'paiements', title: 'Paiements et banque',
+    items: [
+      { id: 'methode', label: 'Méthode de paiement', read: c => c.paymentMethods },
+      { id: 'conditions', label: 'Conditions de paiement fournisseur', read: c => c.paymentTerms },
+      { id: 'avance-reliquat', label: 'Avance et reliquat (calculés)', read: c => joinValues([c.advancePayments, c.balancePayments]) },
+      { id: 'beneficiaire-banque', label: 'Bénéficiaire et coordonnées bancaires', read: c => joinValues([c.paymentBeneficiaries, c.bankDetails]) },
+      docItem('preuve-paiement', 'Preuve / reçu de paiement (SWIFT)', ['swift', 'reçu', 'recu', 'preuve paiement', 'payment receipt']),
+      { id: 'domiciliation', label: "Domiciliation bancaire / engagement d'importation", read: c => c.bankDomiciliation },
+    ],
+  },
+  LEGACY_LIMEX_DIRECTION_SECTIONS.find(section => section.id === 'transport'),
+  {
+    ...LEGACY_LIMEX_DIRECTION_SECTIONS.find(section => section.id === 'chargement'),
+    items: [
+      ...LEGACY_LIMEX_DIRECTION_SECTIONS.find(section => section.id === 'chargement').items,
+      docItem('packing-list', 'Packing List définitive', ['packing list', 'packing', 'pl-']),
+      docItem('facture-commerciale', 'Facture commerciale définitive', ['commercial invoice', 'facture commerciale']),
+    ],
+  },
+  LEGACY_LIMEX_DIRECTION_SECTIONS.find(section => section.id === 'transit'),
+  LEGACY_LIMEX_DIRECTION_SECTIONS.find(section => section.id === 'declaration'),
+  LEGACY_LIMEX_DIRECTION_SECTIONS.find(section => section.id === 'livraison'),
+  LEGACY_LIMEX_DIRECTION_SECTIONS.find(section => section.id === 'risques'),
 ];
 
 export function buildDirectionAnalysisContext(db, arrivage) {
@@ -230,6 +349,23 @@ export function buildDirectionAnalysisContext(db, arrivage) {
     const currency = firstValue(line.devise, line.currency, 'USD');
     return [quantity ? `${quantity} ${line.unite || ''}`.trim() : '', price ? `${price} ${currency}` : ''].filter(Boolean).join(' · ');
   }));
+  const quantities = joinValues(lines.map(line => {
+    const quantity = firstValue(line.quantite, line.quantity);
+    return quantity ? `${quantity} ${firstValue(line.unite, 'Pièces')}` : '';
+  }));
+  const unitPrices = joinValues(lines.map(line => {
+    const price = firstValue(line.prixUnitaire, line.prixFOB, line.prix, line.unitPrice);
+    return price ? `${price} ${firstValue(line.devise, line.currency, 'USD')}` : '';
+  }));
+  const calculatedProductsTotal = lines.reduce((sum, line) => {
+    const quantity = Number(firstValue(line.quantite, line.quantity, 0));
+    const price = Number(firstValue(line.prixUnitaire, line.prixFOB, line.prix, line.unitPrice, 0));
+    return sum + (Number.isFinite(quantity * price) ? quantity * price : 0);
+  }, 0);
+  const proformaTotalRaw = firstValue(arrivage.totalImporteSource, commandField('montantTotal'), commandField('valeurMarchandise'), calculatedProductsTotal || '');
+  const exchangeRateRaw = firstValue(arrivage.tauxChange, arrivage.tauxChangeSource, commandField('tauxChange'));
+  const proformaNumeric = Number(String(proformaTotalRaw || '').replace(/\s/g, '').replace(',', '.'));
+  const exchangeNumeric = Number(String(exchangeRateRaw || '').replace(/\s/g, '').replace(',', '.'));
   const totalWeight = lines.reduce((sum, line) => sum + Number(line.poidsBrutTotal || line.poids || 0), 0);
   const totalCbm = lines.reduce((sum, line) => sum + Number(line.cbmTotal || line.cbm || 0), 0);
   const paid = payments.filter(item => ['Payé', 'Confirmé', 'Autorisé'].includes(item.statut));
@@ -241,7 +377,11 @@ export function buildDirectionAnalysisContext(db, arrivage) {
     productNames: productNames || arrivage.produitSource || '',
     productDescriptions: productDescriptions || arrivage.produitSource || '',
     quantitiesAndPrices,
+    quantities,
+    unitPrices,
+    proformaTotal: proformaTotalRaw ? `${proformaTotalRaw} ${firstValue(field('devise'), field('currency'), 'USD')}` : '',
     productReferences: joinValues(lines.map(line => firstValue(line.referenceMetier, line.reference, line.modele, line.sku))),
+    productBrands: joinValues(lines.map(line => firstValue(line.marque, line.brand, line.logo))),
     productUsage: field('usage'),
     productMaterials: joinValues(lines.map(line => firstValue(line.matiere, line.composition))),
     productDimensions: joinValues(lines.map(line => firstValue(line.dimensions, line.dimensionCarton, line.emballage))),
@@ -260,6 +400,10 @@ export function buildDirectionAnalysisContext(db, arrivage) {
     incoterms: joinValues([arrivage.incotermSource, field('incoterm'), commandField('incoterm')]),
     shippingCosts: joinValues(lines.map(line => firstValue(line.shippingCost, line.coutTransportOrigine, line.fraisShipping))),
     goodsValue: firstValue(arrivage.totalImporteSource, commandField('montantTotal'), commandField('valeurMarchandise')),
+    exchangeRate: exchangeRateRaw,
+    goodsValueMad: Number.isFinite(proformaNumeric * exchangeNumeric) && proformaNumeric > 0 && exchangeNumeric > 0
+      ? `${(proformaNumeric * exchangeNumeric).toLocaleString('fr-FR')} MAD` : '',
+    customsValue: firstValue(arrivage.valeurDouaneEstimee, arrivage.valeurEnDouane),
     currencies: joinValues(lines.map(line => firstValue(line.devise, line.currency))),
     hsCodes: joinValues(lines.map(line => firstValue(line.hsCode, line.hs_code, line.codeHs))),
     customsTaxes: joinValues(lines.map(line => [line.di ? `DI ${line.di}%` : '', line.tpi ? `TPI ${line.tpi}%` : '', line.tva ? `TVA ${line.tva}%` : ''].filter(Boolean).join(' · '))),
@@ -267,10 +411,13 @@ export function buildDirectionAnalysisContext(db, arrivage) {
     certifications: joinValues(lines.map(line => firstValue(line.organismesConcernes, line.certifications, line.documentsRequis))),
     authorizations: field('autorisations'), laboratory: field('laboratoire'), restrictions: field('restrictions'),
     paymentTerms: joinValues(lines.map(line => firstValue(line.conditionsPaiement, line.paiementFournisseur))),
+    paymentMethods: joinValues(payments.map(item => firstValue(item.methodePaiement, item.modePaiement, item.type))),
     advancePayments: joinValues(paid.filter(item => /avance|acompte/i.test(`${item.type || ''} ${item.nature || ''}`)).map(item => `${item.montant || ''} ${item.devise || 'MAD'}`)),
     balancePayments: joinValues(paid.filter(item => /reliquat|solde/i.test(`${item.type || ''} ${item.nature || ''}`)).map(item => `${item.montant || ''} ${item.devise || 'MAD'}`)),
     paymentBeneficiaries: joinValues(payments.map(item => firstValue(item.beneficiaire, item.fournisseur))),
     bankDetails: joinValues(payments.map(item => firstValue(item.banque, item.referenceBancaire))),
+    bankDomiciliation: joinValues(payments.map(item => firstValue(item.domiciliationBancaire, item.engagementImportation))),
+    goodsReady: joinValues(lines.map(line => firstValue(line.marchandisePrete, line.goodsReady))),
     productionLeadTime: joinValues(lines.map(line => firstValue(line.delaiProduction, line.delai, line.leadTime))),
     productionStart: field('dateDebutProduction'), productionEnd: field('dateFinProduction'),
     inspection: joinValues(lines.map(line => firstValue(line.inspection, line.controleQualite))), samples: field('echantillon'),
@@ -292,21 +439,61 @@ export function buildDirectionAnalysisContext(db, arrivage) {
   };
 }
 
+export const directionProductKey = (line, index = 0) => String(
+  line?.code || line?.referenceMetier || line?.reference || `${line?.commandeCode || line?.commande?.code || 'PRODUIT'}-${index + 1}`,
+);
+
+const productContext = (context, line) => ({
+  ...context,
+  lines: [line],
+  documents: context.documents.filter(document => !document.ligneDemande || document.ligneDemande === line.code),
+  productNames: firstValue(line.nomProduit, line.produit, line.designationExacte),
+  productDescriptions: firstValue(line.designationTechnique, line.description, line.nomProduit),
+  productBrands: firstValue(line.marque, line.brand, line.logo),
+  productReferences: firstValue(line.referenceMetier, line.reference, line.modele, line.sku),
+  productUsage: line.usage || '',
+  productMaterials: firstValue(line.matiere, line.composition),
+  hsCodes: firstValue(line.hsCode, line.hs_code, line.codeHs),
+  customsTaxes: [line.di ? `DI ${line.di}%` : '', line.tpi ? `TPI ${line.tpi}%` : '', line.tva ? `TVA ${line.tva}%` : ''].filter(Boolean).join(' · '),
+  regulations: firstValue(line.normes, line.reglementation, line.documentsRequis),
+  certifications: firstValue(line.organismesConcernes, line.certifications, line.documentsRequis),
+  authorizations: line.autorisations || '',
+  laboratory: line.laboratoire || '',
+  restrictions: line.restrictions || '',
+});
+
+const createControl = (item, context) => {
+  const current = String(item.read(context) || '').trim();
+  const applicable = item.applies ? Boolean(item.applies(context)) : true;
+  return {
+    current,
+    status: applicable
+      ? (current ? 'À vérifier' : (item.expectedDocument ? 'Pas encore disponible' : 'Information manquante'))
+      : 'Non applicable',
+    observation: '',
+    documentCode: '',
+    applicable,
+    applicabilitySource: item.applies ? 'Règle automatique opération / transport' : 'Contrôle standard LIMEX',
+  };
+};
+
 export function createDirectionAnalysisDraft(db, arrivage, existing = null) {
   const context = buildDirectionAnalysisContext(db, arrivage);
   const controls = {};
   LIMEX_DIRECTION_SECTIONS.forEach(section => {
     controls[section.id] = {};
     section.items.forEach(item => {
-      const current = String(item.read(context) || '').trim();
-      controls[section.id][item.id] = {
-        current,
-        status: current ? 'À vérifier' : (item.expectedDocument ? 'À recevoir' : 'Manquant'),
-        observation: '',
-        documentCode: '',
-      };
+      controls[section.id][item.id] = createControl(item, context);
     });
   });
+  const productControls = Object.fromEntries(context.lines.map((line, index) => {
+    const scopedContext = productContext(context, line);
+    const key = directionProductKey(line, index);
+    return [key, Object.fromEntries(LIMEX_DIRECTION_SECTIONS.filter(section => section.productScoped).map(section => [
+      section.id,
+      Object.fromEntries(section.items.map(item => [item.id, createControl(item, scopedContext)])),
+    ]))];
+  }));
   const defaults = {
     arrivage: arrivage.code,
     activeSection: LIMEX_DIRECTION_SECTIONS[0].id,
@@ -325,51 +512,140 @@ export function createDirectionAnalysisDraft(db, arrivage, existing = null) {
     identifiedRisks: '',
     complementRequests: [],
     selectedProductIndex: 0,
+    analysisLevel: 'Arrivage',
+    analysisTarget: arrivage.code,
     decisionRequired: '',
     decisionApproved: false,
+    nextActionsForImane: '',
     validatedSections: [],
     controls,
+    productControls,
     status: 'Brouillon',
+    versionNumber: 1,
+    versions: [],
+    changeHistory: [],
   };
   if (!existing) return defaults;
   const mergedControls = { ...controls };
   Object.entries(existing.controls || {}).forEach(([sectionId, rows]) => {
-    mergedControls[sectionId] = { ...(controls[sectionId] || {}), ...(rows || {}) };
+    mergedControls[sectionId] = Object.fromEntries(Object.entries({ ...(controls[sectionId] || {}), ...(rows || {}) }).map(([itemId, control]) => [
+      itemId,
+      { ...control, status: canonicalDirectionStatus(control?.status) },
+    ]));
   });
-  return { ...defaults, ...existing, controls: mergedControls };
+  const mergedProductControls = { ...productControls };
+  Object.entries(existing.productControls || {}).forEach(([productKey, sections]) => {
+    mergedProductControls[productKey] = { ...(productControls[productKey] || {}) };
+    Object.entries(sections || {}).forEach(([sectionId, rows]) => {
+      mergedProductControls[productKey][sectionId] = Object.fromEntries(Object.entries({
+        ...(productControls[productKey]?.[sectionId] || {}), ...(rows || {}),
+      }).map(([itemId, control]) => [itemId, { ...control, status: canonicalDirectionStatus(control?.status) }]));
+    });
+  });
+  return { ...defaults, ...existing, controls: mergedControls, productControls: mergedProductControls };
 }
 
 export function summarizeDirectionAnalysis(draft) {
   const counts = { conformes: 0, verifier: 0, corrections: 0, manquants: 0, bloquants: 0, nonApplicables: 0, total: 0 };
-  Object.values(draft?.controls || {}).forEach(section => {
-    Object.values(section || {}).forEach(control => {
+  LIMEX_DIRECTION_SECTIONS.forEach(section => {
+    const productRows = section.productScoped
+      ? Object.values(draft?.productControls || {}).map(product => product?.[section.id] || {})
+      : [];
+    const sections = productRows.length ? productRows : [draft?.controls?.[section.id] || {}];
+    sections.forEach(rows => Object.values(rows).forEach(control => {
       counts.total += 1;
-      if (control.status === 'Conforme') counts.conformes += 1;
-      else if (control.status === 'À vérifier' || control.status === 'Non vérifié') counts.verifier += 1;
-      else if (control.status === 'À corriger') counts.corrections += 1;
-      else if (control.status === 'Manquant' || control.status === 'À recevoir') counts.manquants += 1;
-      else if (control.status === 'Bloquant') counts.bloquants += 1;
-      else if (control.status === 'N/A') counts.nonApplicables += 1;
-    });
+      const status = canonicalDirectionStatus(control.status);
+      if (status === 'Conforme') counts.conformes += 1;
+      else if (status === 'À vérifier' || status === 'Non examiné') counts.verifier += 1;
+      else if (status === 'À corriger') counts.corrections += 1;
+      else if (status === 'Pas encore disponible' || status === 'Information manquante' || status === 'En attente de complément') counts.manquants += 1;
+      else if (status === 'Bloquant') counts.bloquants += 1;
+      else if (status === 'Non applicable') counts.nonApplicables += 1;
+    }));
   });
   return counts;
 }
 
-export function sectionProgress(draft, sectionId) {
-  const controls = Object.values(draft?.controls?.[sectionId] || {});
-  const applicable = controls.filter(control => control.status !== 'N/A');
-  const completed = applicable.filter(control => control.status === 'Conforme').length;
+export function sectionProgress(draft, sectionId, productKey = '') {
+  const section = LIMEX_DIRECTION_SECTIONS.find(item => item.id === sectionId);
+  const productRows = section?.productScoped
+    ? (productKey
+      ? [draft?.productControls?.[productKey]?.[sectionId] || {}]
+      : Object.values(draft?.productControls || {}).map(product => product?.[sectionId] || {}))
+    : [];
+  const controls = (productRows.length ? productRows : [draft?.controls?.[sectionId] || {}]).flatMap(rows => Object.values(rows));
+  const applicable = controls.filter(control => canonicalDirectionStatus(control.status) !== 'Non applicable');
+  const completedStatuses = new Set(['Conforme', 'À corriger', 'Information manquante', 'En attente de complément', 'Bloquant']);
+  const completed = applicable.filter(control => completedStatuses.has(canonicalDirectionStatus(control.status))).length;
   return { completed, total: applicable.length, percent: applicable.length ? Math.round((completed / applicable.length) * 100) : 100 };
 }
 
 export function missingDirectionInformation(draft) {
-  const missingStatuses = new Set(['Manquant', 'À recevoir', 'À corriger', 'Bloquant']);
-  return LIMEX_DIRECTION_SECTIONS.flatMap(section => section.items.map(item => {
-    const control = draft?.controls?.[section.id]?.[item.id];
-    return control && missingStatuses.has(control.status)
-      ? { sectionId: section.id, section: section.title, label: item.label, status: control.status }
-      : null;
-  }).filter(Boolean));
+  const missingStatuses = new Set(['Pas encore disponible', 'Information manquante', 'En attente de complément', 'À corriger', 'Bloquant']);
+  return LIMEX_DIRECTION_SECTIONS.flatMap(section => {
+    const rowGroups = section.productScoped && Object.keys(draft?.productControls || {}).length
+      ? Object.entries(draft.productControls).map(([productKey, sections]) => ({ productKey, rows: sections?.[section.id] || {} }))
+      : [{ productKey: '', rows: draft?.controls?.[section.id] || {} }];
+    return rowGroups.flatMap(({ productKey, rows }) => section.items.map(item => {
+      const control = rows[item.id];
+      const status = canonicalDirectionStatus(control?.status);
+      return control && missingStatuses.has(status)
+        ? { sectionId: section.id, section: section.title, itemId: item.id, productKey, label: item.label, status }
+        : null;
+    }).filter(Boolean));
+  });
+}
+
+export function directionFinalCheck(draft) {
+  const summary = summarizeDirectionAnalysis(draft);
+  const unexamined = [];
+  const unjustifiedNotApplicable = [];
+  LIMEX_DIRECTION_SECTIONS.forEach(section => {
+    const rowGroups = section.productScoped && Object.keys(draft?.productControls || {}).length
+      ? Object.entries(draft.productControls).map(([productKey, sections]) => ({ productKey, rows: sections?.[section.id] || {} }))
+      : [{ productKey: '', rows: draft?.controls?.[section.id] || {} }];
+    rowGroups.forEach(({ productKey, rows }) => section.items.forEach(item => {
+      const control = rows[item.id];
+      const status = canonicalDirectionStatus(control?.status);
+      if (['Non examiné', 'Pas encore disponible', 'À vérifier', 'Information manquante', 'En attente de complément', 'À corriger'].includes(status)) {
+        unexamined.push({ sectionId: section.id, section: section.title, itemId: item.id, productKey, label: item.label, status });
+      }
+      if (status === 'Non applicable' && !String(control?.observation || '').trim()) {
+        unjustifiedNotApplicable.push({ sectionId: section.id, section: section.title, itemId: item.id, productKey, label: item.label, status });
+      }
+    }));
+  });
+  const openDecisions = draft?.directionValidation === 'En attente' ? 1 : 0;
+  return {
+    ...summary,
+    unexamined,
+    unjustifiedNotApplicable,
+    openDecisions,
+    canSubmit: summary.bloquants === 0 && unexamined.length === 0 && unjustifiedNotApplicable.length === 0 && openDecisions === 0,
+  };
+}
+
+export function freezeDirectionAnalysisVersion(draft, author, date = new Date().toISOString()) {
+  const versionNumber = Number(draft?.versionNumber || 1);
+  const snapshot = {
+    version: versionNumber,
+    frozenAt: date,
+    frozenBy: author || 'Direction',
+    status: draft?.status || 'Analyse transmise',
+    directionValidation: draft?.directionValidation || '',
+    controls: draft?.controls || {},
+    mainObservations: draft?.mainObservations || '',
+    directionDecisions: draft?.directionDecisions || '',
+    identifiedRisks: draft?.identifiedRisks || '',
+    nextActionsForImane: draft?.nextActionsForImane || '',
+    complementRequests: draft?.complementRequests || [],
+  };
+  return {
+    ...draft,
+    versionNumber: versionNumber + 1,
+    lastFrozenVersion: versionNumber,
+    versions: [...(draft?.versions || []), snapshot],
+  };
 }
 
 export function applyImaneComplementResponses(
@@ -387,6 +663,12 @@ export function applyImaneComplementResponses(
       Object.fromEntries(Object.entries(rows || {}).map(([itemId, control]) => [itemId, { ...control }])),
     ]),
   );
+  const productControls = Object.fromEntries(Object.entries(analysis?.productControls || {}).map(([productKey, sections]) => [
+    productKey,
+    Object.fromEntries(Object.entries(sections || {}).map(([sectionId, rows]) => [
+      sectionId, Object.fromEntries(Object.entries(rows || {}).map(([itemId, control]) => [itemId, { ...control }])),
+    ])),
+  ]));
 
   const complementRequests = requests.map(request => {
     if (request.status === 'Reçu') return request;
@@ -398,9 +680,12 @@ export function applyImaneComplementResponses(
       return request;
     }
     answeredRequests.push({ ...request, response, responseDocumentCode });
-    if (request.sectionId && request.itemId && controls[request.sectionId]?.[request.itemId]) {
-      controls[request.sectionId][request.itemId] = {
-        ...controls[request.sectionId][request.itemId],
+    const targetRows = request.productKey
+      ? productControls[request.productKey]?.[request.sectionId]
+      : controls[request.sectionId];
+    if (request.sectionId && request.itemId && targetRows?.[request.itemId]) {
+      targetRows[request.itemId] = {
+        ...targetRows[request.itemId],
         current: response,
         status: 'À vérifier',
         ...(responseDocumentCode ? { documentCode: responseDocumentCode } : {}),
@@ -420,6 +705,7 @@ export function applyImaneComplementResponses(
     record: {
       ...analysis,
       controls,
+      productControls,
       complementRequests,
       imaneComplementResponse: String(generalResponse || '').trim(),
       imaneComplementRespondedBy: author,

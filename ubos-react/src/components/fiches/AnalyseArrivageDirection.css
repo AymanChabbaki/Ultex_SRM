@@ -223,3 +223,78 @@
   .limex-validation-card > div, .limex-product-grid, .limex-execution-plan > div { grid-template-columns: 1fr; }
   .limex-summary-kpis { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Direction review 19/10/2026: one wide analysis surface, compact contextual rail. */
+.limex-reference-row,
+.limex-phase-stepper { margin-left: 18px; margin-right: 18px; }
+.limex-reference-row {
+  align-items: center; background: #fff; border: 1px solid var(--limex-border); border-top: 0;
+  display: flex; flex-wrap: wrap; gap: 8px 22px; padding: 9px 15px;
+}
+.limex-reference-row span { align-items: center; color: #53657c; display: inline-flex; font-size: 11px; gap: 5px; }
+.limex-reference-row a, .limex-reference-row b { color: #124f9a; font-weight: 800; text-decoration: none; }
+.limex-phase-stepper {
+  background: #fff; border: 1px solid var(--limex-border); border-radius: 12px; display: grid;
+  grid-template-columns: repeat(14, minmax(68px, 1fr)); margin-top: 10px; overflow-x: auto; padding: 11px 8px 8px;
+}
+.limex-phase-stepper button { background: transparent; border: 0; color: #708198; cursor: pointer; min-width: 68px; padding: 0 4px; position: relative; }
+.limex-phase-stepper button::before { background: #cfdae7; content: ''; height: 2px; left: 0; position: absolute; right: 0; top: 15px; }
+.limex-phase-stepper button:first-child::before { left: 50%; }
+.limex-phase-stepper button:last-child::before { right: 50%; }
+.limex-phase-stepper button span { align-items: center; background: #cbd6e3; border: 3px solid #fff; border-radius: 50%; display: inline-flex; font-size: 11px; font-weight: 900; height: 30px; justify-content: center; position: relative; width: 30px; z-index: 1; }
+.limex-phase-stepper button small { display: block; font-size: 8px; line-height: 1.15; margin-top: 5px; min-height: 28px; }
+.limex-phase-stepper button.active { color: #0a52a3; }
+.limex-phase-stepper button.active span { background: #ffb400; color: #fff; }
+.limex-phase-stepper button.complete span { background: #20a966; color: #fff; }
+
+.limex-analysis-layout { grid-template-columns: minmax(0, 1fr) 310px; }
+.limex-analysis-main { min-width: 0; }
+.limex-control-table-wrap { overflow: visible; }
+.limex-control-table { min-width: 0; table-layout: fixed; width: 100%; }
+.limex-control-table th:nth-child(1) { width: 3%; }
+.limex-control-table th:nth-child(2) { width: 15%; }
+.limex-control-table th:nth-child(3) { width: 20%; }
+.limex-control-table th:nth-child(4) { width: 14%; }
+.limex-control-table th:nth-child(5) { width: 22%; }
+.limex-control-table th:nth-child(6) { width: 13%; }
+.limex-control-table th:nth-child(7) { width: 13%; }
+.limex-control-table td { overflow-wrap: anywhere; }
+.limex-control-table textarea, .limex-control-table select { box-sizing: border-box; min-width: 0; }
+.limex-current-value { background: #f4f7fa; border: 1px solid #e1e7ee; border-radius: 7px; color: #42536a; min-height: 38px; padding: 7px; white-space: pre-wrap; }
+.limex-request-dot { background: #fff0c2; border-radius: 999px; color: #835e00; display: inline-block; font-size: 8px; margin-top: 5px; padding: 3px 6px; }
+.limex-row-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.limex-row-actions .btn { font-size: 9px; padding: 5px 6px; }
+.limex-photo-gallery { background: #f8fbff; display: flex; gap: 8px; min-height: 82px; overflow-x: auto; padding: 10px 13px; }
+.limex-photo-gallery button { align-items: center; background: #fff; border: 1px solid #dce8f5; border-radius: 9px; color: #135da9; display: grid; flex: 0 0 140px; gap: 5px; justify-items: center; padding: 10px; }
+.limex-photo-gallery button span { color: #42536a; font-size: 9px; max-width: 125px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.limex-photo-gallery p { color: var(--limex-muted); font-size: 11px; margin: auto; }
+.limex-imane-instructions { padding: 4px; }
+.limex-imane-instructions p { color: var(--limex-muted); font-size: 11px; }
+.limex-imane-instructions textarea { box-sizing: border-box; width: 100%; }
+.limex-final-checks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.limex-final-checks span { border-radius: 999px; font-size: 10px; font-weight: 800; padding: 5px 8px; }
+.limex-final-checks .good { background: #dff7eb; color: #117b4c; }
+.limex-final-checks .bad { background: #ffe3e3; color: #ad2727; }
+.limex-save-state { align-items: center; color: #52657c; display: flex; font-size: 10px; gap: 6px; }
+
+@media (max-width: 1180px) {
+  .limex-analysis-layout { grid-template-columns: 1fr; }
+  .limex-side-panel { grid-column: auto; grid-template-columns: 1fr 1fr; }
+  .limex-control-table-wrap { overflow-x: auto; }
+  .limex-control-table { min-width: 920px; }
+}
+
+@media (max-width: 700px) {
+  .limex-reference-row, .limex-phase-stepper { margin-left: 8px; margin-right: 8px; }
+  .limex-side-panel { grid-template-columns: 1fr; }
+}
+
+@media print {
+  .limex-direction-page { background: #fff; padding: 0; }
+  .limex-back-row, .limex-tabs, .limex-action-bar, .limex-side-panel button, .topbar { display: none !important; }
+  .limex-arrival-header, .limex-reference-row, .limex-phase-stepper, .limex-analysis-layout,
+  .limex-direction-form, .limex-validation-card, .limex-summary-card, .limex-decision-card,
+  .limex-missing-strip, .limex-tab-card { margin-left: 0; margin-right: 0; }
+  .limex-analysis-layout { display: block; }
+  .limex-side-panel { margin-top: 10px; }
+}
