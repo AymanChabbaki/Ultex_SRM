@@ -9,6 +9,7 @@ import Modal from '../common/Modal';
 import LigneModal from '../common/LigneModal';
 import ModuleForm from '../modules/ModuleForm';
 import AnalyseArrivageDirection from './AnalyseArrivageDirection';
+import AnalyseArrivageImane from './AnalyseArrivageImane';
 import ArrivageChat from '../arrivages/ArrivageChat';
 import { MODS } from '../../data/modules';
 import { pill } from '../../utils/format';
@@ -53,7 +54,7 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
         setCode(hash.split(':')[1]);
       }
     }
-  }, [codeProp, codeFromProp, window.location.hash]);
+  }, [codeProp, codeFromProp]);
 
   const arrivage = (db?.arrivages || []).find(a => a.code === code);
   const directionAnalysis = (db?.analysesLimex || []).find(item => item.arrivage === code);
@@ -371,7 +372,9 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
 
         <ArrivageChat arrivageCode={code} compact />
 
-        {hasComplementWorkflow && (
+        {roleCircuit === 'Imane' && <AnalyseArrivageImane arrivage={arrivage} />}
+
+        {roleCircuit !== 'Imane' && hasComplementWorkflow && (
           <div className="bloc-fiche large" style={{ border: '2px solid var(--or)', background: 'var(--fond-jaune)' }}>
             <h4>Informations demandées par la Direction</h4>
             <p style={{ whiteSpace: 'pre-wrap' }}>

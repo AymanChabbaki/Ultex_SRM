@@ -131,3 +131,19 @@ test('Direction arrival screen persists analysis and returns the workflow to Ima
   assert.match(arrivalSource, /documentCode: document\.code/);
   assert.match(appSource, /\['analysesLimex', 'arrivages'/);
 });
+
+test('Imane has a coordinated editable LIMEX workspace and owns execution planning', () => {
+  const source = fs.readFileSync(new URL('../src/components/fiches/AnalyseArrivageImane.jsx', import.meta.url), 'utf8');
+  const arrivalSource = fs.readFileSync(new URL('../src/components/fiches/FicheArrivage.jsx', import.meta.url), 'utf8');
+  assert.match(arrivalSource, /<AnalyseArrivageImane arrivage=\{arrivage\}/);
+  assert.match(source, /Information actuelle — Imane \/ équipe/);
+  assert.match(source, /Analyse Direction/);
+  assert.match(source, /Enregistrement automatique/);
+  assert.match(source, /applyImaneComplementResponses/);
+  assert.match(source, /Enregistrer et transmettre à la Direction/);
+  assert.match(source, /Plan d'exécution — Imane/);
+  assert.match(source, /executionPlan/);
+  assert.match(source, /Déposer une version/);
+  assert.match(source, /TRANSPORT_MODES/);
+  assert.match(source, /PAYMENT_METHODS/);
+});

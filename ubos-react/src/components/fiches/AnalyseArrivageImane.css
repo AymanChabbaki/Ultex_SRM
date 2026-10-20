@@ -1,0 +1,60 @@
+.limex-imane-workspace {
+  --imane-blue: #075bac;
+  background: #f5f8fc; border: 1px solid #dfe7f1; border-radius: 14px;
+  margin: 14px 0; overflow: hidden;
+}
+.limex-imane-header { align-items: center; background: #fff; border-bottom: 1px solid #dfe7f1; display: flex; justify-content: space-between; padding: 16px; }
+.limex-imane-header small { color: var(--imane-blue); font-weight: 900; }
+.limex-imane-header h3 { color: #153d70; margin: 3px 0; }
+.limex-imane-header p { color: #64748b; font-size: 11px; margin: 0; }
+.limex-imane-header > span { border-radius: 999px; font-size: 11px; font-weight: 800; padding: 7px 11px; }
+.limex-imane-header .editable { background: #dff7eb; color: #117b4c; }
+.limex-imane-header .readonly { background: #edf1f5; color: #566478; }
+.limex-imane-workspace .limex-phase-stepper { margin: 10px; }
+.limex-imane-direction-return { background: #eaf4ff; border: 1px solid #bcdcff; border-radius: 10px; color: #174e87; margin: 10px; padding: 11px 13px; }
+.limex-imane-direction-return p { margin: 4px 0 0; white-space: pre-wrap; }
+.limex-imane-product-select { background: #fff; border: 1px solid #dfe7f1; border-radius: 10px; margin: 10px; padding: 10px; }
+.limex-imane-product-select label { align-items: center; color: #45566d; display: flex; font-size: 11px; font-weight: 800; gap: 10px; }
+.limex-imane-product-select select { border: 1px solid #d6e0eb; border-radius: 7px; min-width: 280px; padding: 7px; }
+.limex-imane-table-wrap { margin: 10px; overflow-x: auto; }
+.limex-imane-table { background: #fff; border: 1px solid #dfe7f1; border-collapse: separate; border-radius: 11px; border-spacing: 0; table-layout: fixed; width: 100%; }
+.limex-imane-table th { background: #f2f7fc; color: #3e526c; font-size: 10px; padding: 10px 8px; text-align: left; }
+.limex-imane-table th:nth-child(1) { width: 3%; }
+.limex-imane-table th:nth-child(2) { width: 18%; }
+.limex-imane-table th:nth-child(3) { width: 39%; }
+.limex-imane-table th:nth-child(4) { width: 18%; }
+.limex-imane-table th:nth-child(5) { width: 22%; }
+.limex-imane-table td { border-top: 1px solid #e7edf4; font-size: 11px; padding: 8px; vertical-align: top; }
+.limex-imane-table tr.has-request td { background: #fffaf0; }
+.limex-imane-table td:nth-child(2) em { background: #fff0c2; border-radius: 999px; color: #835e00; display: block; font-size: 8px; font-style: normal; margin-top: 5px; padding: 3px 6px; width: fit-content; }
+.limex-imane-table input, .limex-imane-table select, .limex-imane-table textarea { border: 1px solid #d6e0eb; border-radius: 7px; box-sizing: border-box; font: inherit; padding: 7px; resize: vertical; width: 100%; }
+.limex-imane-table :disabled { background: #f4f6f9; color: #5d6d80; }
+.limex-imane-table td:nth-child(4) p { color: #5d6d80; font-size: 9px; margin: 5px 0 0; white-space: pre-wrap; }
+.limex-imane-inline { display: grid; gap: 4px; }
+.limex-imane-inline small { color: #64748b; }
+.limex-imane-two-fields { display: grid; gap: 6px; grid-template-columns: 1fr 1fr; }
+.limex-imane-table select[multiple] { min-height: 82px; }
+.limex-imane-document-cell { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; justify-content: space-between; }
+.limex-imane-request-answer { display: grid; gap: 5px; margin-top: 7px; }
+.limex-imane-request-answer small { color: #916700; font-weight: 700; }
+.limex-execution-builder { background: #fff; border: 1px solid #dfe7f1; border-radius: 11px; margin: 10px; padding: 12px; }
+.limex-execution-builder > header { align-items: center; display: flex; justify-content: space-between; }
+.limex-execution-builder h4 { color: #153d70; margin: 0; }
+.limex-execution-builder header p { color: #64748b; font-size: 10px; margin: 3px 0 0; }
+.limex-execution-builder article { display: grid; gap: 7px; grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr) 140px 120px auto; margin-top: 8px; }
+.limex-execution-builder article input, .limex-execution-builder article select { border: 1px solid #d6e0eb; border-radius: 7px; padding: 7px; }
+.limex-imane-actions { align-items: center; background: #fff; border-top: 1px solid #dfe7f1; display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; padding: 10px; position: sticky; bottom: 0; z-index: 10; }
+.limex-imane-actions > div { align-items: center; color: #5d6d80; display: flex; font-size: 10px; gap: 5px; margin-right: auto; }
+.limex-imane-actions .btn { align-items: center; display: inline-flex; gap: 5px; }
+
+@media (max-width: 1000px) {
+  .limex-imane-table { min-width: 900px; }
+  .limex-execution-builder article { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 650px) {
+  .limex-imane-header { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .limex-imane-product-select label { align-items: stretch; flex-direction: column; }
+  .limex-imane-product-select select { min-width: 0; width: 100%; }
+  .limex-execution-builder article { grid-template-columns: 1fr; }
+  .limex-imane-actions { position: static; }
+}
