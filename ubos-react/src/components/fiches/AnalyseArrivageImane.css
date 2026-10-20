@@ -35,6 +35,9 @@
 .limex-imane-two-fields { display: grid; gap: 6px; grid-template-columns: 1fr 1fr; }
 .limex-imane-table select[multiple] { min-height: 82px; }
 .limex-imane-document-cell { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; justify-content: space-between; }
+.limex-imane-document-actions { display: grid; gap: 6px; width: 100%; }
+.limex-imane-document-actions > div { display: flex; flex-wrap: wrap; gap: 5px; }
+.limex-imane-document-actions .btn { align-items: center; display: inline-flex; gap: 4px; }
 .limex-imane-request-answer { display: grid; gap: 5px; margin-top: 7px; }
 .limex-imane-request-answer small { color: #916700; font-weight: 700; }
 .limex-execution-builder { background: #fff; border: 1px solid #dfe7f1; border-radius: 11px; margin: 10px; padding: 12px; }

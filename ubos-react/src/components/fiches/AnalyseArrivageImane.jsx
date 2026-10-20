@@ -228,6 +228,42 @@ export default function AnalyseArrivageImane({ arrivage }) {
     return makeHistory(next, `${scoped ? `productControls.${productKey}` : 'controls'}.${section.id}.${item.id}.current`, `${section.title} · ${item.label}`, previous?.current, value, userCourant || 'Imane');
   });
 
+  const linkDocument = (item, documentCode, request = null) => {
+    const document = context.documents.find(entry => entry.code === documentCode);
+    setDraft(current => {
+      const scoped = section.productScoped && productKey;
+      const previous = scoped
+        ? current.productControls?.[productKey]?.[section.id]?.[item.id]
+        : current.controls?.[section.id]?.[item.id];
+      const nextControl = {
+        ...previous,
+        documentCode,
+        ...(item.expectedDocument && document ? { current: document.nom || document.code } : {}),
+        ...(document ? { status: 'À vérifier' } : {}),
+      };
+      const next = scoped ? {
+        ...current,
+        productControls: {
+          ...current.productControls,
+          [productKey]: {
+            ...current.productControls?.[productKey],
+            [section.id]: { ...current.productControls?.[productKey]?.[section.id], [item.id]: nextControl },
+          },
+        },
+      } : {
+        ...current,
+        controls: { ...current.controls, [section.id]: { ...current.controls?.[section.id], [item.id]: nextControl } },
+      };
+      return makeHistory(next, `${scoped ? `productControls.${productKey}` : 'controls'}.${section.id}.${item.id}.documentCode`, `${section.title} · ${item.label} · Document`, previous?.documentCode, documentCode, userCourant || 'Imane');
+    });
+    if (request) {
+      setAnswers(current => ({
+        ...current,
+        [request.id]: { ...(current[request.id] || {}), documentCode },
+      }));
+    }
+  };
+
   const updateArrivalCommands = (item, event) => {
     const commandCodes = [...event.target.selectedOptions].map(option => option.value);
     const references = commandCodes.map(commandCode => {
@@ -295,7 +331,7 @@ export default function AnalyseArrivageImane({ arrivage }) {
     if (section.id === 'douane' && item.id === 'certificats') return <select {...common}><option value="">—</option><option>Certificat de conformité</option><option>Sanitaire</option><option>Phytosanitaire</option><option>Analyse labo</option><option>Aucun</option></select>;
     if (section.id === 'paiements' && item.id === 'methode') return <select {...common}><option value="">—</option>{PAYMENT_METHODS.map(option => <option key={option}>{option}</option>)}</select>;
     if (section.id === 'paiements' && ['avance-reliquat', 'beneficiaire-banque'].includes(item.id)) return <input disabled value={value} title="Calculé ou repris automatiquement" />;
-    if (item.expectedDocument) return <div className="limex-imane-document-cell"><span>{value || 'Pas encore disponible'}</span><button className="btn mini doux" disabled={!canEdit} onClick={() => prepareDocumentForm(item)}>Déposer une version</button></div>;
+    if (item.expectedDocument) return <div className="limex-imane-document-cell"><span>{value || 'Pas encore disponible'}</span></div>;
     return <textarea rows="2" {...common} placeholder="Information à renseigner par Imane / équipe opérationnelle" />;
   };
 
@@ -378,7 +414,16 @@ export default function AnalyseArrivageImane({ arrivage }) {
               <td>{renderEditor(item, control)}</td>
               <td><span className={`limex-status ${statusClass(control.status)}`}>{canonicalDirectionStatus(control.status)}</span><p>{control.observation || 'Aucune directive'}</p></td>
               <td>
-                {document && <button className="btn mini doux" onClick={() => openDocument(document)}><FileText size={13} /> Voir V{document.version || 1}</button>}
+                <div className="limex-imane-document-actions">
+                  <select disabled={!canEdit} value={control.documentCode || answers[request?.id]?.documentCode || ''} onChange={event => linkDocument(item, event.target.value, request)}>
+                    <option value="">— Sélectionner un document existant —</option>
+                    {context.documents.map(entry => <option key={entry.code} value={entry.code}>{entry.nom || entry.code} · V{entry.version || 1}{entry.versionCourante === false ? ' · archivée' : ''}</option>)}
+                  </select>
+                  <div>
+                    <button className="btn mini doux" disabled={!canEdit} onClick={() => prepareDocumentForm(item)}><Plus size={13} /> Téléverser</button>
+                    {document && <button className="btn mini doux" onClick={() => openDocument(document)}><FileText size={13} /> Voir V{document.version || 1}</button>}
+                  </div>
+                </div>
                 {request && <div className="limex-imane-request-answer"><small>{request.detail}</small><textarea rows="2" value={answers[request.id]?.text || ''} onChange={event => setAnswers(current => ({ ...current, [request.id]: { ...(current[request.id] || {}), text: event.target.value } }))} placeholder="Réponse exacte à la Direction" /></div>}
               </td>
             </tr>;

@@ -143,7 +143,9 @@ test('Imane has a coordinated editable LIMEX workspace and owns execution planni
   assert.match(source, /Enregistrer et transmettre à la Direction/);
   assert.match(source, /Plan d'exécution — Imane/);
   assert.match(source, /executionPlan/);
-  assert.match(source, /Déposer une version/);
+  assert.match(source, /Sélectionner un document existant/);
+  assert.match(source, /Téléverser/);
+  assert.match(source, /linkDocument/);
   assert.match(source, /TRANSPORT_MODES/);
   assert.match(source, /PAYMENT_METHODS/);
 });
