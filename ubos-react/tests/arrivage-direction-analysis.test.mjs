@@ -87,6 +87,23 @@ test('Imane can answer every Direction request and return it for verification', 
   assert.equal(result.record.controls.chargement['packing-list'].status, 'À vérifier');
 });
 
+test('a document attachment alone satisfies a Direction document request', () => {
+  const draft = createDirectionAnalysisDraft(db, arrivage);
+  draft.complementRequests = [{
+    id: 'CMP-DOC', sectionId: 'chargement', itemId: 'packing-list', section: 'Chargement et expédition',
+    label: 'Packing List définitive', detail: 'Annexer la Packing List', status: 'En attente de complément',
+  }];
+  const result = applyImaneComplementResponses(
+    draft,
+    { 'CMP-DOC': { text: '', documentCode: 'DOC1' } },
+    '',
+    { author: 'Imane', date: '2026-10-20T12:00:00.000Z', sent: true },
+  );
+  assert.deepEqual(result.missingRequestIds, []);
+  assert.equal(result.record.complementRequests[0].responseDocumentCode, 'DOC1');
+  assert.equal(result.record.complementRequests[0].status, 'Reçu');
+});
+
 test('final transmission is gated and freezes an immutable version', () => {
   const draft = createDirectionAnalysisDraft(db, arrivage);
   assert.equal(directionFinalCheck(draft).canSubmit, false);
@@ -136,6 +153,7 @@ test('Imane has a coordinated editable LIMEX workspace and owns execution planni
   const source = fs.readFileSync(new URL('../src/components/fiches/AnalyseArrivageImane.jsx', import.meta.url), 'utf8');
   const arrivalSource = fs.readFileSync(new URL('../src/components/fiches/FicheArrivage.jsx', import.meta.url), 'utf8');
   assert.match(arrivalSource, /<AnalyseArrivageImane arrivage=\{arrivage\}/);
+  assert.match(arrivalSource, /roleCircuit !== 'Imane' && <div className="bloc-fiche large"/);
   assert.match(source, /Information actuelle — Imane \/ équipe/);
   assert.match(source, /Analyse Direction/);
   assert.match(source, /Enregistrement automatique/);
@@ -144,8 +162,14 @@ test('Imane has a coordinated editable LIMEX workspace and owns execution planni
   assert.match(source, /Plan d'exécution — Imane/);
   assert.match(source, /executionPlan/);
   assert.match(source, /Sélectionner un document existant/);
-  assert.match(source, /Téléverser/);
+  assert.match(source, /Joindre un fichier/);
   assert.match(source, /linkDocument/);
+  assert.match(source, /type="file" hidden/);
+  assert.doesNotMatch(source, /<ModuleForm moduleId="documents"/);
+  assert.match(source, /Informations demandées par la Direction/);
+  assert.match(source, /limex-step-request-count/);
+  assert.match(source, /Demander à Yasser/);
+  assert.match(source, /destinataireYasser/);
   assert.match(source, /TRANSPORT_MODES/);
   assert.match(source, /PAYMENT_METHODS/);
 });

@@ -675,25 +675,26 @@ export function applyImaneComplementResponses(
     const rawAnswer = answers[request.id];
     const response = String(typeof rawAnswer === 'object' ? rawAnswer?.text : rawAnswer || '').trim();
     const responseDocumentCode = String(typeof rawAnswer === 'object' ? rawAnswer?.documentCode : '').trim();
-    if (!response) {
+    if (!response && !responseDocumentCode) {
       missingRequestIds.push(request.id);
       return request;
     }
-    answeredRequests.push({ ...request, response, responseDocumentCode });
+    const effectiveResponse = response || 'Pièce jointe transmise par Imane';
+    answeredRequests.push({ ...request, response: effectiveResponse, responseDocumentCode });
     const targetRows = request.productKey
       ? productControls[request.productKey]?.[request.sectionId]
       : controls[request.sectionId];
     if (request.sectionId && request.itemId && targetRows?.[request.itemId]) {
       targetRows[request.itemId] = {
         ...targetRows[request.itemId],
-        current: response,
+        current: response || targetRows[request.itemId].current,
         status: 'À vérifier',
         ...(responseDocumentCode ? { documentCode: responseDocumentCode } : {}),
       };
     }
     return {
       ...request,
-      response,
+      response: effectiveResponse,
       responseDocumentCode,
       status: sent ? 'Reçu' : 'Réponse saisie',
       respondedBy: author,

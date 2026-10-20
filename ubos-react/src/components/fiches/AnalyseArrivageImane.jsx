@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, FileText, Plus, Save, Send, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileText, Plus, Save, Send, Trash2, Upload } from 'lucide-react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import ModuleForm from '../modules/ModuleForm';
-import { MODS } from '../../data/modules';
 import { openStoredDocument } from '../../services/api';
+import { categorieDepuisFichier, lireFichierDataUrl } from '../../utils/fileData';
 import {
   applyImaneComplementResponses,
   buildDirectionAnalysisContext,
@@ -16,7 +15,7 @@ import {
   sectionProgress,
 } from '../../utils/arrivageDirectionAnalysis';
 import {
-  ACTIONS_REVUE_ARRIVAGE, ETATS_REVUE_ARRIVAGE, transitionRevueArrivage,
+  ACTIONS_REVUE_ARRIVAGE, destinataireYasser, ETATS_REVUE_ARRIVAGE, transitionRevueArrivage,
 } from '../../utils/arrivageWorkflow';
 import './AnalyseArrivageDirection.css';
 import './AnalyseArrivageImane.css';
@@ -65,7 +64,7 @@ export default function AnalyseArrivageImane({ arrivage }) {
   const [draft, setDraft] = useState(seed);
   const [sectionId, setSectionId] = useState(seed.activeSection || LIMEX_DIRECTION_SECTIONS[0].id);
   const [selectedProductIndex, setSelectedProductIndex] = useState(Number(seed.selectedProductIndex || 0));
-  const [documentForm, setDocumentForm] = useState(null);
+  const [uploadingControlId, setUploadingControlId] = useState('');
   const [answers, setAnswers] = useState({});
   const [saveState, setSaveState] = useState('Enregistré');
   const saveTimer = useRef(null);
@@ -82,6 +81,26 @@ export default function AnalyseArrivageImane({ arrivage }) {
     ? (draft.productControls?.[productKey]?.[section.id] || {})
     : (draft.controls?.[section.id] || {});
   const requests = (draft.complementRequests || []).filter(request => request.status !== 'Reçu');
+  const controlForRequest = request => (request.productKey
+    ? draft.productControls?.[request.productKey]?.[request.sectionId]?.[request.itemId]
+    : draft.controls?.[request.sectionId]?.[request.itemId]) || {};
+  const requestIsReady = request => {
+    const answer = answers[request.id] || {};
+    const control = controlForRequest(request);
+    return Boolean(
+      String(answer.text || request.response || '').trim()
+      || String(answer.documentCode || request.responseDocumentCode || control.documentCode || '').trim()
+      || (canonicalDirectionStatus(control.status) !== 'En attente de complément' && String(control.current || '').trim()),
+    );
+  };
+  const unresolvedRequests = requests.filter(request => !requestIsReady(request));
+  const requestsBySection = requests.reduce((counts, request) => ({
+    ...counts,
+    [request.sectionId]: {
+      total: Number(counts[request.sectionId]?.total || 0) + 1,
+      missing: Number(counts[request.sectionId]?.missing || 0) + (requestIsReady(request) ? 0 : 1),
+    },
+  }), {});
   const analysisReturned = ['Analyse transmise', 'Complément demandé', 'Complément fourni'].includes(draft.status)
     || (draft.versions || []).length > 0;
   const commandsAssignedElsewhere = new Set((db.arrivages || []).filter(item => item.code !== arrivage.code).flatMap(item => item.commandes || []));
@@ -195,13 +214,6 @@ export default function AnalyseArrivageImane({ arrivage }) {
     });
   }, [context.documents]);
 
-  const prepareDocumentForm = (item) => {
-    const related = context.documents.filter(document => document.phaseLimex === section.id
-      && document.controleLimex === item.id && (document.produitLimex || '') === (section.productScoped ? productKey : ''));
-    const nextVersion = Math.max(0, ...related.map(document => Number(document.version || 1))) + 1;
-    setDocumentForm({ phaseId: section.id, controlId: item.id, productKey, ligneDemande: selectedProduct?.code || '', version: nextVersion });
-  };
-
   const updateCurrent = (item, value) => setDraft(current => {
     const scoped = section.productScoped && productKey;
     const previous = scoped
@@ -228,8 +240,8 @@ export default function AnalyseArrivageImane({ arrivage }) {
     return makeHistory(next, `${scoped ? `productControls.${productKey}` : 'controls'}.${section.id}.${item.id}.current`, `${section.title} · ${item.label}`, previous?.current, value, userCourant || 'Imane');
   });
 
-  const linkDocument = (item, documentCode, request = null) => {
-    const document = context.documents.find(entry => entry.code === documentCode);
+  const linkDocument = (item, documentCode, request = null, uploadedDocument = null) => {
+    const document = uploadedDocument || context.documents.find(entry => entry.code === documentCode);
     setDraft(current => {
       const scoped = section.productScoped && productKey;
       const previous = scoped
@@ -261,6 +273,58 @@ export default function AnalyseArrivageImane({ arrivage }) {
         ...current,
         [request.id]: { ...(current[request.id] || {}), documentCode },
       }));
+      setDraft(current => ({
+        ...current,
+        complementRequests: (current.complementRequests || []).map(entry => entry.id === request.id
+          ? { ...entry, responseDocumentCode: documentCode, status: documentCode ? 'Réponse saisie' : 'En attente de complément' }
+          : entry),
+      }));
+    }
+  };
+
+  const updateRequestText = (request, text) => {
+    setAnswers(current => ({
+      ...current,
+      [request.id]: { ...(current[request.id] || {}), text },
+    }));
+    setDraft(current => ({
+      ...current,
+      complementRequests: (current.complementRequests || []).map(entry => entry.id === request.id
+        ? { ...entry, response: text, status: String(text || entry.responseDocumentCode || '').trim() ? 'Réponse saisie' : 'En attente de complément' }
+        : entry),
+    }));
+  };
+
+  const uploadDocument = async (item, request, event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !canEdit) return;
+    const scopeKey = section.productScoped ? productKey : '';
+    const uploadKey = `${section.id}:${scopeKey}:${item.id}`;
+    const related = context.documents.filter(document => document.phaseLimex === section.id
+      && document.controleLimex === item.id && (document.produitLimex || '') === scopeKey);
+    const nextVersion = Math.max(0, ...related.map(document => Number(document.version || 1))) + 1;
+    setUploadingControlId(uploadKey);
+    try {
+      const document = {
+        code: genCode('DOC'), nom: file.name, type: categorieDepuisFichier(file),
+        typeFichier: file.type || 'Fichier', fichier: await lireFichierDataUrl(file), taille: file.size,
+        arrivage: arrivage.code, commande: context.commandes[0]?.code || '',
+        demande: context.commandes[0]?.demande || context.commandes[0]?.source_demande_id || '',
+        ligneDemande: selectedProduct?.code || '', phaseLimex: section.id, controleLimex: item.id,
+        produitLimex: scopeKey, version: nextVersion, versionCourante: true, statut: 'À vérifier',
+        commentaire: request ? `Pièce jointe au complément Direction : ${request.label}` : `Pièce jointe LIMEX : ${item.label}`,
+        par: userCourant || 'Imane', dateAjout: new Date().toISOString(), ts: Date.now(),
+      };
+      const latest = dbRef.current;
+      await updateDB({ ...latest, documents: [document, ...(latest.documents || [])] });
+      linkDocument(item, document.code, request, document);
+      audit('Arrivages / LIMEX', 'Pièce jointe ajoutée', arrivage.code, `${section.title} · ${item.label}`, '—', `${document.code} · ${document.nom}`);
+      toast(`${document.nom} joint directement à ${item.label}.`);
+    } catch (error) {
+      toast(error.message || "Impossible d'ajouter la pièce jointe.");
+    } finally {
+      setUploadingControlId('');
     }
   };
 
@@ -337,14 +401,22 @@ export default function AnalyseArrivageImane({ arrivage }) {
 
   const sendToDirection = async () => {
     if (!canEdit) return;
-    const missingAnswers = requests.filter(request => !String(answers[request.id]?.text || '').trim());
+    const missingAnswers = unresolvedRequests;
     if (requests.length && missingAnswers.length) {
       toast(`Répondez aux ${missingAnswers.length} demande(s) de complément avant l'envoi.`);
       return;
     }
     const now = new Date().toISOString();
+    const effectiveAnswers = Object.fromEntries(requests.map(request => {
+      const answer = answers[request.id] || {};
+      const control = controlForRequest(request);
+      return [request.id, {
+        text: String(answer.text || control.current || '').trim(),
+        documentCode: answer.documentCode || control.documentCode || '',
+      }];
+    }));
     const responseResult = requests.length
-      ? applyImaneComplementResponses(draft, answers, draft.imaneComplementResponse || '', { author: userCourant || 'Imane', date: now, sent: true })
+      ? applyImaneComplementResponses(draft, effectiveAnswers, draft.imaneComplementResponse || '', { author: userCourant || 'Imane', date: now, sent: true })
       : { record: { ...draft, status: 'Prêt pour analyse Direction', updatedAt: now }, answeredRequests: [] };
     try {
       const record = await persist(responseResult.record, true);
@@ -363,6 +435,36 @@ export default function AnalyseArrivageImane({ arrivage }) {
     } catch (error) { toast(error.message || 'Impossible de transmettre à la Direction.'); }
   };
 
+  const askYasserForMissing = async () => {
+    if (!canEdit || !unresolvedRequests.length) return;
+    const now = new Date().toISOString();
+    const details = unresolvedRequests.map(request => `• ${request.section || request.sectionId} — ${request.label}${request.detail ? ` : ${request.detail}` : ''}`);
+    const note = `Compléments demandés par la Direction encore manquants :\n${details.join('\n')}`;
+    try {
+      const record = await persist({
+        ...draft,
+        status: 'Compléments demandés à Yasser',
+        yasserRequestedAt: now,
+        yasserRequestedBy: userCourant || 'Imane',
+        yasserRequestedItems: unresolvedRequests.map(request => request.id),
+      }, true);
+      const transition = transitionRevueArrivage(arrivage, ACTIONS_REVUE_ARRIVAGE.ENVOYER_YASSER, {
+        role: 'Imane', auteur: userCourant || 'Imane', note, date: now,
+      });
+      const latest = dbRef.current;
+      await updateDB({
+        ...latest,
+        analysesLimex: replaceAnalysis(latest, record),
+        arrivages: (latest.arrivages || []).map(item => item.code === arrivage.code ? transition.arrivage : item),
+      });
+      audit('Arrivages / LIMEX', 'Compléments Direction demandés à Yasser', arrivage.code, 'compléments', '—', details.join(' | '));
+      notifier(destinataireYasser(latest), `Compléments LIMEX demandés par Imane — ${arrivage.code}\n${details.join('\n')}\nLien : #ficheArrivage:${arrivage.code}`, 'Arrivages / LIMEX');
+      toast(`${unresolvedRequests.length} complément(s) transmis à Yasser.`);
+    } catch (error) {
+      toast(error.message || 'Impossible de transmettre les compléments à Yasser.');
+    }
+  };
+
   const addExecutionTask = () => setDraft(current => ({
     ...current,
     executionPlan: [...(current.executionPlan || []), {
@@ -376,13 +478,29 @@ export default function AnalyseArrivageImane({ arrivage }) {
   const deleteExecutionTask = id => setDraft(current => ({
     ...current, executionPlan: (current.executionPlan || []).filter(task => task.id !== id),
   }));
+  const openRequestedControl = request => {
+    setSectionId(request.sectionId);
+    if (request.productKey) {
+      const index = context.lines.findIndex((line, lineIndex) => directionProductKey(line, lineIndex) === request.productKey);
+      if (index >= 0) setSelectedProductIndex(index);
+    }
+  };
 
   return (
     <section className="limex-imane-workspace">
       <header className="limex-imane-header">
         <div><small>ESPACE IMANE · PRÉPARATION OPÉRATIONNELLE</small><h3>Informations source de l'analyse LIMEX</h3><p>Vous renseignez les données et documents. La Direction modifie uniquement le statut et sa directive.</p></div>
-        <span className={canEdit ? 'editable' : 'readonly'}>{canEdit ? 'Saisie ouverte' : 'Lecture seule'}</span>
+        <div className="limex-imane-header-state">
+          <span className={canEdit ? 'editable' : 'readonly'}>{canEdit ? 'Saisie ouverte' : 'Lecture seule'}</span>
+          <small>{arrivage.circuitValidation || ETATS_REVUE_ARRIVAGE.NON_DEMARRE}</small>
+        </div>
       </header>
+
+      <div className="limex-imane-circuit-summary">
+        <div><small>Responsable actuel</small><b>{arrivage.circuitDestinataire || 'Imane'}</b></div>
+        <div><small>Dernière action</small><b>{arrivage.circuitDerniereActionPar || '—'}</b><span>{arrivage.circuitDerniereActionLe ? new Date(arrivage.circuitDerniereActionLe).toLocaleString('fr-FR') : '—'}</span></div>
+        <div><small>Dernière instruction</small><b>{arrivage.circuitDerniereNote || 'Aucune instruction'}</b></div>
+      </div>
 
       {analysisReturned && (
         <div className="limex-imane-direction-return">
@@ -391,10 +509,22 @@ export default function AnalyseArrivageImane({ arrivage }) {
         </div>
       )}
 
+      {requests.length > 0 && (
+        <section className="limex-imane-request-board">
+          <header><div><b>Informations demandées par la Direction</b><p>{unresolvedRequests.length} encore manquante(s) sur {requests.length}. Cliquez sur un élément pour ouvrir directement son étape.</p></div><strong>{unresolvedRequests.length}</strong></header>
+          <div>{requests.map(request => {
+            const ready = requestIsReady(request);
+            return <button type="button" key={request.id} className={ready ? 'ready' : 'missing'} onClick={() => openRequestedControl(request)}><span>{request.section || request.sectionId}</span><b>{request.label}</b><small>{ready ? 'Renseigné — prêt à renvoyer' : (request.detail || 'Information manquante')}</small></button>;
+          })}</div>
+        </section>
+      )}
+
       <nav className="limex-phase-stepper">
         {LIMEX_DIRECTION_SECTIONS.map((item, index) => {
           const itemProgress = sectionProgress(draft, item.id);
-          return <button key={item.id} className={section.id === item.id ? 'active' : ''} onClick={() => setSectionId(item.id)} title={`${item.title} · ${itemProgress.completed}/${itemProgress.total}`}><span>{index + 1}</span><small>{item.title}</small></button>;
+          const requestCount = requestsBySection[item.id];
+          const classes = [section.id === item.id ? 'active' : '', requestCount?.missing ? 'has-missing-request' : '', requestCount?.total && !requestCount?.missing ? 'requests-ready' : ''].filter(Boolean).join(' ');
+          return <button key={item.id} className={classes} onClick={() => setSectionId(item.id)} title={`${item.title} · ${itemProgress.completed}/${itemProgress.total}`}><span>{index + 1}</span><small>{item.title}</small>{requestCount?.total > 0 && <b className="limex-step-request-count">{requestCount.missing || '✓'}</b>}</button>;
         })}
       </nav>
 
@@ -408,23 +538,29 @@ export default function AnalyseArrivageImane({ arrivage }) {
           <tbody>{section.items.map((item, index) => {
             const control = sectionControls[item.id] || {};
             const request = requests.find(entry => entry.sectionId === section.id && entry.itemId === item.id && (entry.productKey || '') === (section.productScoped ? productKey : ''));
-            const document = context.documents.find(entry => entry.code === control.documentCode);
-            return <tr key={item.id} className={request ? 'has-request' : ''}>
-              <td>{index + 1}</td><td><b>{item.label}</b>{request && <em>Complément demandé</em>}</td>
+            const requestReady = request ? requestIsReady(request) : false;
+            const selectedDocumentCode = answers[request?.id]?.documentCode || control.documentCode || '';
+            const document = context.documents.find(entry => entry.code === selectedDocumentCode);
+            const uploadKey = `${section.id}:${section.productScoped ? productKey : ''}:${item.id}`;
+            return <tr key={item.id} className={request ? (requestReady ? 'has-request request-ready' : 'has-request request-missing') : ''}>
+              <td>{index + 1}</td><td><b>{item.label}</b>{request && <em>{requestReady ? 'Complément renseigné' : 'Demandé par la Direction'}</em>}</td>
               <td>{renderEditor(item, control)}</td>
               <td><span className={`limex-status ${statusClass(control.status)}`}>{canonicalDirectionStatus(control.status)}</span><p>{control.observation || 'Aucune directive'}</p></td>
               <td>
                 <div className="limex-imane-document-actions">
-                  <select disabled={!canEdit} value={control.documentCode || answers[request?.id]?.documentCode || ''} onChange={event => linkDocument(item, event.target.value, request)}>
+                  <select disabled={!canEdit} value={selectedDocumentCode} onChange={event => linkDocument(item, event.target.value, request)}>
                     <option value="">— Sélectionner un document existant —</option>
                     {context.documents.map(entry => <option key={entry.code} value={entry.code}>{entry.nom || entry.code} · V{entry.version || 1}{entry.versionCourante === false ? ' · archivée' : ''}</option>)}
                   </select>
                   <div>
-                    <button className="btn mini doux" disabled={!canEdit} onClick={() => prepareDocumentForm(item)}><Plus size={13} /> Téléverser</button>
+                    <label className={`btn mini doux${!canEdit ? ' disabled' : ''}`}>
+                      <Upload size={13} /> {uploadingControlId === uploadKey ? 'Ajout…' : 'Joindre un fichier'}
+                      <input type="file" hidden disabled={!canEdit || Boolean(uploadingControlId)} onChange={event => uploadDocument(item, request, event)} />
+                    </label>
                     {document && <button className="btn mini doux" onClick={() => openDocument(document)}><FileText size={13} /> Voir V{document.version || 1}</button>}
                   </div>
                 </div>
-                {request && <div className="limex-imane-request-answer"><small>{request.detail}</small><textarea rows="2" value={answers[request.id]?.text || ''} onChange={event => setAnswers(current => ({ ...current, [request.id]: { ...(current[request.id] || {}), text: event.target.value } }))} placeholder="Réponse exacte à la Direction" /></div>}
+                {request && <div className="limex-imane-request-answer"><small><b>Demande exacte :</b> {request.detail || request.label}</small><textarea rows="2" value={answers[request.id]?.text || ''} onChange={event => updateRequestText(request, event.target.value)} placeholder="Réponse exacte à la Direction" /></div>}
               </td>
             </tr>;
           })}</tbody>
@@ -444,21 +580,19 @@ export default function AnalyseArrivageImane({ arrivage }) {
         </section>
       )}
 
+      <details className="limex-imane-history">
+        <summary>Historique des échanges ({(arrivage.circuitHistorique || []).length})</summary>
+        {(arrivage.circuitHistorique || []).length ? (arrivage.circuitHistorique || []).map(entry => <article key={entry.id || `${entry.date}-${entry.action}`}><b>{entry.libelle}</b>{entry.note && <p>{entry.note}</p>}<small>{entry.auteur || '—'} · {entry.date ? new Date(entry.date).toLocaleString('fr-FR') : '—'} · {entry.avant || '—'} → {entry.apres || '—'}</small></article>) : <p>Aucun échange enregistré.</p>}
+      </details>
+
       <footer className="limex-imane-actions">
         <div><Save size={15} /><span>{saveState}</span></div>
         <button className="btn doux" disabled={sectionIndex === 0} onClick={() => setSectionId(LIMEX_DIRECTION_SECTIONS[sectionIndex - 1].id)}><ChevronLeft size={15} /> Précédente</button>
         <button className="btn doux" disabled={sectionIndex === LIMEX_DIRECTION_SECTIONS.length - 1} onClick={() => setSectionId(LIMEX_DIRECTION_SECTIONS[sectionIndex + 1].id)}>Suivante <ChevronRight size={15} /></button>
         <button className="btn doux" disabled={!canEdit} onClick={() => persist()}><Save size={15} /> Enregistrer</button>
+        {requests.length > 0 && <button className="btn or" disabled={!canEdit || !unresolvedRequests.length} onClick={askYasserForMissing}><Send size={15} /> Demander à Yasser ({unresolvedRequests.length})</button>}
         <button className="btn" disabled={!canEdit} onClick={sendToDirection}><Send size={15} /> Enregistrer et transmettre à la Direction</button>
       </footer>
-
-      {documentForm && <ModuleForm moduleId="documents" MODS={MODS} initialData={{
-        arrivage: arrivage.code, commande: context.commandes[0]?.code || '',
-        demande: context.commandes[0]?.demande || context.commandes[0]?.source_demande_id || '',
-        ligneDemande: documentForm.ligneDemande || '', phaseLimex: documentForm.phaseId,
-        controleLimex: documentForm.controlId, produitLimex: documentForm.productKey || '',
-        version: documentForm.version || 1, versionCourante: true, statut: 'À vérifier',
-      }} onClose={() => setDocumentForm(null)} />}
     </section>
   );
 }

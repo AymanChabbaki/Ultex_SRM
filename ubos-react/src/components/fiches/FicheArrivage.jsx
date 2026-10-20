@@ -442,7 +442,7 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
           </div>
         )}
 
-        <div className="bloc-fiche large" style={{ border: '1px solid var(--or)' }}>
+        {roleCircuit !== 'Imane' && <div className="bloc-fiche large" style={{ border: '1px solid var(--or)' }}>
           <h4>Circuit de validation LIMEX</h4>
           <div className="stats" style={{ marginBottom: '14px' }}>
             <div><small>État</small><br />{pill(arrivage.circuitValidation || ETATS_REVUE_ARRIVAGE.NON_DEMARRE, arrivage.circuitValidation === ETATS_REVUE_ARRIVAGE.VALIDE ? 'p-vert' : 'p-ambre')}</div>
@@ -502,7 +502,7 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
               ))}
             </div>
           ) : <div className="vide"><b>Aucun échange</b>Le circuit n'a pas encore démarré.</div>}
-        </div>
+        </div>}
 
         <div className="bloc-fiche large">
           <h4>

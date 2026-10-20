@@ -7,12 +7,33 @@
 .limex-imane-header small { color: var(--imane-blue); font-weight: 900; }
 .limex-imane-header h3 { color: #153d70; margin: 3px 0; }
 .limex-imane-header p { color: #64748b; font-size: 11px; margin: 0; }
-.limex-imane-header > span { border-radius: 999px; font-size: 11px; font-weight: 800; padding: 7px 11px; }
+.limex-imane-header-state { align-items: flex-end; display: flex; flex-direction: column; gap: 5px; text-align: right; }
+.limex-imane-header-state > span { border-radius: 999px; font-size: 11px; font-weight: 800; padding: 7px 11px; }
+.limex-imane-header-state > small { color: #64748b; }
 .limex-imane-header .editable { background: #dff7eb; color: #117b4c; }
 .limex-imane-header .readonly { background: #edf1f5; color: #566478; }
+.limex-imane-circuit-summary { display: grid; gap: 8px; grid-template-columns: 160px 220px minmax(0, 1fr); margin: 10px; }
+.limex-imane-circuit-summary > div { background: #fff; border: 1px solid #dfe7f1; border-radius: 9px; display: grid; gap: 3px; padding: 9px 11px; }
+.limex-imane-circuit-summary small, .limex-imane-circuit-summary span { color: #64748b; font-size: 9px; }
+.limex-imane-circuit-summary b { color: #263f5d; font-size: 11px; white-space: pre-wrap; }
 .limex-imane-workspace .limex-phase-stepper { margin: 10px; }
+.limex-imane-workspace .limex-phase-stepper button.has-missing-request span { background: #dc3030; color: #fff; }
+.limex-imane-workspace .limex-phase-stepper button.requests-ready span { background: #16a066; color: #fff; }
+.limex-step-request-count { background: #dc3030; border: 2px solid #fff; border-radius: 999px; color: #fff; font-size: 8px; line-height: 15px; min-width: 15px; padding: 0 3px; position: absolute; right: calc(50% - 23px); text-align: center; top: -4px; z-index: 2; }
+.requests-ready .limex-step-request-count { background: #16a066; }
 .limex-imane-direction-return { background: #eaf4ff; border: 1px solid #bcdcff; border-radius: 10px; color: #174e87; margin: 10px; padding: 11px 13px; }
 .limex-imane-direction-return p { margin: 4px 0 0; white-space: pre-wrap; }
+.limex-imane-request-board { background: #fff; border: 1px solid #efb4b4; border-radius: 11px; margin: 10px; overflow: hidden; }
+.limex-imane-request-board > header { align-items: center; background: #fff2f2; display: flex; justify-content: space-between; padding: 10px 12px; }
+.limex-imane-request-board header b { color: #a61f1f; }
+.limex-imane-request-board header p { color: #7f4b4b; font-size: 10px; margin: 3px 0 0; }
+.limex-imane-request-board header strong { align-items: center; background: #d92d2d; border-radius: 50%; color: #fff; display: flex; height: 29px; justify-content: center; min-width: 29px; }
+.limex-imane-request-board > div { display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); max-height: 230px; overflow: auto; padding: 9px; }
+.limex-imane-request-board button { background: #fff4f4; border: 1px solid #efc0c0; border-radius: 8px; color: #8e2020; cursor: pointer; display: grid; gap: 2px; padding: 8px 9px; text-align: left; }
+.limex-imane-request-board button span { font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.limex-imane-request-board button b { font-size: 10px; }
+.limex-imane-request-board button small { font-size: 9px; }
+.limex-imane-request-board button.ready { background: #effaf4; border-color: #b9e6cd; color: #137247; }
 .limex-imane-product-select { background: #fff; border: 1px solid #dfe7f1; border-radius: 10px; margin: 10px; padding: 10px; }
 .limex-imane-product-select label { align-items: center; color: #45566d; display: flex; font-size: 11px; font-weight: 800; gap: 10px; }
 .limex-imane-product-select select { border: 1px solid #d6e0eb; border-radius: 7px; min-width: 280px; padding: 7px; }
@@ -25,8 +46,11 @@
 .limex-imane-table th:nth-child(4) { width: 18%; }
 .limex-imane-table th:nth-child(5) { width: 22%; }
 .limex-imane-table td { border-top: 1px solid #e7edf4; font-size: 11px; padding: 8px; vertical-align: top; }
-.limex-imane-table tr.has-request td { background: #fffaf0; }
+.limex-imane-table tr.request-missing td { background: #fff1f1; border-top-color: #f1b9b9; }
+.limex-imane-table tr.request-ready td { background: #f1fbf6; border-top-color: #bee7cf; }
 .limex-imane-table td:nth-child(2) em { background: #fff0c2; border-radius: 999px; color: #835e00; display: block; font-size: 8px; font-style: normal; margin-top: 5px; padding: 3px 6px; width: fit-content; }
+.limex-imane-table tr.request-missing td:nth-child(2) em { background: #ffdada; color: #a51515; }
+.limex-imane-table tr.request-ready td:nth-child(2) em { background: #d7f4e4; color: #117245; }
 .limex-imane-table input, .limex-imane-table select, .limex-imane-table textarea { border: 1px solid #d6e0eb; border-radius: 7px; box-sizing: border-box; font: inherit; padding: 7px; resize: vertical; width: 100%; }
 .limex-imane-table :disabled { background: #f4f6f9; color: #5d6d80; }
 .limex-imane-table td:nth-child(4) p { color: #5d6d80; font-size: 9px; margin: 5px 0 0; white-space: pre-wrap; }
@@ -38,14 +62,22 @@
 .limex-imane-document-actions { display: grid; gap: 6px; width: 100%; }
 .limex-imane-document-actions > div { display: flex; flex-wrap: wrap; gap: 5px; }
 .limex-imane-document-actions .btn { align-items: center; display: inline-flex; gap: 4px; }
+.limex-imane-document-actions label.btn { cursor: pointer; width: auto; }
+.limex-imane-document-actions label.btn.disabled { cursor: not-allowed; opacity: .55; }
 .limex-imane-request-answer { display: grid; gap: 5px; margin-top: 7px; }
-.limex-imane-request-answer small { color: #916700; font-weight: 700; }
+.limex-imane-request-answer small { color: #a51515; font-weight: 700; }
 .limex-execution-builder { background: #fff; border: 1px solid #dfe7f1; border-radius: 11px; margin: 10px; padding: 12px; }
 .limex-execution-builder > header { align-items: center; display: flex; justify-content: space-between; }
 .limex-execution-builder h4 { color: #153d70; margin: 0; }
 .limex-execution-builder header p { color: #64748b; font-size: 10px; margin: 3px 0 0; }
 .limex-execution-builder article { display: grid; gap: 7px; grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr) 140px 120px auto; margin-top: 8px; }
 .limex-execution-builder article input, .limex-execution-builder article select { border: 1px solid #d6e0eb; border-radius: 7px; padding: 7px; }
+.limex-imane-history { background: #fff; border: 1px solid #dfe7f1; border-radius: 11px; margin: 10px; overflow: hidden; }
+.limex-imane-history summary { color: #153d70; cursor: pointer; font-size: 12px; font-weight: 800; padding: 11px 13px; }
+.limex-imane-history article { border-top: 1px solid #edf1f5; padding: 9px 13px; }
+.limex-imane-history article b { color: #334a66; font-size: 11px; }
+.limex-imane-history article p { font-size: 10px; margin: 4px 0; white-space: pre-wrap; }
+.limex-imane-history article small { color: #6d7c8d; font-size: 9px; }
 .limex-imane-actions { align-items: center; background: #fff; border-top: 1px solid #dfe7f1; display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; padding: 10px; position: sticky; bottom: 0; z-index: 10; }
 .limex-imane-actions > div { align-items: center; color: #5d6d80; display: flex; font-size: 10px; gap: 5px; margin-right: auto; }
 .limex-imane-actions .btn { align-items: center; display: inline-flex; gap: 5px; }
@@ -53,9 +85,14 @@
 @media (max-width: 1000px) {
   .limex-imane-table { min-width: 900px; }
   .limex-execution-builder article { grid-template-columns: 1fr 1fr; }
+  .limex-imane-circuit-summary { grid-template-columns: 1fr 1fr; }
+  .limex-imane-circuit-summary > div:last-child { grid-column: 1 / -1; }
 }
 @media (max-width: 650px) {
   .limex-imane-header { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .limex-imane-header-state { align-items: flex-start; text-align: left; }
+  .limex-imane-circuit-summary { grid-template-columns: 1fr; }
+  .limex-imane-circuit-summary > div:last-child { grid-column: auto; }
   .limex-imane-product-select label { align-items: stretch; flex-direction: column; }
   .limex-imane-product-select select { min-width: 0; width: 100%; }
   .limex-execution-builder article { grid-template-columns: 1fr; }
