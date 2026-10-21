@@ -237,10 +237,11 @@
 .supplier-origin-card.green .source-round-icon { background: #e7f7ef; color: #299b70; }
 .supplier-origin-card.green strong { color: #299b70; }
 .supplier-origin-card.green > button { background: #e7f7ef; color: #299b70; }
-.supplier-tabs { gap: 6px; padding-bottom: 11px; overflow-x: auto; }
+.supplier-directory-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding-bottom: 11px; }
+.supplier-tabs { display: flex; flex: 1; gap: 6px; min-width: 0; overflow-x: auto; }
 .supplier-tabs > button { min-height: 37px; padding: 8px 20px; border: 0; border-radius: 8px; background: transparent; color: #5f7384; font-size: 10px; font-weight: 700; white-space: nowrap; }
 .supplier-tabs > button.active { background: #0870ae; color: #fff; }
-.supplier-tabs .source-primary-button { margin-left: auto; color: #fff; }
+.supplier-add-button { flex: 0 0 auto; min-width: 185px; justify-content: center; }
 .supplier-filter-row { grid-template-columns: minmax(300px, 1fr) 180px 180px 210px; margin-top: 2px; }
 .supplier-table { min-width: 1120px; }
 .source-directory-note { margin-top: 12px; padding: 13px 15px; border-radius: 8px; background: #f4f7fa; color: #768898; font-size: 9px; }
@@ -329,4 +330,6 @@
   .supplier-tab-content { padding: 17px; }
   .supplier-origin-card { grid-template-columns: auto 1fr; }
   .supplier-origin-card > button { grid-column: 1 / -1; }
+  .supplier-directory-head { align-items: stretch; flex-direction: column-reverse; }
+  .supplier-add-button { width: 100%; }
 }

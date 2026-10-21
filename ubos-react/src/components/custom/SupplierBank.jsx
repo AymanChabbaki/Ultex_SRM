@@ -103,12 +103,14 @@ export default function SupplierBank() {
         </section>
 
         <section className="source-card source-dashboard-card">
-          <div className="supplier-tabs">
-            <button className={tab === 'all' ? 'active' : ''} onClick={() => changeTab('all')}>Tous les fournisseurs</button>
-            <button className={tab === 'collected' ? 'active' : ''} onClick={() => changeTab('collected')}>Collectés par sourcing ({groups.filter(group => group.hasCollected).length})</button>
-            <button className={tab === 'confirmed' ? 'active' : ''} onClick={() => changeTab('confirmed')}>Répertoire clients confirmés ({groups.filter(group => group.hasConfirmed).length})</button>
-            <button className={tab === 'associate' ? 'active' : ''} onClick={() => changeTab('associate')}>À associer ({toAssociate})</button>
-            <button className="source-primary-button" onClick={() => setShowCreate(true)}><Plus size={16} /> Ajouter fournisseur</button>
+          <div className="supplier-directory-head">
+            <div className="supplier-tabs">
+              <button className={tab === 'all' ? 'active' : ''} onClick={() => changeTab('all')}>Tous les fournisseurs</button>
+              <button className={tab === 'collected' ? 'active' : ''} onClick={() => changeTab('collected')}>Collectés par sourcing ({groups.filter(group => group.hasCollected).length})</button>
+              <button className={tab === 'confirmed' ? 'active' : ''} onClick={() => changeTab('confirmed')}>Répertoire clients confirmés ({groups.filter(group => group.hasConfirmed).length})</button>
+              <button className={tab === 'associate' ? 'active' : ''} onClick={() => changeTab('associate')}>À associer ({toAssociate})</button>
+            </div>
+            <button className="source-primary-button supplier-add-button" onClick={() => setShowCreate(true)}><Plus size={16} /> Ajouter fournisseur</button>
           </div>
 
           <div className="source-filter-row supplier-filter-row">
