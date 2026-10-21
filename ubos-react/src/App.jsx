@@ -58,7 +58,9 @@ const FacturationRecus = lazy(() => import('./components/custom/FacturationRecus
 const DocumentsPartages = lazy(() => import('./components/custom/DocumentsPartages'));
 const DemandesConverties = lazy(() => import('./components/custom/DemandesConverties'));
 const SourcingDashboard = lazy(() => import('./components/custom/SourcingDashboard'));
+const SourcingProfile = lazy(() => import('./components/custom/SourcingProfile'));
 const SupplierBank = lazy(() => import('./components/custom/SupplierBank'));
+const SupplierProfile = lazy(() => import('./components/custom/SupplierProfile'));
 const GenericModule = lazy(() => import('./components/modules/GenericModule'));
 
 const IMPORT_COLLECTIONS = [
@@ -270,7 +272,9 @@ const Router = () => {
       case 'documentsPartages': return wrap(<DocumentsPartages />, ['documents']);
       case 'demandesConverties': return wrap(<DemandesConverties />, ['clients', 'commandes', 'demandes', 'documents', 'paiements']);
       case 'sourcings': return wrap(<SourcingDashboard />, ['clients', 'demandes', 'demandeLignes', 'sourcings', 'fournisseurs']);
-      case 'fournisseurs': return wrap(<SupplierBank />, ['fournisseurs']);
+      case 'ficheSourcing': return wrap(<SourcingProfile codeProp={params} />, ['audit', 'clients', 'demandes', 'demandeLignes', 'sourcings', 'fournisseurs']);
+      case 'fournisseurs': return wrap(<SupplierBank />, ['clients', 'demandes', 'sourcings', 'fournisseurs']);
+      case 'ficheFournisseur': return wrap(<SupplierProfile codeProp={params} />, ['audit', 'clients', 'demandes', 'sourcings', 'fournisseurs']);
 
       default:
         // Check if it's a generic module (clients, contacts, demandes, dossiers, documents, etc.)
