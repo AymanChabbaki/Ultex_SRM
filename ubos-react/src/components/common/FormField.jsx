@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDB } from '../../context/DBContext';
 import { INCOTERMS_2020, PAYS_MONDE, PORTS_MONDE, AEROPORTS_MONDE } from '../../data/constants';
 import SearchableSelect from './SearchableSelect';
@@ -14,7 +14,7 @@ const BulleAide = ({ texte }) => {
 };
 
 const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, options, formData = {} }) => {
-  const { db } = useDB();
+  const { db, chargerCollections } = useDB();
 
   // Normalize field definition object
   const fieldDef = f || fieldConfig || {
@@ -23,6 +23,14 @@ const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, opt
     t: type || 'text',
     opts: options || []
   };
+
+  // Pages only load the collections their route lists, so a ref field to
+  // another collection (e.g. fournisseurs from a client fiche) would show an
+  // empty list. chargerCollections is cached and deduplicated.
+  const refColl = ['ref', 'multiref'].includes(fieldDef.t) ? fieldDef.coll : null;
+  useEffect(() => {
+    if (refColl && chargerCollections) chargerCollections([refColl]).catch(() => {});
+  }, [refColl, chargerCollections]);
 
   const val = value ?? '';
   const [refSearch, setRefSearch] = useState('');
