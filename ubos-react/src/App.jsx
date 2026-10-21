@@ -57,6 +57,8 @@ const PaiementsEcheances = lazy(() => import('./components/custom/PaiementsEchea
 const FacturationRecus = lazy(() => import('./components/custom/FacturationRecus'));
 const DocumentsPartages = lazy(() => import('./components/custom/DocumentsPartages'));
 const DemandesConverties = lazy(() => import('./components/custom/DemandesConverties'));
+const SourcingDashboard = lazy(() => import('./components/custom/SourcingDashboard'));
+const SupplierBank = lazy(() => import('./components/custom/SupplierBank'));
 const GenericModule = lazy(() => import('./components/modules/GenericModule'));
 
 const IMPORT_COLLECTIONS = [
@@ -267,6 +269,8 @@ const Router = () => {
       case 'facturationRecus': return <FacturationRecus />;
       case 'documentsPartages': return wrap(<DocumentsPartages />, ['documents']);
       case 'demandesConverties': return wrap(<DemandesConverties />, ['clients', 'commandes', 'demandes', 'documents', 'paiements']);
+      case 'sourcings': return wrap(<SourcingDashboard />, ['clients', 'demandes', 'demandeLignes', 'sourcings', 'fournisseurs']);
+      case 'fournisseurs': return wrap(<SupplierBank />, ['fournisseurs']);
 
       default:
         // Check if it's a generic module (clients, contacts, demandes, dossiers, documents, etc.)

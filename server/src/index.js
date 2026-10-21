@@ -2859,6 +2859,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     // current pipeline stage + Data->Closing disposition tags, and the
     // product/transport fields for the dossiers collection below.
     codeClientUltex, typeDemande, sensOperation, etape, tagsPipeline,
+    responsableDemande, sourcingTag, confirmedSuppliers = [],
     closingTag, closingEtat, closingStatus, closingNotes,
     selectedDevis, commercialPackage, confirmedPayment, workflowDocumentIds,
     produit, quantite, incoterm, paysOrigine, paysProvenance,
@@ -2901,6 +2902,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       .trim()
       .replace(/\/\d+$/, '');
     const dateDemandeSource = dateIsoJour(dateReception);
+    const responsableParDefaut = typeDemande === 'Proforma (A1)' ? 'Data' : 'Sourcing';
     const dataTagRecu = Object.prototype.hasOwnProperty.call(req.body || {}, 'dataTag');
     const dataTagLisible = normaliserDataTag(dataTag);
     const origineRemarque = `Créé automatiquement depuis ULTEX${referenceWorkflow ? ` (réf. ${referenceWorkflow})` : ''}.`;
@@ -3081,6 +3083,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         dateDemande: dateDemandeSource,
         dateHeureReception: dateReception || demande.data.dateHeureReception || dateDemandeSource,
         responsableData: demande.data.responsableData || 'Data',
+        responsable: responsableDemande || demande.data.responsable || responsableParDefaut,
         sourceSynchronisation: 'Workflow',
         ...(typeof createdManually === 'boolean' ? { createdManually } : {}),
         modeTransport: modeTransport || demande.data.modeTransport,
@@ -3119,7 +3122,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         dateDemande: dateDemandeSource, dateHeureReception: dateReception || dateDemandeSource,
         source: createdManually ? 'Saisie manuelle' : 'WhatsApp', canalReception: createdManually ? 'Saisie manuelle' : 'WhatsApp', sourceSynchronisation: 'Workflow',
         createdManually: createdManually === true,
-        responsableData: 'Data', dataTag: dataTagLisible,
+        responsableData: 'Data', responsable: responsableDemande || responsableParDefaut, dataTag: dataTagLisible,
         objectifGeneral: objectifGeneral || '—', typeProjet: typeProjet || undefined,
         urgence: urgence || 'Normale',
         budgetGlobalEstime: budgetGlobalEstime != null ? budgetGlobalEstime : undefined,
@@ -3278,6 +3281,122 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       }
     }
 
+    const confirmedSupplierRows = Array.isArray(confirmedSuppliers) ? confirmedSuppliers : [];
+
+    // 5. Sourcing workspace — one stable record per Workflow demande.  It is
+    // created only for the Sourcing and Negotiation tracks and refreshed on
+    // every Workflow commit, while CRM-owned notes remain untouched.
+    let sourcing = null;
+    if (['Sourcing (B)', 'Négociation (A2)'].includes(typeDemande)) {
+      sourcing = await trouverParUltexId('sourcings', ultexDossierId);
+      const supplierNames = confirmedSupplierRows.map(item => item?.nom).filter(Boolean);
+      const productNames = products.map(item => item?.nomProduit).filter(Boolean);
+      const principalSupplier = confirmedSupplierRows[0] || null;
+      const syncedSourcing = {
+        ultexDossierId,
+        demande: demande.code,
+        client: client.code,
+        referenceWorkflow: referenceWorkflow || demande.data.referenceCode,
+        typeDemande,
+        responsable: responsableDemande || demande.data.responsable || responsableParDefaut,
+        source: 'Workflow',
+        statut: sourcingTag === 'sourcing_valide' ? 'Validé' : (sourcingTag ? 'En cours' : 'À traiter'),
+        produits: productNames.join(' · '),
+        fournisseursConfirmes: supplierNames.join(' · '),
+        fournisseur: principalSupplier?.nom || sourcing?.data?.fournisseur || '',
+        prixFOB: principalSupplier?.prixExw ?? sourcing?.data?.prixFOB,
+        devise: principalSupplier?.devise || sourcing?.data?.devise || 'USD',
+        moq: principalSupplier?.moq || sourcing?.data?.moq || '',
+        delai: principalSupplier?.delaiProduction || sourcing?.data?.delai || '',
+        detailsProduits: products,
+        detailsFournisseurs: confirmedSupplierRows,
+        synchroniseLe: workflowUpdatedAt || new Date().toISOString(),
+      };
+      if (sourcing) {
+        sourcing = await prisma.collectionItem.update({
+          where: { collection_id: { collection: 'sourcings', id: sourcing.id } },
+          data: { data: { ...sourcing.data, ...syncedSourcing } },
+        });
+      } else {
+        const code = await genererCodeAtomique('SRC');
+        const data = { id: code, code, ...syncedSourcing, ts: Date.now() };
+        sourcing = await prisma.collectionItem.create({
+          data: { collection: 'sourcings', id: code, code, data },
+        });
+      }
+    }
+
+    // Confirmed suppliers are copied into the CRM bank with their complete
+    // product-scoped details.  The immutable Workflow supplier row id makes
+    // retries and later edits idempotent.
+    const syncedSupplierCodes = [];
+    for (const supplierData of confirmedSupplierRows) {
+      if (!supplierData?.workflowSupplierId || !supplierData?.nom) continue;
+      let supplier = await prisma.collectionItem.findFirst({
+        where: {
+          collection: 'fournisseurs',
+          data: { path: ['workflowSupplierId'], equals: supplierData.workflowSupplierId },
+        },
+      });
+      const syncedSupplier = {
+        workflowSupplierId: supplierData.workflowSupplierId,
+        workflowProductId: supplierData.workflowProductId || '',
+        nom: supplierData.nom,
+        pays: supplierData.pays || '',
+        ville: supplierData.ville || '',
+        contact: supplierData.contact || '',
+        produitsFournis: supplierData.produit || '',
+        hsCode: supplierData.hsCode || '',
+        prixExw: supplierData.prixExw,
+        devise: supplierData.devise || 'USD',
+        moq: supplierData.moq || '',
+        delaiProduction: supplierData.delaiProduction || '',
+        detailsProduit: supplierData.detailsProduit || '',
+        photo: supplierData.photo || '',
+        quantiteAllouee: supplierData.quantiteAllouee,
+        categorieBanque: 'Confirmé',
+        sourceBanque: 'Workflow',
+        statut: 'Qualifié',
+        derniereDemande: demande.code,
+        confirmeLe: supplierData.confirmeLe || workflowUpdatedAt || new Date().toISOString(),
+      };
+      if (supplier) {
+        supplier = await prisma.collectionItem.update({
+          where: { collection_id: { collection: 'fournisseurs', id: supplier.id } },
+          data: { data: { ...supplier.data, ...syncedSupplier } },
+        });
+      } else {
+        const code = await genererCodeAtomique('F');
+        const data = { id: code, code, ...syncedSupplier, ts: Date.now() };
+        supplier = await prisma.collectionItem.create({
+          data: { collection: 'fournisseurs', id: code, code, data },
+        });
+      }
+      syncedSupplierCodes.push(supplier.code);
+    }
+    // If a Workflow confirmation is removed or replaced, remove only the
+    // CRM mirror created for this demande. Manually collected suppliers and
+    // confirmations belonging to other demandes are never touched.
+    const currentWorkflowSupplierIds = new Set(
+      confirmedSupplierRows.map(item => item?.workflowSupplierId).filter(Boolean)
+    );
+    const previousWorkflowSuppliers = await prisma.collectionItem.findMany({
+      where: {
+        collection: 'fournisseurs',
+        AND: [
+          { data: { path: ['sourceBanque'], equals: 'Workflow' } },
+          { data: { path: ['derniereDemande'], equals: demande.code } },
+        ],
+      },
+    });
+    for (const previousSupplier of previousWorkflowSuppliers) {
+      if (!currentWorkflowSupplierIds.has(previousSupplier.data?.workflowSupplierId)) {
+        await prisma.collectionItem.delete({
+          where: { collection_id: { collection: 'fournisseurs', id: previousSupplier.id } },
+        });
+      }
+    }
+
     // Closing conversion is the business trigger for an order. This upsert
     // reuses the same source demande on every retry, so a repeated Workflow
     // sync refreshes the accepted quote/payment/documents instead of asking
@@ -3321,6 +3440,8 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
       client: { code: client.code },
       contact: { code: contact.code },
       demande: { code: demande.code },
+      sourcing: sourcing ? { code: sourcing.code } : null,
+      fournisseurs: syncedSupplierCodes.map(code => ({ code })),
       commande: commande ? { code: commande.code, autoCreee: true } : null,
       lignes: syncedLines.map(code => ({ code }))
     });

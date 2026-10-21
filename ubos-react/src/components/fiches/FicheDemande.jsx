@@ -135,6 +135,7 @@ const FicheDemande = ({ codeProp, code: codeFromProp }) => {
     { k: 'dateDemande', l: 'Date', render: (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—' },
     { k: 'canalReception', l: 'Canal de réception' },
     { k: 'typeProjet', l: 'Type de projet' },
+    { k: 'responsable', l: 'Responsable de la demande' },
     { k: 'responsableData', l: 'Responsable Data' },
     { k: 'source', l: 'Source' },
     { k: 'budgetGlobalEstime', l: 'Budget global estimé', render: (v) => v ? `${v} MAD` : '—' },
