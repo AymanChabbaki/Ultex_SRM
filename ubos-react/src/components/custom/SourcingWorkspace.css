@@ -212,6 +212,20 @@
 .source-photo-preview img { width: 100%; height: 100%; object-fit: cover; }
 .source-photo-preview button { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 50%; background: rgba(15,23,42,.72); color: #fff; }
 .source-selected-product { display: flex; align-items: center; gap: 11px; padding: 14px; border: 1px solid #dce7ee; border-radius: 10px; background: #f7fbfe; }
+.supplier-offers-heading { margin-top: 8px; padding-top: 16px; border-top: 1px solid #e8eef3; }
+.supplier-offers-list { display: grid; gap: 12px; }
+.supplier-offer-card { display: grid; gap: 13px; padding: 15px; border: 1px solid #dfe8ef; border-radius: 11px; background: #fbfdff; }
+.supplier-offer-card.selected { border-color: #64bd98; background: #f4fcf8; box-shadow: 0 0 0 2px rgba(58, 166, 121, .08); }
+.supplier-offer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.supplier-offer-head > div:first-child { display: grid; gap: 3px; }
+.supplier-offer-head > div:last-child { display: flex; align-items: center; gap: 7px; }
+.supplier-offer-head span { color: #8192a0; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.supplier-offer-head strong { color: #24445c; font-size: 12px; }
+.supplier-selected-button { display: inline-flex; align-items: center; gap: 5px; min-height: 31px; padding: 6px 12px; border: 0; border-radius: 7px; background: #def6e9; color: #20855e; font-size: 10px; font-weight: 800; }
+.source-icon-button.danger { color: #d9534f; }
+.supplier-offer-summary { display: flex; align-items: baseline; gap: 7px; padding: 12px 2px 2px; color: #748798; }
+.supplier-offer-summary strong { color: #0870ae; font-size: 24px; }
+.supplier-offer-summary span { font-size: 10px; font-weight: 700; }
 .source-follow-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px; }
 .source-document-tags { display: flex; flex-wrap: wrap; gap: 8px; }
 .source-document-tags > span { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 99px; background: #eaf4fb; color: #347399; font-size: 10px; }
@@ -332,4 +346,5 @@
   .supplier-origin-card > button { grid-column: 1 / -1; }
   .supplier-directory-head { align-items: stretch; flex-direction: column-reverse; }
   .supplier-add-button { width: 100%; }
+  .supplier-offer-head { align-items: flex-start; flex-direction: column; }
 }

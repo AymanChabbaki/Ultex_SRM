@@ -11,15 +11,38 @@ import './SourcingWorkspace.css';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+const emptySupplierOffer = (position = 0) => ({
+  localId: `supplier-offer-${Date.now()}-${position}`,
+  fournisseurCode: '', paysFournisseur: '', villeFournisseur: '', prixUnitaire: '', devise: 'USD',
+  moq: '', delaiProduction: '', incoterm: 'EXW', portFob: '', statutOffre: 'À comparer', selectionne: false,
+});
+
 const emptyProduct = (position = 0) => ({
   localId: `local-${Date.now()}-${position}`,
   nomProduit: '', categorie: '', quantite: '', unite: 'pièces', usage: '', etat: 'Neuf', exigences: '', photo: '',
   matiere: '', dimensions: '', poids: '', typePoids: 'Net', couleursModele: '', certificats: '', emballage: '',
   autresCaracteristiques: '', incoterm: 'EXW', portFob: '', paysFournisseur: '', paysOrigine: '', villeFournisseur: '',
   fournisseurCode: '', prixUnitaire: '', devise: 'USD', moq: '', delaiProduction: '',
+  offresFournisseurs: [emptySupplierOffer(position)],
 });
 
 function mapProduct(product, index) {
+  const legacyOffer = {
+    ...emptySupplierOffer(0),
+    fournisseurCode: product.fournisseurCode || '',
+    paysFournisseur: product.paysFournisseur || product.provenance || '',
+    villeFournisseur: product.villeFournisseur || product.supplierCity || '',
+    prixUnitaire: product.prixUnitaire ?? product.negotiatedExwPrice ?? '',
+    devise: product.devise || product.currency || 'USD',
+    moq: product.moq || '',
+    delaiProduction: product.delaiProduction || '',
+    incoterm: product.incoterm || 'EXW',
+    portFob: product.portFob || '',
+    selectionne: true,
+  };
+  const offers = Array.isArray(product.offresFournisseurs) && product.offresFournisseurs.length
+    ? product.offresFournisseurs.map((offer, offerIndex) => ({ ...emptySupplierOffer(offerIndex), ...offer, localId: offer.localId || `supplier-offer-${index}-${offerIndex}` }))
+    : [legacyOffer];
   return {
     ...emptyProduct(index),
     ...product,
@@ -35,6 +58,7 @@ function mapProduct(product, index) {
     villeFournisseur: product.villeFournisseur || product.supplierCity || '',
     prixUnitaire: product.prixUnitaire ?? product.negotiatedExwPrice ?? '',
     devise: product.devise || product.currency || 'USD',
+    offresFournisseurs: offers,
   };
 }
 
@@ -106,20 +130,46 @@ export default function SourcingProfile({ codeProp }) {
   const suppliers = db.fournisseurs || [];
 
   const updateProduct = (key, value) => setProducts(current => current.map((item, index) => index === activeProduct ? { ...item, [key]: value } : item));
-  const selectSupplier = value => {
+  const updateSupplierOffer = (offerIndex, key, value) => setProducts(current => current.map((item, index) => index === activeProduct ? {
+    ...item,
+    offresFournisseurs: (item.offresFournisseurs || []).map((offer, currentOfferIndex) => currentOfferIndex === offerIndex ? { ...offer, [key]: value } : offer),
+  } : item));
+  const selectSupplier = (offerIndex, value) => {
     const supplier = suppliers.find(item => item.code === value);
     setProducts(current => current.map((item, index) => index === activeProduct ? {
       ...item,
-      fournisseurCode: value,
-      paysFournisseur: supplier?.pays || item.paysFournisseur,
-      paysOrigine: supplier?.pays || item.paysOrigine,
-      villeFournisseur: supplier?.ville || item.villeFournisseur,
-      prixUnitaire: supplier?.prixExw ?? item.prixUnitaire,
-      devise: supplier?.devise || item.devise,
-      moq: supplier?.moq || item.moq,
-      delaiProduction: supplier?.delaiProduction || item.delaiProduction,
+      offresFournisseurs: (item.offresFournisseurs || []).map((offer, currentOfferIndex) => currentOfferIndex === offerIndex ? {
+        ...offer,
+        fournisseurCode: value,
+        paysFournisseur: supplier?.pays || offer.paysFournisseur,
+        villeFournisseur: supplier?.ville || offer.villeFournisseur,
+        prixUnitaire: supplier?.prixExw ?? offer.prixUnitaire,
+        devise: supplier?.devise || offer.devise,
+        moq: supplier?.moq || offer.moq,
+        delaiProduction: supplier?.delaiProduction || offer.delaiProduction,
+      } : offer),
     } : item));
   };
+
+  const addSupplierOffer = () => setProducts(current => current.map((item, index) => index === activeProduct ? {
+    ...item,
+    offresFournisseurs: [...(item.offresFournisseurs || []), emptySupplierOffer((item.offresFournisseurs || []).length)],
+  } : item));
+
+  const removeSupplierOffer = offerIndex => setProducts(current => current.map((item, index) => {
+    if (index !== activeProduct) return item;
+    const offers = item.offresFournisseurs || [];
+    if (offers.length <= 1) {
+      toast('Gardez au moins une option fournisseur pour le produit.');
+      return item;
+    }
+    return { ...item, offresFournisseurs: offers.filter((_, currentOfferIndex) => currentOfferIndex !== offerIndex) };
+  }));
+
+  const chooseSupplierOffer = offerIndex => setProducts(current => current.map((item, index) => index === activeProduct ? {
+    ...item,
+    offresFournisseurs: (item.offresFournisseurs || []).map((offer, currentOfferIndex) => ({ ...offer, selectionne: currentOfferIndex === offerIndex, statutOffre: currentOfferIndex === offerIndex ? 'Retenu' : offer.statutOffre === 'Retenu' ? 'À comparer' : offer.statutOffre })),
+  } : item));
 
   const addProduct = () => {
     setProducts(current => [...current, emptyProduct(current.length)]);
@@ -175,8 +225,25 @@ export default function SourcingProfile({ codeProp }) {
       ts: existingDemande?.ts || now,
     };
 
+    const normalizedProducts = products.map(item => {
+      const offers = item.offresFournisseurs?.length ? item.offresFournisseurs : [emptySupplierOffer()];
+      const primaryOffer = offers.find(offer => offer.selectionne) || offers[0];
+      return {
+        ...item,
+        offresFournisseurs: offers,
+        fournisseurCode: primaryOffer?.fournisseurCode || '',
+        paysFournisseur: primaryOffer?.paysFournisseur || '',
+        villeFournisseur: primaryOffer?.villeFournisseur || '',
+        prixUnitaire: primaryOffer?.prixUnitaire ?? '',
+        devise: primaryOffer?.devise || 'USD',
+        moq: primaryOffer?.moq || '',
+        delaiProduction: primaryOffer?.delaiProduction || '',
+        incoterm: primaryOffer?.incoterm || item.incoterm || 'EXW',
+        portFob: primaryOffer?.portFob || item.portFob || '',
+      };
+    });
     const existingLines = (db.demandeLignes || []).filter(item => item.demande === demandeCode);
-    const nextLines = products.map((item, index) => {
+    const nextLines = normalizedProducts.map((item, index) => {
       const previous = existingLines.find(line => line.code === item.crmLineCode) || existingLines[index];
       const lineCode = previous?.code || genCode('DL');
       return {
@@ -200,9 +267,11 @@ export default function SourcingProfile({ codeProp }) {
         ts: previous?.ts || now,
       };
     });
-    const savedProducts = products.map((item, index) => ({ ...item, crmLineCode: nextLines[index].code }));
-    const selectedSuppliers = savedProducts.map(item => suppliers.find(supplier => supplier.code === item.fournisseurCode)).filter(Boolean);
+    const savedProducts = normalizedProducts.map((item, index) => ({ ...item, crmLineCode: nextLines[index].code }));
+    const selectedSupplierCodes = [...new Set(savedProducts.flatMap(item => (item.offresFournisseurs || []).map(offer => offer.fournisseurCode).filter(Boolean)))];
+    const selectedSuppliers = selectedSupplierCodes.map(code => suppliers.find(supplier => supplier.code === code)).filter(Boolean);
     const primarySupplier = selectedSuppliers[0];
+    const supplierOffers = savedProducts.flatMap(item => (item.offresFournisseurs || []).map(offer => ({ ...offer, produit: item.nomProduit, produitCode: item.crmLineCode })));
     const updatedSourcing = {
       ...(existingSourcing || {}),
       id: existingSourcing?.id || sourcingCode,
@@ -215,6 +284,7 @@ export default function SourcingProfile({ codeProp }) {
       statut: status,
       produits: savedProducts.map(item => item.nomProduit).filter(Boolean).join(' · '),
       ficheProduits: savedProducts,
+      offresFournisseurs: supplierOffers,
       fournisseur: primarySupplier?.nom || existingSourcing?.fournisseur || '',
       fournisseursPressentis: selectedSuppliers.map(item => item.nom).join(' · '),
       paysFournisseur: primarySupplier?.pays || savedProducts[0]?.paysFournisseur || '',
@@ -325,18 +395,40 @@ export default function SourcingProfile({ codeProp }) {
                 <label><span>Emballage</span><input value={product.emballage} onChange={event => updateProduct('emballage', event.target.value)} /></label>
               </div>
               <label className="source-field-full"><span>Autres caractéristiques techniques</span><textarea rows="4" value={product.autresCaracteristiques} onChange={event => updateProduct('autresCaracteristiques', event.target.value)} /></label>
-              <div className="source-fields three">
-                <label><span>Incoterm</span><select value={product.incoterm} onChange={event => updateProduct('incoterm', event.target.value)}>{['EXW', 'FOB', 'CFR', 'CIF', 'DAP', 'DDP'].map(value => <option key={value}>{value}</option>)}</select></label>
-                <label><span>Port FOB</span><input value={product.portFob} onChange={event => updateProduct('portFob', event.target.value)} /></label>
-                <label><span>Ville du fournisseur</span><input value={product.villeFournisseur} onChange={event => updateProduct('villeFournisseur', event.target.value)} /></label>
-                <label><span>Prix EXW</span><input type="number" value={product.prixUnitaire} onChange={event => updateProduct('prixUnitaire', event.target.value)} /></label>
-                <label><span>Devise</span><select value={product.devise} onChange={event => updateProduct('devise', event.target.value)}>{['USD', 'EUR', 'CNY', 'MAD'].map(value => <option key={value}>{value}</option>)}</select></label>
-                <label><span>MOQ</span><input value={product.moq} onChange={event => updateProduct('moq', event.target.value)} /></label>
+              <div className="source-card-title-row supplier-offers-heading">
+                <div><h2>Fournisseurs à comparer</h2><p>Ajoutez plusieurs offres pour ce produit, puis retenez la meilleure.</p></div>
+                <button className="source-soft-button" onClick={addSupplierOffer}><Plus size={15} /> Fournisseur</button>
+              </div>
+              <div className="supplier-offers-list">
+                {(product.offresFournisseurs || []).map((offer, offerIndex) => {
+                  const supplier = suppliers.find(item => item.code === offer.fournisseurCode);
+                  return <article className={`supplier-offer-card ${offer.selectionne ? 'selected' : ''}`} key={offer.localId || offerIndex}>
+                    <div className="supplier-offer-head">
+                      <div><span>Option {offerIndex + 1}</span><strong>{supplier?.nom || 'Fournisseur à identifier'}</strong></div>
+                      <div>
+                        <button className={offer.selectionne ? 'supplier-selected-button' : 'source-soft-button'} onClick={() => chooseSupplierOffer(offerIndex)}>{offer.selectionne ? <><Check size={14} /> Retenu</> : 'Retenir'}</button>
+                        {(product.offresFournisseurs || []).length > 1 && <button className="source-icon-button danger" title="Retirer cette option" onClick={() => removeSupplierOffer(offerIndex)}><X size={15} /></button>}
+                      </div>
+                    </div>
+                    <div className="source-fields three">
+                      <label><span>Fournisseur</span><select value={offer.fournisseurCode || ''} onChange={event => selectSupplier(offerIndex, event.target.value)}><option value="">À identifier</option>{suppliers.map(item => <option key={item.code} value={item.code}>{item.nom} · {item.pays || '—'}</option>)}</select></label>
+                      <label><span>Pays</span><input value={offer.paysFournisseur || ''} onChange={event => updateSupplierOffer(offerIndex, 'paysFournisseur', event.target.value)} /></label>
+                      <label><span>Ville</span><input value={offer.villeFournisseur || ''} onChange={event => updateSupplierOffer(offerIndex, 'villeFournisseur', event.target.value)} /></label>
+                      <label><span>Prix EXW</span><input type="number" value={offer.prixUnitaire ?? ''} onChange={event => updateSupplierOffer(offerIndex, 'prixUnitaire', event.target.value)} /></label>
+                      <label><span>Devise</span><select value={offer.devise || 'USD'} onChange={event => updateSupplierOffer(offerIndex, 'devise', event.target.value)}>{['USD', 'EUR', 'CNY', 'MAD'].map(value => <option key={value}>{value}</option>)}</select></label>
+                      <label><span>MOQ</span><input value={offer.moq || ''} onChange={event => updateSupplierOffer(offerIndex, 'moq', event.target.value)} /></label>
+                      <label><span>Délai de production</span><input value={offer.delaiProduction || ''} onChange={event => updateSupplierOffer(offerIndex, 'delaiProduction', event.target.value)} /></label>
+                      <label><span>Incoterm</span><select value={offer.incoterm || 'EXW'} onChange={event => updateSupplierOffer(offerIndex, 'incoterm', event.target.value)}>{['EXW', 'FOB', 'CFR', 'CIF', 'DAP', 'DDP'].map(value => <option key={value}>{value}</option>)}</select></label>
+                      <label><span>Port FOB</span><input value={offer.portFob || ''} onChange={event => updateSupplierOffer(offerIndex, 'portFob', event.target.value)} /></label>
+                      <label><span>Statut de l’offre</span><select value={offer.statutOffre || 'À comparer'} onChange={event => updateSupplierOffer(offerIndex, 'statutOffre', event.target.value)}>{['À contacter', 'En attente', 'Offre reçue', 'À comparer', 'Retenu', 'Refusé'].map(value => <option key={value}>{value}</option>)}</select></label>
+                    </div>
+                  </article>;
+                })}
               </div>
             </section>
             <aside className="source-side-stack">
-              <section className="source-card source-form-card compact"><h2>Origine & fournisseur</h2><label><span>Pays du fournisseur</span><input value={product.paysFournisseur} onChange={event => updateProduct('paysFournisseur', event.target.value)} /></label><label><span>Pays d’origine du produit</span><input value={product.paysOrigine} onChange={event => updateProduct('paysOrigine', event.target.value)} /></label></section>
-              <section className="source-card source-form-card compact"><h2>Produit concerné</h2><div className="source-selected-product"><span>{activeProduct + 1}</span><div><strong>{product.nomProduit || 'Produit sans nom'}</strong><small>{product.quantite || '—'} {product.unite}</small></div></div><label><span>Fournisseur pressenti</span><select value={product.fournisseurCode} onChange={event => selectSupplier(event.target.value)}><option value="">À identifier</option>{suppliers.map(item => <option key={item.code} value={item.code}>{item.nom} · {item.pays || '—'}</option>)}</select></label><label><span>Délai de production</span><input value={product.delaiProduction} onChange={event => updateProduct('delaiProduction', event.target.value)} /></label></section>
+              <section className="source-card source-form-card compact"><h2>Origine du produit</h2><label><span>Pays d’origine</span><input value={product.paysOrigine} onChange={event => updateProduct('paysOrigine', event.target.value)} /></label></section>
+              <section className="source-card source-form-card compact"><h2>Produit concerné</h2><div className="source-selected-product"><span>{activeProduct + 1}</span><div><strong>{product.nomProduit || 'Produit sans nom'}</strong><small>{product.quantite || '—'} {product.unite}</small></div></div><div className="supplier-offer-summary"><strong>{(product.offresFournisseurs || []).length}</strong><span>fournisseur{(product.offresFournisseurs || []).length > 1 ? 's' : ''} à comparer</span></div></section>
             </aside>
           </div>
         )}

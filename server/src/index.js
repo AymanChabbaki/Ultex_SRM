@@ -1488,14 +1488,16 @@ app.get('/api/dashboard/data/leads', authMiddleware, async (req, res) => {
           OR (${isData} AND COALESCE(data->>'responsableData', '') = '')
         )`
       : Prisma.sql`data->>'responsableData' = ${targetName}`;
-    const calendarDay = Prisma.sql`CASE
+    // A selected Data day includes leads received from 18:00 on the previous
+    // calendar day. This is the same workday rule used by the live queue.
+    const leadWorkDay = Prisma.sql`CASE
       WHEN COALESCE(data->>'dateHeureReception', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*(Z|[+-][0-9]{2}:?[0-9]{2})$'
-        THEN TO_CHAR((data->>'dateHeureReception')::timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD')
+        THEN TO_CHAR(((data->>'dateHeureReception')::timestamptz AT TIME ZONE 'UTC') + INTERVAL '6 hours', 'YYYY-MM-DD')
       WHEN COALESCE(data->>'dateHeureReception', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ]'
-        THEN TO_CHAR((data->>'dateHeureReception')::timestamp, 'YYYY-MM-DD')
+        THEN TO_CHAR((data->>'dateHeureReception')::timestamp + INTERVAL '6 hours', 'YYYY-MM-DD')
       ELSE LEFT(COALESCE(data->>'dateDemande', data->>'dateHeureReception', ''), 10)
     END`;
-    const dateFilter = scope === 'date' ? Prisma.sql`AND ${calendarDay} = ${requestedDate}` : Prisma.empty;
+    const dateFilter = scope === 'date' ? Prisma.sql`AND ${leadWorkDay} = ${requestedDate}` : Prisma.empty;
 
     const demandeRows = await prisma.$queryRaw(Prisma.sql`
       SELECT id, code, data, "createdAt" FROM collection_items
@@ -1528,6 +1530,7 @@ app.get('/api/dashboard/data/leads', authMiddleware, async (req, res) => {
       total: demandeRows.length,
       scope,
       date: scope === 'date' ? requestedDate : null,
+      includesPreviousDayAfterHours: scope === 'date',
       generatedAt: new Date().toISOString()
     };
     const json = JSON.stringify(payload);

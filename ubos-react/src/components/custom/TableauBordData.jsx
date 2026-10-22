@@ -11,7 +11,7 @@ import {
   calculerSourcingsObtenus, genererResumeJournalier, calculerPrioriteClient,
   leadsDuJour, codesSansSuiviDepuis, clientsActifsData, demandesDeAgent
 } from '../../utils/dataPipeline';
-import { localDay, deadlineDue, formatGMTDateTime } from '../../utils/dataFollowup';
+import { localDay, leadWorkDay, deadlineDue, formatGMTDateTime } from '../../utils/dataFollowup';
 import { supprimerDemandeTestGoogleSheets, supprimerDemandeTestWorkflow } from '../../services/security';
 import { fetchDataDashboard, fetchDataDashboardLeads, subscribeDataDashboard } from '../../services/api';
 
@@ -181,17 +181,23 @@ export default function TableauBordData({ user, isAdminView }) {
         && demande.created_manually !== true
         && demande.source !== 'Saisie manuelle');
     if (leadView === 'date') {
-      items = items.filter(demande => localDay(demande.dateHeureReception || demande.dateDemande) === leadDate);
+      items = items.filter(demande => leadWorkDay(demande.dateHeureReception || demande.dateDemande) === leadDate);
     }
     return items
       .sort((a, b) => String(b.dateHeureReception || b.dateDemande || b.createdAt || '').localeCompare(String(a.dateHeureReception || a.dateDemande || a.createdAt || '')))
-      .map(demande => enrichirLead(demande, clientsByCode, { _vueHistorique: true }));
+      .map(demande => {
+        const calendarDay = localDay(demande.dateHeureReception || demande.dateDemande);
+        return enrichirLead(demande, clientsByCode, {
+          _vueHistorique: true,
+          _hierHorsHoraires: leadView === 'date' && calendarDay && calendarDay !== leadDate,
+        });
+      });
   }, [leadHistory.items, clientsByCode, user, leadView, leadDate]);
   const leadsAffiches = leadView === 'queue' ? nouveauxLeads : leadsHistorique;
   const titreLeads = leadView === 'all'
     ? 'Tous les leads reçus'
     : leadView === 'date'
-      ? `Leads reçus le ${leadDate.split('-').reverse().join('/')}`
+      ? `Journée Data du ${leadDate.split('-').reverse().join('/')} + veille hors horaires`
       : "Leads reçus aujourd'hui + hier (hors horaires ou non traités)";
   const leadsAujourdhuiTous = nouveauxLeads.filter(lead => !lead._retardTraitement && !lead._hierHorsHoraires);
   const leadsAujourdhui = leadsAujourdhuiTous.filter(lead => !lead._traite);
@@ -276,7 +282,7 @@ export default function TableauBordData({ user, isAdminView }) {
           onClick={() => setLeadView('all')}
         >Voir tous</button>
         <label style={{ display: 'grid', gap: '3px', fontSize: '12px' }}>
-          <span>Date précise (GMT)</span>
+          <span>Journée Data (inclut la veille après 18h GMT)</span>
           <input type="date" value={leadDate} onChange={event => setLeadDate(event.target.value)} />
         </label>
         <button
@@ -285,7 +291,7 @@ export default function TableauBordData({ user, isAdminView }) {
           aria-pressed={leadView === 'date'}
           disabled={!leadDate}
           onClick={() => setLeadView('date')}
-        >Afficher la date</button>
+        >Afficher la journée</button>
       </div>
       {leadHistoryLoading && <div className="vide"><b>Chargement des leads…</b></div>}
       {leadHistoryError && <div className="note-verrou mb-lg">{leadHistoryError}</div>}
@@ -305,7 +311,9 @@ export default function TableauBordData({ user, isAdminView }) {
             { key: '_retardTraitement', label: 'Alerte', render: (v, o) => o._traite
               ? pill(o._dataTagAffiche ? `Traité — ${o._dataTagAffiche}` : 'Traité', 'p-gris')
               : o._vueHistorique
-                ? (localDay(o.dateHeureReception || o.dateDemande) < localDay()
+                ? (o._hierHorsHoraires
+                  ? pill('Veille — hors horaires', 'p-ambre')
+                  : localDay(o.dateHeureReception || o.dateDemande) < localDay()
                   ? pill('Non traité', 'p-rouge')
                   : pill("Aujourd'hui", 'p-vert'))
               : v
