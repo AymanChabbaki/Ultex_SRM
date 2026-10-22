@@ -6,10 +6,10 @@ const dashboardSource = fs.readFileSync(new URL('../src/components/custom/Tablea
 const apiSource = fs.readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');
 const serverSource = fs.readFileSync(new URL('../../server/src/index.js', import.meta.url), 'utf8');
 
-test('Data lead table exposes queue, lifetime, and Data workday views', () => {
+test('Data lead table exposes queue, lifetime, and strict date views', () => {
   assert.match(dashboardSource, />Voir tous<\/button>/);
-  assert.match(dashboardSource, /Journée Data \(inclut la veille après 18h GMT\)/);
-  assert.match(dashboardSource, />Afficher la journée<\/button>/);
+  assert.match(dashboardSource, /Date précise \(GMT\)/);
+  assert.match(dashboardSource, />Afficher la date<\/button>/);
   assert.match(dashboardSource, /leadView === 'queue' \? nouveauxLeads : leadsHistorique/);
 });
 
@@ -22,21 +22,20 @@ test('lead history is loaded lazily through its own API instead of bloating the 
   assert.match(serverSource, /dashboard-data-leads:/);
 });
 
-test('lead history excludes manual dossiers and selected-date lookup uses the Data workday', () => {
+test('lead history excludes manual dossiers and selected-date lookup is the strict GMT calendar day', () => {
   assert.match(serverSource, /createdManually/);
   assert.match(serverSource, /created_manually/);
   assert.match(serverSource, /Saisie manuelle/);
   assert.match(serverSource, /AT TIME ZONE 'UTC'/);
-  assert.match(serverSource, /INTERVAL '6 hours'/);
-  assert.match(serverSource, /includesPreviousDayAfterHours/);
-  assert.match(serverSource, /const dateFilter = scope === 'date'/);
+  assert.match(serverSource, /const dateFilter = scope === 'date' \? Prisma\.sql`AND \$\{calendarDay\} = \$\{requestedDate\}`/);
+  assert.doesNotMatch(serverSource, /includesPreviousDayAfterHours/);
 });
 
 test('a lead remains linked through its persisted client reference when compact client data is absent', () => {
   assert.match(dashboardSource, /client\?\.code \|\| demande\.client/);
   assert.match(dashboardSource, /demandesDeAgent\(\{ demandes: leadHistory\.items \|\| \[\] \}, user\)/);
-  assert.match(dashboardSource, /leadWorkDay\(demande\.dateHeureReception \|\| demande\.dateDemande\) === leadDate/);
-  assert.match(dashboardSource, /_hierHorsHoraires: leadView === 'date'/);
+  assert.match(dashboardSource, /localDay\(demande\.dateHeureReception \|\| demande\.dateDemande\) === leadDate/);
+  assert.doesNotMatch(dashboardSource, /_hierHorsHoraires: leadView === 'date'/);
 });
 
 test('the lead table displays the linked client name with source-data fallbacks', () => {
