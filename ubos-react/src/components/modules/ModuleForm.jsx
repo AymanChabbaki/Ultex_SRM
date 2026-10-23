@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -24,6 +24,7 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
   const isEdit = !!recordCode;
 
   const [formData, setFormData] = useState(() => (!recordCode && initialData) ? { ...initialData } : {});
+  const initializedFormKey = useRef(null);
 
   // Modules with many fields (dossiers, demandes, demandeLignes, clients...)
   // can tag each champ with a `groupe` name to split the edit modal into
@@ -50,15 +51,19 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
     : champsList;
 
   useEffect(() => {
+    const formKey = `${moduleId}:${recordCode || 'new'}`;
+    if (initializedFormKey.current === formKey) return;
     if (isEdit && M && db[M.coll]) {
       const record = db[M.coll].find(x => x.code === recordCode);
       if (record) {
         setFormData({ ...record });
+        initializedFormKey.current = formKey;
       }
-    } else {
+    } else if (!isEdit) {
       setFormData(initialData ? { ...initialData } : {});
+      initializedFormKey.current = formKey;
     }
-  }, [isEdit, recordCode, M, db]);
+  }, [moduleId, isEdit, recordCode, M, db, initialData]);
 
   if (!M) return null;
 
@@ -163,7 +168,7 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
           M.apresSauve(nextDb, obj, ancien, contexteApresSauve);
         }
 
-        await updateDB(nextDb);
+        if (!await updateDB(nextDb)) return;
         notificationsApresSauve.forEach(args => notifier(...args));
         toast(`${obj.code} mis à jour`);
         if (renamedClientCode && window.location.hash.startsWith(`#ficheClient:${recordCode}`)) {
@@ -220,7 +225,7 @@ export default function ModuleForm({ moduleId, MODS = MODS_DATA, recordCode, ini
         M.apresSauve(nextDb, propre, null, contexteApresSauve);
       }
 
-      await updateDB(nextDb);
+      if (!await updateDB(nextDb)) return;
       notificationsApresSauve.forEach(args => notifier(...args));
       toast(`${propre.code} créé`);
     }
