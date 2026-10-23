@@ -59,6 +59,17 @@ export async function fetchCollectionPage(collection, params = {}) {
   return await res.json();
 }
 
+export async function reservePartnerCode(role) {
+  const res = await fetch(`${API_URL}/partenaires/reserve-code`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ role }),
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'Attribution du code partenaire impossible.');
+  return body.code;
+}
+
 export async function fetchArrivageChatMessages(arrivageCode) {
   const res = await fetch(`${API_URL}/arrivages/${encodeURIComponent(arrivageCode)}/chat`, {
     headers: { ...authHeaders() },

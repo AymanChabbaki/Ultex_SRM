@@ -26,8 +26,8 @@ export const joursAvant = date => {
   return Math.round((Date.parse(`${day(date)}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000);
 };
 
-export function prochainCodePartenaire(role, partenaires = []) {
-  const prefix = PARTNER_ROLES.find(([label]) => label === role)?.[1];
+export function prochainCodePartenaire(role, partenaires = [], roles = PARTNER_ROLES) {
+  const prefix = roles.find(([label]) => label === role)?.[1];
   if (!prefix) throw new Error('Choisissez un rôle valide.');
   const pattern = new RegExp(`^PL-${prefix}-(\\d+)$`);
   const greatest = partenaires.reduce((max, partner) => {

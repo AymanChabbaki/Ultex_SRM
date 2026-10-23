@@ -123,9 +123,11 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   const documents = (db.documents || []).filter(d => d.arrivage === code || commandeCodes.has(d.commande) || demandeCodes.has(d.demande));
   const intervenants = arrivage.intervenants || [];
   const partenaires = db.partenaires || [];
+  const selectablePartnerStatuses = (db.partnerSettings?.[0]?.statuses || PARTNER_ROLES_ACTIVE)
+    .filter(status => !['Prospection', 'Suspendu', 'Archivé'].includes(status));
   const updateIntervenant = async (role, partenaireId) => {
     const partner = partenaires.find(p => p.code === partenaireId);
-    if (partner && !PARTNER_ROLES_ACTIVE.includes(partner.statut)) return toast('Partenaire suspendu ou archivé.');
+    if (partner && !selectablePartnerStatuses.includes(partner.statut)) return toast('Partenaire suspendu ou archivé.');
     if (partner && !rolesDuPartenaire(partner).includes(role)) return toast('Ce partenaire ne possède pas ce rôle.');
     if (partner) {
       const metrics = indicateursPartenaire(partner, db.arrivages || [], db.facturesPartenaire || [], db.lcnPartenaire || []);
@@ -579,7 +581,7 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
             {INTERVENANT_ROLES.map(role => {
               const selected = intervenants.find(i => i.role === role)?.partenaireId || '';
               const candidates = partenaires.filter(p => rolesDuPartenaire(p).includes(role)
-                && (PARTNER_ROLES_ACTIVE.includes(p.statut) || p.code === selected));
+                && (selectablePartnerStatuses.includes(p.statut) || p.code === selected));
               const partner = partenaires.find(p => p.code === selected);
               const metrics = partner ? indicateursPartenaire(partner, db.arrivages || [], db.facturesPartenaire || [], db.lcnPartenaire || []) : null;
               return <div className="champ" key={role}><label>{role}</label>
@@ -591,8 +593,11 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
                   {partner.statut === 'En test' && <span style={{color:'#a36600'}}> · ⚠ En test</span>}
                   {metrics?.plafondUtilise >= 80 && <span style={{color:metrics.plafondUtilise >= 100?'#b22222':'#a36600'}}> · Plafond utilisé {metrics.plafondUtilise.toFixed(1)} %</span>}
                   {metrics?.lcnImpayees > 0 && <span style={{color:'#b22222'}}> · ⚠ {metrics.lcnImpayees} LCN impayée(s)</span>}
-                  {joursAvant(datePlusJours(arrivage.dateArriveePort || arrivage.dateArriveeReelle, partner.freeTimeJours)) <= 3
-                    && (arrivage.dateArriveePort || arrivage.dateArriveeReelle) && <span style={{color:'#a36600'}}> · Free time proche</span>}
+                  {(arrivage.dateArriveePort || arrivage.dateArriveeReelle)
+                    && joursAvant(datePlusJours(arrivage.dateArriveePort || arrivage.dateArriveeReelle, partner.freeTimeJours)) <= 3
+                    && <span style={{color:joursAvant(datePlusJours(arrivage.dateArriveePort || arrivage.dateArriveeReelle, partner.freeTimeJours)) <= 0 ? '#b22222' : '#a36600'}}>
+                      {' · '}Free time : {joursAvant(datePlusJours(arrivage.dateArriveePort || arrivage.dateArriveeReelle, partner.freeTimeJours))} j
+                    </span>}
                 </div>}
               </div>;
             })}

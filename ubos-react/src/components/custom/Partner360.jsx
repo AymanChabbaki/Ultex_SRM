@@ -5,9 +5,10 @@ import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { lireFichierDataUrl } from '../../utils/fileData';
+import { reservePartnerCode } from '../../services/api';
 import {
   PARTNER_ROLES, PARTNER_STATUSES, LCN_STATUSES, argent, mad, day,
-  datePlusJours, joursAvant, prochainCodePartenaire, rolesDuPartenaire,
+  datePlusJours, joursAvant, rolesDuPartenaire,
   factureCalculee, indicateursPartenaire, montantTtcMad, validerAffectations,
 } from '../../utils/partnerFinance';
 import './Partner360.css';
@@ -60,7 +61,7 @@ function Badge({ children, tone = '' }) { return <span className={`partner-badge
 
 export default function Partner360({ codeProp = '', arrivalCode = '' }) {
   const { db, updateDB, audit, userCourant } = useDB();
-  const { peut } = useAuth();
+  const { peut, moduleVisible, estDirection } = useAuth();
   const { toast } = useToast();
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -72,12 +73,21 @@ export default function Partner360({ codeProp = '', arrivalCode = '' }) {
     dateEcheance: '', montantHt: '', tva: '', montantTtc: '', devise: 'MAD', montantCotation: '',
   } : null);
   const [lcnDraft, setLcnDraft] = useState(null);
+  const [settingsDraft, setSettingsDraft] = useState(null);
   const [showClosed, setShowClosed] = useState(false);
   const [saving, setSaving] = useState(false);
   const partenaires = db.partenaires || [];
   const arrivages = db.arrivages || [];
   const factures = db.facturesPartenaire || [];
   const lcns = db.lcnPartenaire || [];
+  const settings = (db.partnerSettings || []).find(item => item.code === 'PARTNER-V1') || {};
+  const roleOptions = settings.roles?.length ? settings.roles : PARTNER_ROLES;
+  const statusOptions = settings.statuses?.length ? settings.statuses : PARTNER_STATUSES;
+  const paymentOptions = settings.paymentModes?.length ? settings.paymentModes : ['LCN', 'Virement', 'Chèque', 'Espèces'];
+  const currencyOptions = settings.currencies?.length ? settings.currencies : ['MAD', 'USD', 'EUR', 'CNY'];
+  const lcnStatusOptions = settings.lcnStatuses?.length ? settings.lcnStatuses : LCN_STATUSES;
+  const conditionsFields = CONDITIONS.map(field => field[0] === 'modeReglement' ? [field[0], field[1], 'select', paymentOptions]
+    : field[0] === 'deviseFacturation' ? [field[0], field[1], 'select', currencyOptions] : field);
   const partner = partenaires.find(item => item.code === codeProp);
   const filtrés = useMemo(() => partenaires.filter(item => {
     const needle = search.trim().toLocaleLowerCase('fr');
@@ -103,12 +113,16 @@ export default function Partner360({ codeProp = '', arrivalCode = '' }) {
 
   const savePartner = async () => {
     const draft = { ...partnerDraft };
+    if (!peut(draft.code ? 'modifier' : 'ajouter')) return toast('Permission refusée.');
     if (!draft.nom?.trim() || !draft.roles?.length) return toast('Raison sociale et au moins un rôle requis.');
     if (draft.ice && !/^\d{15}$/.test(draft.ice)) return toast('ICE : exactement 15 chiffres.');
     if (draft.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email)) return toast('E-mail invalide.');
     if (draft.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.contactEmail)) return toast('E-mail du contact invalide.');
     const existing = Boolean(draft.code);
-    if (!existing) draft.code = prochainCodePartenaire(draft.roles[0], partenaires);
+    if (!existing) {
+      try { draft.code = await reservePartnerCode(draft.roles[0]); }
+      catch (error) { return toast(error.message || 'Code partenaire indisponible.'); }
+    }
     draft.id = draft.code;
     draft.statut ||= 'En test';
     draft.dateCreation ||= new Date().toISOString();
@@ -130,6 +144,7 @@ export default function Partner360({ codeProp = '', arrivalCode = '' }) {
     if (ok) { audit('Partenaires', 'Statut', partner.code, 'statut', partner.statut, status); toast(`Statut : ${status}`); }
   };
   const saveInvoice = async () => {
+    if (!peut(invoiceDraft.code ? 'modifier' : 'ajouter')) return toast('Permission refusée.');
     const f = { ...invoiceDraft, partenaireId: partner.code };
     if (!f.arrivageId || !linkedArrivages.some(a => a.code === f.arrivageId)) return toast('Choisissez un arrivage lié au partenaire.');
     if (!f.numero?.trim() || !f.dateFacture) return toast('Numéro et date de facture requis.');
@@ -148,6 +163,7 @@ export default function Partner360({ codeProp = '', arrivalCode = '' }) {
     if (ok) { audit('Factures partenaire', invoiceDraft.code ? 'Modification' : 'Création', f.code, 'partenaire', '—', partner.code); setInvoiceDraft(null); toast('Facture enregistrée.'); }
   };
   const saveLcn = async () => {
+    if (!peut(lcnDraft.code ? 'modifier' : 'ajouter')) return toast('Permission refusée.');
     const l = { ...lcnDraft, partenaireId: partner.code, affectations: (lcnDraft.affectations || []).filter(a => num(a.montant) > 0) };
     if (!l.numeroLcn?.trim() || !l.banque?.trim() || !l.dateEmission || !l.dateEcheance || num(l.montant) <= 0) return toast('Complétez la LCN (numéro, banque, dates et montant).');
     if (lcns.some(item => item.partenaireId === partner.code && item.numeroLcn === l.numeroLcn && item.code !== l.code)) return toast('Numéro de LCN déjà utilisé.');
@@ -170,13 +186,39 @@ export default function Partner360({ codeProp = '', arrivalCode = '' }) {
     dateEcheance: datePlusJours(today(), partner.delaiPaiementJours), montantHt: '', tva: '', montantTtc: '', devise: partner.deviseFacturation || 'MAD', tauxMad: '', montantCotation: '', justificationEcart: '' });
   const newLcn = () => setLcnDraft({ partenaireId: partner.code, numeroLcn: '', banque: 'CFG Bank', montant: '',
     dateEmission: today(), dateEcheance: '', statut: 'Émise', affectations: [] });
+  const openSettings = () => setSettingsDraft({
+    roles: roleOptions.map(([label, code]) => `${label} | ${code}`).join('\n'),
+    statuses: statusOptions.join('\n'), paymentModes: paymentOptions.join('\n'),
+    currencies: currencyOptions.join('\n'), lcnStatuses: lcnStatusOptions.join('\n'),
+  });
+  const saveSettings = async () => {
+    const lines = value => String(value || '').split('\n').map(s => s.trim()).filter(Boolean);
+    const roles = lines(settingsDraft.roles).map(line => line.split('|').map(s => s.trim()));
+    const statuses = lines(settingsDraft.statuses);
+    const modes = lines(settingsDraft.paymentModes);
+    const currencies = lines(settingsDraft.currencies);
+    const lcnStatuses = lines(settingsDraft.lcnStatuses);
+    if (roles.some(([label, code]) => !label || !/^[A-Z]{3}$/.test(code || ''))
+      || new Set(roles.map(([, code]) => code)).size !== roles.length) return toast('Rôles : un libellé et un code unique de 3 lettres par ligne.');
+    if (PARTNER_ROLES.some(([label]) => !roles.some(([candidate]) => candidate === label))) return toast('Conservez les rôles logistiques de base pour les arrivages existants.');
+    if (PARTNER_ROLES.some(([label, code]) => roles.find(([candidate]) => candidate === label)?.[1] !== code)) return toast('Les codes des rôles de base doivent rester inchangés.');
+    if (partenaires.some(p => rolesDuPartenaire(p).some(role => roleOptions.some(([label]) => label === role) && !roles.some(([label]) => label === role)))) return toast('Un rôle déjà utilisé par une fiche ne peut pas être supprimé.');
+    if (PARTNER_STATUSES.some(status => !statuses.includes(status))) return toast('Conservez les statuts de base pour le cycle de vie et les contrôles.');
+    if (partenaires.some(p => statusOptions.includes(p.statut) && !statuses.includes(p.statut))) return toast('Un statut déjà utilisé par une fiche ne peut pas être supprimé.');
+    if (!modes.length || !currencies.includes('MAD') || LCN_STATUSES.some(status => !lcnStatuses.includes(status))) return toast('Modes, MAD et statuts LCN de base requis.');
+    const record = { id: 'PARTNER-V1', code: 'PARTNER-V1', roles, statuses, paymentModes: modes, currencies, lcnStatuses };
+    const ok = await updateDB({ ...db, partnerSettings: [record] });
+    if (ok) { audit('Partenaires', 'Paramètres modifiés', record.code, 'listes', '—', 'Mis à jour'); setSettingsDraft(null); toast('Listes enregistrées.'); }
+  };
 
+  if (!moduleVisible('partenaires')) return <div className="partner-page"><Topbar titre="Partenaires logistiques" /><div className="panneau">Module non autorisé.</div></div>;
   if (!partner) return <div className="partner-page"><Topbar titre="Partenaires logistiques" />
     <div className="partner-heading"><div><h1>Partenaires logistiques</h1><p>Identité, convention, dossiers, factures et LCN au même endroit.</p></div>
-      {peut('ajouter') && <button className="btn" onClick={() => setPartnerDraft({ nom: '', roles: [], statut: 'En test', compteOuvert: false, deviseFacturation: 'MAD', modeReglement: 'LCN' })}>+ Ajouter</button>}</div>
+      <div className="partner-actions">{estDirection() && <button className="btn doux" onClick={openSettings}>Paramètres des listes</button>}
+      {peut('ajouter') && <button className="btn" onClick={() => setPartnerDraft({ nom: '', roles: [], statut: 'En test', compteOuvert: false, deviseFacturation: 'MAD', modeReglement: 'LCN' })}>+ Ajouter</button>}</div></div>
     <div className="panneau partner-filters"><input className={inputClass} placeholder="Rechercher par code, nom ou ville" value={search} onChange={e => setSearch(e.target.value)} />
-      <select className={inputClass} value={roleFilter} onChange={e => setRoleFilter(e.target.value)}><option value="">Tous les rôles</option>{PARTNER_ROLES.map(([role]) => <option key={role}>{role}</option>)}</select>
-      <select className={inputClass} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="">Tous les statuts</option>{PARTNER_STATUSES.map(s => <option key={s}>{s}</option>)}</select></div>
+      <select className={inputClass} value={roleFilter} onChange={e => setRoleFilter(e.target.value)}><option value="">Tous les rôles</option>{roleOptions.map(([role]) => <option key={role}>{role}</option>)}</select>
+      <select className={inputClass} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="">Tous les statuts</option>{statusOptions.map(s => <option key={s}>{s}</option>)}</select></div>
     <div className="panneau"><Table rows={filtrés} columns={[
       ['code', 'Code', value => <a href={`#fichePartenaire:${value}`}>{value}</a>],
       ['nom', 'Raison sociale', (v, p) => <a href={`#fichePartenaire:${p.code}`}>{v}</a>],
@@ -186,15 +228,23 @@ export default function Partner360({ codeProp = '', arrivalCode = '' }) {
       ['encours', 'Encours à payer', (_, p) => mad(indicateursPartenaire(p, arrivages, factures, lcns).encours)],
       ['plafond', 'Plafond utilisé', (_, p) => { const v = indicateursPartenaire(p, arrivages, factures, lcns).plafondUtilise; return v == null ? '—' : `${argent(v)} %`; }],
       ['lcn', 'LCN à échéance', (_, p) => { const next = lcns.filter(l => l.partenaireId === p.code && l.statut === 'Remise' && joursAvant(l.dateEcheance) >= 0).sort((a, b) => a.dateEcheance.localeCompare(b.dateEcheance))[0]; return next?.dateEcheance || '—'; }],
-    ]} /></div>{renderPartnerForm()}</div>;
+    ]} /></div>{renderPartnerForm()}{renderSettingsForm()}</div>;
+
+  function renderSettingsForm() { return settingsDraft && <Modal large title="Paramètres des listes partenaires" onClose={() => setSettingsDraft(null)}
+    footer={<><button className="btn doux" onClick={() => setSettingsDraft(null)}>Annuler</button><button className="btn" onClick={saveSettings}>Enregistrer</button></>}>
+    <div className="partner-modal-body"><p>Une valeur par ligne. Les rôles logistiques et statuts de base doivent rester présents afin de préserver les dossiers liés.</p>
+      <div className="partner-fields">{[
+        ['roles', 'Rôles (libellé | code)'], ['statuses', 'Statuts partenaires'],
+        ['paymentModes', 'Modes de règlement'], ['currencies', 'Devises'], ['lcnStatuses', 'Statuts LCN'],
+      ].map(([key, label]) => <label className="partner-field" key={key}><span>{label}</span><textarea className={inputClass} rows="6" value={settingsDraft[key]} onChange={e => setSettingsDraft(current => ({ ...current, [key]: e.target.value }))} /></label>)}</div></div></Modal>; }
 
   function renderPartnerForm() { return partnerDraft && <Modal large title={partnerDraft.code ? `Modifier ${partnerDraft.code}` : 'Ajouter un partenaire'} onClose={() => setPartnerDraft(null)}
     footer={<><button className="btn doux" onClick={() => setPartnerDraft(null)}>Annuler</button><button className="btn" disabled={saving} onClick={savePartner}>Enregistrer</button></>}>
     <div className="partner-modal-body"><h4>Identité</h4><Fields fields={IDENTITY} value={partnerDraft} onChange={change(setPartnerDraft)} />
-      <div className="partner-field"><span>Rôles * — le premier détermine le code</span><div className="partner-checks">{PARTNER_ROLES.map(([role]) => <label key={role}><input type="checkbox" checked={(partnerDraft.roles || []).includes(role)} onChange={e => setPartnerDraft(current => ({ ...current, roles: e.target.checked ? [...(current.roles || []), role] : (current.roles || []).filter(r => r !== role) }))} /> {role}</label>)}</div></div>
-      <label className="partner-field"><span>Statut</span><select className={inputClass} value={partnerDraft.statut || 'En test'} onChange={e => setPartnerDraft(current => ({ ...current, statut: e.target.value }))}>{PARTNER_STATUSES.map(s => <option key={s}>{s}</option>)}</select></label>
+      <div className="partner-field"><span>Rôles * — le premier détermine le code</span><div className="partner-checks">{roleOptions.map(([role]) => <label key={role}><input type="checkbox" checked={(partnerDraft.roles || []).includes(role)} onChange={e => setPartnerDraft(current => ({ ...current, roles: e.target.checked ? [...(current.roles || []), role] : (current.roles || []).filter(r => r !== role) }))} /> {role}</label>)}</div></div>
+      <label className="partner-field"><span>Statut</span><select className={inputClass} value={partnerDraft.statut || 'En test'} onChange={e => setPartnerDraft(current => ({ ...current, statut: e.target.value }))}>{statusOptions.map(s => <option key={s}>{s}</option>)}</select></label>
       <h4>Convention & conditions</h4><label className="partner-field"><input type="checkbox" checked={Boolean(partnerDraft.compteOuvert)} onChange={e => setPartnerDraft(current => ({ ...current, compteOuvert: e.target.checked }))} /> Compte ouvert</label>
-      <Fields fields={CONDITIONS} value={partnerDraft} onChange={change(setPartnerDraft)} />
+      <Fields fields={conditionsFields} value={partnerDraft} onChange={change(setPartnerDraft)} />
       {['fichierConvention', 'fichierCgv'].map((key, i) => <label className="partner-field" key={key}><span>{i ? 'CGV (PDF)' : 'Convention (PDF)'}</span><input type="file" accept="application/pdf" onChange={e => fileChanged(e, setPartnerDraft, key)} />{partnerDraft[key]?.nom}</label>)}</div>
   </Modal>; }
 
@@ -233,7 +283,7 @@ export default function Partner360({ codeProp = '', arrivalCode = '' }) {
       ]} /></div>}
     {tab === 'Factures partenaire' && <div className="panneau"><div className="partner-section-head"><h3>Factures partenaire</h3>{peut('ajouter') && <button className="btn" onClick={newInvoice}>+ Facture</button>}</div>
       <Table rows={partnerInvoices} columns={[
-        ['numero', 'N°', (_, f) => <button className="partner-link" onClick={() => setInvoiceDraft({ ...f })}>{f.numero}</button>],
+        ['numero', 'N°', (_, f) => peut('modifier') ? <button className="partner-link" onClick={() => setInvoiceDraft({ ...f })}>{f.numero}</button> : f.numero],
         ['arrivageId', 'Dossier', v => <a href={`#ficheArrivage:${v}`}>{v}</a>], ['dateFacture', 'Date'], ['dateEcheance', 'Échéance'],
         ['ttc', 'TTC (MAD)', (_, f) => mad(factureCalculee(f, lcns).total)], ['paye', 'Payé', (_, f) => mad(factureCalculee(f, lcns).paye)],
         ['reste', 'Reste', (_, f) => mad(factureCalculee(f, lcns).reste)],
@@ -246,10 +296,10 @@ export default function Partner360({ codeProp = '', arrivalCode = '' }) {
         .reduce((groups, l) => { const key = `Semaine du ${datePlusJours(l.dateEcheance, -(new Date(`${l.dateEcheance}T12:00:00Z`).getUTCDay() + 6) % 7)}`; (groups[key] ||= []).push(l); return groups; }, {}))
         .map(([week, notes]) => <Badge key={week}>{week} · {mad(notes.reduce((sum, l) => sum + num(l.montant), 0))}</Badge>)}</div>
       <Table rows={partnerLcns} columns={[
-        ['numeroLcn', 'N° LCN', (_, l) => <button className="partner-link" onClick={() => setLcnDraft({ ...l })}>{l.numeroLcn}</button>],
+        ['numeroLcn', 'N° LCN', (_, l) => peut('modifier') ? <button className="partner-link" onClick={() => setLcnDraft({ ...l })}>{l.numeroLcn}</button> : l.numeroLcn],
         ['banque', 'Banque'], ['montant', 'Montant', v => mad(v)], ['dateEmission', 'Émission'], ['dateEcheance', 'Échéance'],
         ['affectations', 'Factures couvertes', v => (v || []).map(a => partnerInvoices.find(f => f.code === a.factureId)?.numero || a.factureId).join(', ') || '—'],
-        ['statut', 'Statut', (_, l) => peut('modifier') ? <select value={l.statut} onChange={e => changeLcnStatus(l, e.target.value)}>{LCN_STATUSES.map(s => <option key={s}>{s}</option>)}</select> : l.statut],
+        ['statut', 'Statut', (_, l) => peut('modifier') ? <select value={l.statut} onChange={e => changeLcnStatus(l, e.target.value)}>{lcnStatusOptions.map(s => <option key={s}>{s}</option>)}</select> : l.statut],
         ['scan', 'Scan', v => fileLink(v)],
       ]} /></div>}
     <p className="partner-soon">Cotations · Litiges · Documents · Contacts multiples · Capacités · Historique · Évaluation · Audit — bientôt</p>
@@ -260,9 +310,13 @@ export default function Partner360({ codeProp = '', arrivalCode = '' }) {
         {[
           ['numero', 'Numéro *'], ['dateFacture', 'Date facture *', 'date'], ['dateEcheance', 'Échéance', 'date'],
           ['montantHt', 'Montant HT', 'number'], ['tva', 'TVA (montant)', 'number'], ['montantTtc', 'Montant TTC', 'number'],
-          ['devise', 'Devise', 'select', ['MAD', 'USD', 'EUR', 'CNY']], ['montantCotation', 'Cotation prévue (MAD)', 'number'],
+          ['devise', 'Devise', 'select', currencyOptions], ['montantCotation', 'Cotation prévue (MAD)', 'number'],
         ].map(field => <Champ key={field[0]} field={field} value={invoiceDraft[field[0]]} onChange={(key, value) => setInvoiceDraft(current => ({ ...current, [key]: value,
-          ...(key === 'dateFacture' && !current.code ? { dateEcheance: datePlusJours(value, partner.delaiPaiementJours) } : {}) }))} />)}
+          ...(key === 'dateFacture' && !current.code ? { dateEcheance: datePlusJours(value, partner.delaiPaiementJours) } : {}),
+          ...(['montantHt', 'tva'].includes(key) && !current.montantTtcModifie
+            ? { montantTtc: String(num(key === 'montantHt' ? value : current.montantHt) + num(key === 'tva' ? value : current.tva)) } : {}),
+          ...(key === 'montantTtc' ? { montantTtcModifie: true } : {}),
+        }))} />)}
         {invoiceDraft.devise !== 'MAD' && <Champ field={['tauxMad', `1 ${invoiceDraft.devise} = MAD`, 'number']} value={invoiceDraft.tauxMad} onChange={change(setInvoiceDraft)} />}
         <Champ field={['justificationEcart', 'Justification de l’écart > 5 %', 'textarea']} value={invoiceDraft.justificationEcart} onChange={change(setInvoiceDraft)} />
         <label className="partner-field"><span>Facture PDF</span><input type="file" accept="application/pdf" onChange={e => fileChanged(e, setInvoiceDraft, 'fichier')} />{invoiceDraft.fichier?.nom}</label></div>
@@ -272,7 +326,7 @@ export default function Partner360({ codeProp = '', arrivalCode = '' }) {
       <div className="partner-modal-body"><Fields fields={[
         ['numeroLcn', 'Numéro LCN *'], ['banque', 'Banque *'], ['montant', 'Montant (MAD) *', 'number'],
         ['dateEmission', 'Date émission *', 'date'], ['dateEcheance', 'Date échéance *', 'date'], ['dateRemise', 'Date remise', 'date'],
-        ['statut', 'Statut', 'select', LCN_STATUSES],
+        ['statut', 'Statut', 'select', lcnStatusOptions],
       ]} value={lcnDraft} onChange={change(setLcnDraft)} /><h4>Affectation aux factures ouvertes</h4>
         {partnerInvoices.filter(f => factureCalculee(f, lcns.filter(l => l.code !== lcnDraft.code)).reste > 0.005 || (lcnDraft.affectations || []).some(a => a.factureId === f.code)).map(f => {
           const amount = (lcnDraft.affectations || []).find(a => a.factureId === f.code)?.montant || '';

@@ -350,7 +350,7 @@ const COLLS = [
   "erreurs", "utilisateurs", "facturesFinales", "avoirsFF", "abandons", "impayes",
   "remboursements", "contacts", "demandes", "commandes", "arrivages", "analysesLimex",
   "bonsLancement", "stocks", "mouvementsStock", "livraisons", "transfertsServices",
-  "communicationsDossier", "partenaires", "facturesPartenaire", "lcnPartenaire", "importJobs", "importFiles", "importModels",
+  "communicationsDossier", "partenaires", "facturesPartenaire", "lcnPartenaire", "partnerSettings", "importJobs", "importFiles", "importModels",
   "importMappings", "importRows", "importErrors", "importHistory", "importDetectedTypes",
   "importExtractedData", "importAttachments", "importRollbacks",
   "controlesLimex", "dossierControlesLimex", "limexDiagnosticOumaima",
@@ -1784,6 +1784,37 @@ async function alerterDirection(texte) {
   }
 }
 
+// Reserve a partner code atomically. The browser never guesses from a stale
+// partner list, so two staff members creating a Forwarder concurrently cannot
+// both receive PL-FWD-001.
+app.post('/api/partenaires/reserve-code', authMiddleware, async (req, res) => {
+  try {
+    const role = String(req.body?.role || '').trim();
+    const defaults = [
+      ['Forwarder', 'FWD'], ['Agent à l’origine', 'AGO'],
+      ['Transitaire / commissionnaire en douane', 'TRS'],
+      ['Transporteur national', 'TRN'], ['Magasinage / entrepôt', 'MAG'], ['Assureur', 'ASS'],
+    ];
+    const config = await prisma.collectionItem.findFirst({ where: { collection: 'partnerSettings', code: 'PARTNER-V1' } });
+    const roles = Array.isArray(config?.data?.roles) ? config.data.roles : defaults;
+    const prefix = roles.find(item => Array.isArray(item) && item[0] === role)?.[1];
+    if (!/^[A-Z]{3}$/.test(prefix || '')) return res.status(400).json({ error: 'Rôle partenaire invalide.' });
+    let code;
+    do {
+      const counter = await prisma.sequenceCounter.upsert({
+        where: { key: `partner:${prefix}` },
+        create: { key: `partner:${prefix}`, val: 1 },
+        update: { val: { increment: 1 } },
+      });
+      code = `PL-${prefix}-${String(counter.val).padStart(3, '0')}`;
+    } while (await prisma.collectionItem.findFirst({ where: { collection: 'partenaires', code } }));
+    res.json({ code });
+  } catch (error) {
+    console.error('Partner code reservation error:', error);
+    res.status(500).json({ error: 'Attribution du code partenaire impossible.' });
+  }
+});
+
 // Routine mutations use a delta rather than resending every CRM row. This is
 // intentionally upsert-only: deletion continues through the dedicated,
 // permission-checked endpoints and a stale browser can never purge data.
@@ -2219,7 +2250,12 @@ app.delete('/api/security/records/:collection/:code', authMiddleware, requireEle
   try {
     if (collection === 'partenaires') {
       const [arrivage, facture, lcn] = await Promise.all([
-        prisma.collectionItem.findFirst({ where: { collection: 'arrivages', data: { path: ['intervenants'], array_contains: [{ partenaireId: code }] } } }),
+        prisma.collectionItem.findFirst({ where: { collection: 'arrivages', OR: [
+          { data: { path: ['intervenants'], array_contains: [{ partenaireId: code }] } },
+          { data: { path: ['transitaire'], equals: code } },
+          { data: { path: ['transporteur'], equals: code } },
+          { data: { path: ['compagnie'], equals: code } },
+        ] } }),
         prisma.collectionItem.findFirst({ where: { collection: 'facturesPartenaire', data: { path: ['partenaireId'], equals: code } } }),
         prisma.collectionItem.findFirst({ where: { collection: 'lcnPartenaire', data: { path: ['partenaireId'], equals: code } } }),
       ]);

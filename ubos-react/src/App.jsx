@@ -252,9 +252,9 @@ const Router = () => {
       case 'ficheDemande': return wrap(<FicheDemande codeProp={params} code={params} />, ['audit', 'clients', 'commandes', 'demandeLignes', 'demandeRoutages', 'demandes', 'documents', 'paiements']);
       case 'ficheDemandeLigne': return wrap(<FicheDemandeLigne codeProp={params} code={params} />, ['demandeLignes', 'demandeRoutages', 'demandes', 'produits', 'taches']);
       case 'ficheCommande': return wrap(<FicheCommande codeProp={params} code={params} />, ['arrivages', 'clients', 'commandes', 'demandes', 'documents', 'paiements']);
-      case 'ficheArrivage': return wrap(<FicheArrivage codeProp={params} code={params} />, ['analysesLimex', 'arrivages', 'clients', 'commandes', 'documents', 'fournisseurs', 'paiements', 'produits', 'partenaires', 'facturesPartenaire', 'lcnPartenaire']);
-      case 'partenaires': return wrap(<Partner360 />, ['partenaires', 'arrivages', 'facturesPartenaire', 'lcnPartenaire']);
-      case 'fichePartenaire': return wrap(<Partner360 codeProp={params} arrivalCode={sousPage} />, ['partenaires', 'arrivages', 'facturesPartenaire', 'lcnPartenaire']);
+      case 'ficheArrivage': return wrap(<FicheArrivage codeProp={params} code={params} />, ['analysesLimex', 'arrivages', 'clients', 'commandes', 'documents', 'fournisseurs', 'paiements', 'produits', 'partenaires', 'facturesPartenaire', 'lcnPartenaire', 'partnerSettings']);
+      case 'partenaires': return wrap(<Partner360 />, ['partenaires', 'arrivages', 'facturesPartenaire', 'lcnPartenaire', 'partnerSettings']);
+      case 'fichePartenaire': return wrap(<Partner360 codeProp={params} arrivalCode={sousPage} />, ['partenaires', 'arrivages', 'facturesPartenaire', 'lcnPartenaire', 'partnerSettings']);
       case 'ficheDocument': return wrap(<FicheDocument codeProp={params} code={params} />, ['documents']);
       case 'ficheFF': return wrap(<FicheFF codeProp={params} code={params} />, ['clients', 'documents', 'dossiers', 'facturesFinales']);
       case 'ficheChecklistLimex': return wrap(<FicheChecklistLimex codeProp={params} code={params} />, ['controlesLimex', 'dossierControlesLimex', 'dossiers', 'limexPortesValidation']);
