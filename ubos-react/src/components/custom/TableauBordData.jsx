@@ -173,7 +173,10 @@ export default function TableauBordData({ user, isAdminView }) {
     });
   }, [db, user, clientsByCode]);
   const leadsHistorique = useMemo(() => {
-    let items = demandesDeAgent({ demandes: leadHistory.items || [] }, user)
+    const demandesHistorique = (user?.services || []).includes('Data')
+      ? (leadHistory.items || [])
+      : demandesDeAgent({ demandes: leadHistory.items || [] }, user);
+    let items = demandesHistorique
       .filter(demande => demande.createdManually !== true
         && demande.created_manually !== true
         && demande.source !== 'Saisie manuelle');

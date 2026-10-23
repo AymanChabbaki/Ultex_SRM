@@ -59,7 +59,13 @@ export function clientsActifsData(db, user) {
 
 export function leadsDuJour(db, user, date = new Date()) {
   const jour = localDay(date);
-  return demandesDeAgent(db, user)
+  // This is the team intake register. A lead remains visible after its
+  // responsable changes to Sourcing, Calcul or Closing. Personal work queues
+  // continue to use demandesDeAgent() and keep their assignment filtering.
+  const demandes = (user?.services || []).includes('Data')
+    ? (db.demandes || [])
+    : demandesDeAgent(db, user);
+  return demandes
     .filter(d => d.createdManually !== true && d.created_manually !== true && d.source !== 'Saisie manuelle')
     .filter(d => leadWorkDay(d.dateHeureReception || d.dateDemande) === jour)
     .sort((a, b) => String(b.dateHeureReception || b.ts || '').localeCompare(String(a.dateHeureReception || a.ts || '')));

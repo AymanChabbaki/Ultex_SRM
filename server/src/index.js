@@ -1290,13 +1290,19 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
           OR (${isData} AND COALESCE(data->>'responsableCommercial', '') = '')
         )`
       : Prisma.sql`data->>'responsableCommercial' = ${targetName}`;
-    const demandeAssignment = services.length
-      ? Prisma.sql`(
+    // The received-leads table is the Data team's intake register, not a
+    // personal task queue. Once a demande moves to Sourcing/Calcul/Closing,
+    // responsableData may change, but the original lead must remain visible
+    // to Data. Personal actions are filtered separately in the UI.
+    const demandeAssignment = isData
+      ? Prisma.sql`TRUE`
+      : services.length
+        ? Prisma.sql`(
           data->>'responsableData' = ${targetName}
           OR data->>'responsableData' IN (${serviceList})
-          OR (${isData} AND COALESCE(data->>'responsableData', '') = '')
+          OR COALESCE(data->>'responsableData', '') = ''
         )`
-      : Prisma.sql`data->>'responsableData' = ${targetName}`;
+        : Prisma.sql`data->>'responsableData' = ${targetName}`;
     const leadWorkDay = Prisma.sql`CASE
       WHEN COALESCE(data->>'dateHeureReception', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*(Z|[+-][0-9]{2}:?[0-9]{2})$'
         THEN TO_CHAR(
@@ -1535,13 +1541,15 @@ app.get('/api/dashboard/data/leads', authMiddleware, async (req, res) => {
     }
 
     const serviceList = services.length ? Prisma.join(services) : null;
-    const demandeAssignment = services.length
-      ? Prisma.sql`(
+    const demandeAssignment = isData
+      ? Prisma.sql`TRUE`
+      : services.length
+        ? Prisma.sql`(
           data->>'responsableData' = ${targetName}
           OR data->>'responsableData' IN (${serviceList})
-          OR (${isData} AND COALESCE(data->>'responsableData', '') = '')
+          OR COALESCE(data->>'responsableData', '') = ''
         )`
-      : Prisma.sql`data->>'responsableData' = ${targetName}`;
+        : Prisma.sql`data->>'responsableData' = ${targetName}`;
     // The date view is strict: only leads received on that GMT calendar day.
     // (The 18:00 workday rollover applies to the live queue only.)
     const calendarDay = Prisma.sql`CASE
