@@ -20,7 +20,7 @@ const emptySupplierOffer = (position = 0) => ({
 const emptyProduct = (position = 0) => ({
   localId: `local-${Date.now()}-${position}`,
   nomProduit: '', categorie: '', quantite: '', unite: 'pièces', usage: '', etat: 'Neuf', exigences: '', photo: '',
-  matiere: '', dimensions: '', poids: '', typePoids: 'Net', couleursModele: '', certificats: '', emballage: '',
+  matiere: '', dimensions: '', poids: '', typePoids: 'Net', cbmTotal: '', couleursModele: '', certificats: '', emballage: '',
   dateDum: '', hsCode: '', droitIndicatif: '', observationTarifaire: '',
   autresCaracteristiques: '', incoterm: 'EXW', portFob: '', paysFournisseur: '', paysOrigine: '', villeFournisseur: '',
   fournisseurCode: '', prixUnitaire: '', devise: 'USD', moq: '', delaiProduction: '',
@@ -51,6 +51,7 @@ function mapProduct(product, index) {
     crmLineCode: product.crmLineCode || product.code || '',
     nomProduit: product.nomProduit || product.name || product.designation || '',
     quantite: product.quantite ?? product.quantity ?? '',
+    cbmTotal: product.cbmTotal ?? product.totalCbm ?? product.total_cbm ?? product.cbm ?? '',
     unite: product.unite || 'pièces',
     exigences: product.exigences || product.description || product.designationTechnique || '',
     photo: product.photo || product.productPhotoUrl || '',
@@ -109,6 +110,8 @@ export default function SourcingProfile({ codeProp }) {
   const [nextDate, setNextDate] = useState('');
   const [registerSearch, setRegisterSearch] = useState('');
   const [registerOrigin, setRegisterOrigin] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     const { sourcing, demande, client, lines } = context;
@@ -245,13 +248,16 @@ export default function SourcingProfile({ codeProp }) {
   };
 
   const validateCurrentStep = () => {
-    if (step === 1 && !clientCode) return toast('Sélectionnez le client.'), false;
-    if (step === 1 && products.some(item => !String(item.nomProduit || '').trim())) return toast('Renseignez le nom de chaque produit.'), false;
+    if (!clientCode) return toast('Sélectionnez le client.'), false;
+    if (products.some(item => !String(item.nomProduit || '').trim())) return toast('Renseignez le nom de chaque produit.'), false;
     return true;
   };
 
   const save = async ({ moveToStep } = {}) => {
-    if (!validateCurrentStep()) return null;
+    if (saving || !validateCurrentStep()) return null;
+    setSaving(true);
+    setSaveError('');
+    try {
     const existingSourcing = context.sourcing;
     const existingDemande = context.demande;
     const sourcingCode = existingSourcing?.code || genCode('SRC');
@@ -306,6 +312,7 @@ export default function SourcingProfile({ codeProp }) {
         designationTechnique: item.exigences || item.autresCaracteristiques,
         quantite: item.quantite,
         unite: item.unite,
+        cbmTotal: item.cbmTotal,
         paysOrigine: item.paysOrigine,
         paysFournisseur: item.paysFournisseur,
         villeFournisseur: item.villeFournisseur,
@@ -370,18 +377,27 @@ export default function SourcingProfile({ codeProp }) {
     const nextSourcings = existingSourcing
       ? (db.sourcings || []).map(item => item.code === sourcingCode ? updatedSourcing : item)
       : [updatedSourcing, ...(db.sourcings || [])];
-    await updateDB({ ...db, demandes: nextDemandes, demandeLignes: [...nextLines, ...retainedLines], sourcings: nextSourcings });
+    const persisted = await updateDB({ ...db, demandes: nextDemandes, demandeLignes: [...nextLines, ...retainedLines], sourcings: nextSourcings });
+    if (persisted === false) throw new Error("La base de données n'a pas accepté l'enregistrement.");
     audit('Sourcing', existingSourcing ? 'Modification fiche sourcing' : 'Création fiche sourcing', sourcingCode, 'étape', step, moveToStep || step, demandeCode);
     toast(`${sourcingCode} enregistré`);
     if (!existingSourcing) window.location.hash = `ficheSourcing:${sourcingCode}`;
     return sourcingCode;
+    } catch (error) {
+      const message = error?.message || "Impossible d'enregistrer la fiche sourcing.";
+      setSaveError(message);
+      toast(message);
+      return null;
+    } finally {
+      setSaving(false);
+    }
   };
 
   const next = async () => {
     if (!validateCurrentStep()) return;
     const nextStep = Math.min(3, step + 1);
-    await save({ moveToStep: nextStep });
-    setStep(nextStep);
+    const savedCode = await save({ moveToStep: nextStep });
+    if (savedCode) setStep(nextStep);
   };
 
   const stepLabels = [
@@ -396,8 +412,10 @@ export default function SourcingProfile({ codeProp }) {
       <div className="sourcing-shell sourcing-form-shell">
         <div className="source-page-heading">
           <div><h1>Sourcing</h1><p>Demandes de sourcing / {context.sourcing?.code || 'Nouvelle fiche'}</p></div>
-          <div className="source-heading-actions"><span className={`source-status ${status === 'Validé' ? 'is-success' : 'is-info'}`}>{status || 'Brouillon'}</span><button className="source-primary-button" onClick={() => save()}><Save size={16} /> Enregistrer</button></div>
+          <div className="source-heading-actions"><span className={`source-status ${status === 'Validé' ? 'is-success' : 'is-info'}`}>{status || 'Brouillon'}</span><button className="source-primary-button" disabled={saving} onClick={() => save()}><Save size={16} /> {saving ? 'Enregistrement…' : 'Enregistrer'}</button></div>
         </div>
+
+        {saveError && <div className="source-save-error">{saveError}</div>}
 
         <section className="source-card source-form-banner">
           <div className="source-round-icon"><ClipboardList size={22} /></div>
@@ -445,6 +463,7 @@ export default function SourcingProfile({ codeProp }) {
                 <label><span>Matière / composition</span><input value={product.matiere} onChange={event => updateProduct('matiere', event.target.value)} /></label>
                 <label><span>Dimensions du produit</span><input value={product.dimensions} onChange={event => updateProduct('dimensions', event.target.value)} /></label>
                 <label><span>Poids</span><div className="source-inline-fields"><input value={product.poids} onChange={event => updateProduct('poids', event.target.value)} /><select value={product.typePoids} onChange={event => updateProduct('typePoids', event.target.value)}><option>Net</option><option>Brut</option></select></div></label>
+                <label><span>CBM total (m³)</span><input type="number" min="0" step="0.0001" value={product.cbmTotal ?? ''} onChange={event => updateProduct('cbmTotal', event.target.value)} placeholder="Ex. 12,5000" /></label>
                 <label><span>Couleurs et modèle</span><input value={product.couleursModele} onChange={event => updateProduct('couleursModele', event.target.value)} /></label>
                 <label><span>Certificats requis</span><input value={product.certificats} onChange={event => updateProduct('certificats', event.target.value)} /></label>
                 <label><span>Emballage</span><input value={product.emballage} onChange={event => updateProduct('emballage', event.target.value)} /></label>
@@ -546,7 +565,7 @@ export default function SourcingProfile({ codeProp }) {
 
         <footer className="source-form-footer">
           <span>* Champs obligatoires</span>
-          <div><button className="source-secondary-button" onClick={() => { if (step > 1) setStep(step - 1); else window.location.hash = 'sourcings'; }}><ArrowLeft size={16} /> Retour</button>{step < 3 ? <button className="source-primary-button" onClick={next}>Suivant <ChevronRight size={16} /></button> : <button className="source-primary-button" onClick={() => save()}><Check size={16} /> Terminer</button>}</div>
+          <div><button className="source-secondary-button" onClick={() => { if (step > 1) setStep(step - 1); else window.location.hash = 'sourcings'; }}><ArrowLeft size={16} /> Retour</button>{step < 3 ? <button className="source-primary-button" disabled={saving} onClick={next}>{saving ? 'Enregistrement…' : 'Suivant'} <ChevronRight size={16} /></button> : <button className="source-primary-button" disabled={saving} onClick={() => save()}><Check size={16} /> {saving ? 'Enregistrement…' : 'Terminer'}</button>}</div>
         </footer>
       </div>
     </>

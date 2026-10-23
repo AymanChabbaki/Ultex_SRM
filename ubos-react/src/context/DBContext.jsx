@@ -233,7 +233,7 @@ export const DBProvider = ({ children }) => {
     dbRef.current = next;
     setDb(next);
 
-    if (patchIsEmpty(patch)) return Promise.resolve();
+    if (patchIsEmpty(patch)) return Promise.resolve(true);
 
     const enqueued = syncQueueRef.current.then(async () => {
       try {
@@ -247,6 +247,7 @@ export const DBProvider = ({ children }) => {
           await saveDBSync(next);
           fingerprintsRef.current = fingerprintDatabase(next);
         }
+        return true;
       } catch (e) {
         // Only roll back if nothing more recent has already superseded
         // this commit locally — otherwise a slow, now-stale failed request
@@ -256,6 +257,7 @@ export const DBProvider = ({ children }) => {
           setDb(previous);
         }
         toast(e && e.name === 'AuthError' ? 'Session expirée — reconnectez-vous.' : "Échec de l'enregistrement — vérifiez votre connexion.");
+        return false;
       }
     });
     syncQueueRef.current = enqueued;
