@@ -151,11 +151,12 @@ export default function TableauBordData({ user, isAdminView }) {
     return map;
   }, [db, leadHistory.clients]);
   const nouveauxLeads = useMemo(() => {
-    const todayLeads = leadsDuJour(db, user);
+    const leadUser = isAdminView ? { ...user, services: [...(user?.services || []), 'Data'] } : user;
+    const todayLeads = leadsDuJour(db, leadUser);
     const todayStr = localDay();
     const yesterdayDate = new Date();
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const delayed = leadsDuJour(db, user, yesterdayDate)
+    const delayed = leadsDuJour(db, leadUser, yesterdayDate)
       .map(demande => ({ ...demande, _retardTraitement: true }));
     const todayCodes = new Set(todayLeads.map(demande => demande.code));
     const merged = [...todayLeads, ...delayed.filter(demande => !todayCodes.has(demande.code))];
@@ -171,22 +172,19 @@ export default function TableauBordData({ user, isAdminView }) {
       }
       return enrichirLead(demande, clientsByCode, patch);
     });
-  }, [db, user, clientsByCode]);
+  }, [db, user, isAdminView, clientsByCode]);
   const leadsHistorique = useMemo(() => {
-    const demandesHistorique = (user?.services || []).includes('Data')
+    const demandesHistorique = (isAdminView || (user?.services || []).includes('Data'))
       ? (leadHistory.items || [])
       : demandesDeAgent({ demandes: leadHistory.items || [] }, user);
-    let items = demandesHistorique
-      .filter(demande => demande.createdManually !== true
-        && demande.created_manually !== true
-        && demande.source !== 'Saisie manuelle');
+    let items = demandesHistorique;
     if (leadView === 'date') {
       items = items.filter(demande => localDay(demande.dateHeureReception || demande.dateDemande) === leadDate);
     }
     return items
       .sort((a, b) => String(b.dateHeureReception || b.dateDemande || b.createdAt || '').localeCompare(String(a.dateHeureReception || a.dateDemande || a.createdAt || '')))
       .map(demande => enrichirLead(demande, clientsByCode, { _vueHistorique: true }));
-  }, [leadHistory.items, clientsByCode, user, leadView, leadDate]);
+  }, [leadHistory.items, clientsByCode, user, isAdminView, leadView, leadDate]);
   const leadsAffiches = leadView === 'queue' ? nouveauxLeads : leadsHistorique;
   const titreLeads = leadView === 'all'
     ? 'Tous les leads reçus'
@@ -312,7 +310,7 @@ export default function TableauBordData({ user, isAdminView }) {
                 ? pill('Hier — non traité', 'p-rouge')
                 : (o._hierHorsHoraires ? pill('Hier — hors horaires', 'p-ambre') : pill("Aujourd'hui", 'p-vert')) },
             { key: 'actionsTest', label: 'Actions', render: (_, o) => {
-              if (o._clientFallback) return pill('Demande à relier', 'p-ambre');
+              if (o._clientFallback) return pill('Voir fiche client', 'p-ambre');
               const codeClient = o.codeClientUltex || o.client || '';
               const estTestSheets = (o.sourceSynchronisation === 'Google Sheets' || o.source === 'Google Sheets') && /^L\d+$/.test(codeClient);
               const estTestWorkflow = o.sourceSynchronisation === 'Workflow' && /^\d+$/.test(codeClient);

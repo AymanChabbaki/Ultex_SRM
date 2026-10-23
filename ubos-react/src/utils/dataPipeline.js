@@ -66,7 +66,6 @@ export function leadsDuJour(db, user, date = new Date()) {
     ? (db.demandes || [])
     : demandesDeAgent(db, user);
   return demandes
-    .filter(d => d.createdManually !== true && d.created_manually !== true && d.source !== 'Saisie manuelle')
     .filter(d => leadWorkDay(d.dateHeureReception || d.dateDemande) === jour)
     .sort((a, b) => String(b.dateHeureReception || b.ts || '').localeCompare(String(a.dateHeureReception || a.ts || '')));
 }

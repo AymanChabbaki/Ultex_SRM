@@ -6,7 +6,7 @@ export const USERS = ["Direction","Data","Sourcing","Études & Chiffrage","Closi
 // labels; the sync endpoint translates Workflow's internal keys.
 export const DATA_TAGS_WORKFLOW = [
   "Pas prêt", "Faible qualité", "Pas intéressé", "Pas réponse", "Test",
-  "Traité", "En cours de traitement", "Double codage", "Num ironné",
+  "Traité", "Activé", "En cours de traitement", "Double codage", "Num ironné",
   "Réclamation", "Autre"
 ];
 

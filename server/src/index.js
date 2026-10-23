@@ -1263,7 +1263,7 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
 
     const targetName = target.nomComplet || target.identifiant;
     const services = Array.isArray(target.modulesAutorises?.services) ? target.modulesAutorises.services : [];
-    const isData = services.includes('Data');
+    const isData = services.includes('Data') || req.auth.role === 'ADMIN';
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }).format(new Date());
     const yesterdayDate = new Date(`${today}T12:00:00Z`);
     yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
@@ -1280,14 +1280,14 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
     }
 
     const serviceList = services.length ? Prisma.join(services) : null;
-    const clientAssignment = services.length
+    // Data's intake register is team-wide. A lead must remain visible even
+    // after its client owner changes to Sourcing/Closing.
+    const clientAssignment = isData
+      ? Prisma.sql`TRUE`
+      : services.length
       ? Prisma.sql`(
           data->>'responsableCommercial' = ${targetName}
           OR data->>'responsableCommercial' IN (${serviceList})
-          -- Every recent unassigned client belongs in the Data inbox. Source
-          -- names evolve (Workflow, Sheets, landing, imports, V2), so using a
-          -- hard-coded source allow-list made valid leads disappear.
-          OR (${isData} AND COALESCE(data->>'responsableCommercial', '') = '')
         )`
       : Prisma.sql`data->>'responsableCommercial' = ${targetName}`;
     // The received-leads table is the Data team's intake register, not a
@@ -1322,6 +1322,7 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
           OR LEFT(COALESCE(data->>'dateEntreeData', ''), 10) >= ${followupStart}
           OR LEFT(COALESCE(data->>'dateCreation', ''), 10) >= ${followupStart}
           OR LEFT(COALESCE(data->>'datePremierContact', ''), 10) >= ${followupStart}
+          OR LEFT(COALESCE(data->>'dateDerniereDemande', ''), 10) >= ${followupStart}
         )
         ORDER BY "createdAt" DESC
       `),
@@ -1406,9 +1407,12 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
       || ''
     ).slice(0, 10);
     const clientLeadReceivedAt = item => {
-      const exact = [item.data?.dateEntreeData, item.data?.dateCreation, item.data?.datePremierContact]
-        .find(value => String(value || '').includes('T'));
-      return exact || (item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt) || clientLeadDay(item);
+      const day = clientLeadDay(item);
+      const candidates = [item.data?.dateDerniereDemande, item.data?.dateEntreeData,
+        item.data?.dateCreation, item.data?.datePremierContact,
+        item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt];
+      return candidates.find(value => String(value || '').slice(0, 10) === day && String(value).includes('T'))
+        || day;
     };
     const orphanLeadRows = clientRows
       .filter(item => [today, yesterday].includes(clientLeadDay(item)))
@@ -1527,7 +1531,7 @@ app.get('/api/dashboard/data/leads', authMiddleware, async (req, res) => {
 
     const targetName = target.nomComplet || target.identifiant;
     const services = Array.isArray(target.modulesAutorises?.services) ? target.modulesAutorises.services : [];
-    const isData = services.includes('Data');
+    const isData = services.includes('Data') || req.auth.role === 'ADMIN';
     const bypassCache = req.query.fresh === '1';
     const scopeHash = crypto.createHash('sha1').update(JSON.stringify({
       target: target.id, scope, requestedDate: scope === 'date' ? requestedDate : ''
@@ -1565,9 +1569,6 @@ app.get('/api/dashboard/data/leads', authMiddleware, async (req, res) => {
       SELECT id, code, data, "createdAt" FROM collection_items
       WHERE collection = 'demandes'
         AND ${demandeAssignment}
-        AND COALESCE(data->>'createdManually', 'false') <> 'true'
-        AND COALESCE(data->>'created_manually', 'false') <> 'true'
-        AND COALESCE(data->>'source', '') <> 'Saisie manuelle'
         ${dateFilter}
       ORDER BY COALESCE(data->>'dateHeureReception', data->>'dateDemande', "createdAt"::text) DESC
     `);
@@ -2447,6 +2448,7 @@ const LIBELLE_DATA_TAG = {
   pas_reponse: 'Pas réponse',
   test: 'Test',
   traite: 'Traité',
+  active: 'Activé',
   en_cours_de_traitement: 'En cours de traitement',
   double_codage: 'Double codage',
   num_ironne: 'Num ironné',
@@ -3143,11 +3145,14 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
           statut: 'Confirmée',
           dateConversionWorkflow: demande.data.dateConversionWorkflow || workflowUpdatedAt || new Date().toISOString(),
         } : {}),
-        // Workflow is authoritative for when this lead really arrived.
-        // This repairs historical backfills that were previously stamped
-        // with the day the reconciliation command happened to run.
-        dateDemande: dateDemandeSource,
-        dateHeureReception: dateReception || demande.data.dateHeureReception || dateDemandeSource,
+        // A Sheets lead can later acquire a Workflow dossier. Keep its
+        // original intake timestamp: replacing it with the Workflow dossier
+        // creation date makes it disappear from the Data received-leads list.
+        dateDemande: demande.data.sourceSynchronisation === 'Google Sheets'
+          ? (demande.data.dateDemande || dateDemandeSource) : dateDemandeSource,
+        dateHeureReception: demande.data.sourceSynchronisation === 'Google Sheets'
+          ? (demande.data.dateHeureReception || dateReception || dateDemandeSource)
+          : (dateReception || demande.data.dateHeureReception || dateDemandeSource),
         responsableData: demande.data.responsableData || 'Data',
         responsable: responsableDemande || demande.data.responsable || responsableParDefaut,
         sourceSynchronisation: 'Workflow',
