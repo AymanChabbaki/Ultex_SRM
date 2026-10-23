@@ -2861,7 +2861,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     // current pipeline stage + Data->Closing disposition tags, and the
     // product/transport fields for the dossiers collection below.
     codeClientUltex, typeDemande, sensOperation, etape, tagsPipeline,
-    responsableDemande, sourcingTag, confirmedSuppliers = [],
+    responsableDemande, sourcingTag, calculTag, confirmedSuppliers = [],
     closingTag, closingEtat, closingStatus, closingNotes,
     selectedDevis, commercialPackage, confirmedPayment, workflowDocumentIds,
     produit, quantite, incoterm, paysOrigine, paysProvenance,
@@ -3064,6 +3064,8 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         etapeUltex: etape || demande.data.etapeUltex,
         ...(dataTagRecu ? { dataTag: dataTagLisible } : {}),
         tagsPipeline: tagsPipeline || demande.data.tagsPipeline,
+        sourcingTag: sourcingTag || null,
+        calculTag: calculTag || null,
         // This is the demande's Closing state from Workflow. It must never
         // be inferred from a client-level suivi Closing row.
         closingTag: closingTag || null,
@@ -3110,6 +3112,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         codeClientUltex: codeClientSynchronise || '',
         typeDemande: typeDemande || undefined, sensOperation: sensOperation || undefined,
         etapeUltex: etape || undefined, tagsPipeline: tagsPipeline || undefined,
+        sourcingTag: sourcingTag || null, calculTag: calculTag || null,
         closingTag: closingTag || null, closingEtat: closingEtat || null,
         closingStatus: closingStatus || null, closingNotes: closingNotes || null,
         closingValidatedDevisDocumentId: selectedDevis?.documentId || null,

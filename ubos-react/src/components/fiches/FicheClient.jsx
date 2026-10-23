@@ -19,6 +19,7 @@ import { pill } from '../../utils/format';
 import { categorieDepuisFichier, lireFichierDataUrl } from '../../utils/fileData';
 import { supprimerClientTestGoogleSheets } from '../../services/security';
 import { codeClientAffiche } from '../../utils/clientCodeGroups';
+import ClientJourney from './ClientJourney';
 
 const normaliserNumeroWhatsApp = (numero) => {
   let chiffres = String(numero || '').replace(/\D/g, '');
@@ -296,6 +297,8 @@ const FicheClient = ({ codeProp, code: codeFromProp, ongletInitial }) => {
             </div>
           </Modal>
         )}
+
+        <ClientJourney db={db} clientCode={code} />
 
         <div style={{display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'14px'}}>
           {ONGLETS_360.map(([id, lbl]) => (

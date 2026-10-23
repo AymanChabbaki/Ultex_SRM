@@ -246,7 +246,7 @@ const Router = () => {
       case 'ficheSuiviLimex': return wrap(<FicheSuiviLimex codeProp={params} code={params} />, ['actionsLimex', 'audit', 'suivisLimex', 'taches']);
       case 'ajouterTache': return wrap(<AjouterTache />, ['taches']);
       case 'ficheTache': return wrap(<FicheTache codeProp={params} code={params} />, ['actionsLimex', 'audit', 'suivisClosing', 'suivisLimex', 'tacheEtapes', 'taches']);
-      case 'ficheClient': return wrap(<FicheClient codeProp={params} code={params} ongletInitial={sousPage} />, ['audit', 'clients', 'commandes', 'contacts', 'demandes', 'documents', 'dossiers', 'suivisClosing']);
+      case 'ficheClient': return wrap(<FicheClient codeProp={params} code={params} ongletInitial={sousPage} />, ['audit', 'clients', 'commandes', 'contacts', 'demandeLignes', 'demandes', 'documents', 'dossiers', 'sourcings', 'suivisClosing']);
       case 'ficheDossier': return wrap(<FicheDossier codeProp={params} code={params} />, ['dossiers', 'clients', 'suivisClosing']);
       case 'ficheDemande': return wrap(<FicheDemande codeProp={params} code={params} />, ['audit', 'clients', 'commandes', 'demandeLignes', 'demandeRoutages', 'demandes', 'documents', 'paiements']);
       case 'ficheDemandeLigne': return wrap(<FicheDemandeLigne codeProp={params} code={params} />, ['demandeLignes', 'demandeRoutages', 'demandes', 'produits', 'taches']);

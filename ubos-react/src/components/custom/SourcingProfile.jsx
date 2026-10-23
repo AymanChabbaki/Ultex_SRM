@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, Check, ChevronRight, ClipboardList, FileUp, Package, Plus, Save,
-  Send, Truck, UploadCloud, X,
+  ArrowLeft, Check, ChevronRight, ClipboardList, Download, FileUp, Plus, Save,
+  Search, Send, UploadCloud, X,
 } from 'lucide-react';
 import Topbar from '../layout/Topbar';
 import { useDB } from '../../context/DBContext';
@@ -21,6 +21,7 @@ const emptyProduct = (position = 0) => ({
   localId: `local-${Date.now()}-${position}`,
   nomProduit: '', categorie: '', quantite: '', unite: 'pièces', usage: '', etat: 'Neuf', exigences: '', photo: '',
   matiere: '', dimensions: '', poids: '', typePoids: 'Net', couleursModele: '', certificats: '', emballage: '',
+  dateDum: '', hsCode: '', droitIndicatif: '', observationTarifaire: '',
   autresCaracteristiques: '', incoterm: 'EXW', portFob: '', paysFournisseur: '', paysOrigine: '', villeFournisseur: '',
   fournisseurCode: '', prixUnitaire: '', devise: 'USD', moq: '', delaiProduction: '',
   offresFournisseurs: [emptySupplierOffer(position)],
@@ -58,6 +59,10 @@ function mapProduct(product, index) {
     villeFournisseur: product.villeFournisseur || product.supplierCity || '',
     prixUnitaire: product.prixUnitaire ?? product.negotiatedExwPrice ?? '',
     devise: product.devise || product.currency || 'USD',
+    dateDum: product.dateDum || product.dateDeclarationDum || '',
+    hsCode: product.hsCode || product.hsCodeUltex || product.hsCodeFournisseur || '',
+    droitIndicatif: product.droitIndicatif ?? product.droitsPct ?? product.importDuty ?? '',
+    observationTarifaire: product.observationTarifaire || product.observationsReglementaires || '',
     offresFournisseurs: offers,
   };
 }
@@ -102,6 +107,8 @@ export default function SourcingProfile({ codeProp }) {
   const [exchangeText, setExchangeText] = useState('');
   const [nextAction, setNextAction] = useState('Poursuivre la recherche fournisseurs');
   const [nextDate, setNextDate] = useState('');
+  const [registerSearch, setRegisterSearch] = useState('');
+  const [registerOrigin, setRegisterOrigin] = useState('');
 
   useEffect(() => {
     const { sourcing, demande, client, lines } = context;
@@ -128,6 +135,19 @@ export default function SourcingProfile({ codeProp }) {
   const client = (db.clients || []).find(item => item.code === clientCode);
   const product = products[activeProduct] || products[0];
   const suppliers = db.fournisseurs || [];
+  const registerOrigins = useMemo(() => [...new Set(products.map(item => item.paysOrigine || item.paysFournisseur).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr')), [products]);
+  const registerRows = useMemo(() => {
+    const needle = registerSearch.trim().toLocaleLowerCase('fr');
+    return products
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => {
+        const origin = item.paysOrigine || item.paysFournisseur || '';
+        if (registerOrigin && origin !== registerOrigin) return false;
+        if (!needle) return true;
+        return [item.nomProduit, item.categorie, item.hsCode, item.hsCodeUltex, item.hsCodeFournisseur, item.certificats]
+          .some(value => String(value || '').toLocaleLowerCase('fr').includes(needle));
+      });
+  }, [products, registerOrigin, registerSearch]);
 
   const updateProduct = (key, value) => setProducts(current => current.map((item, index) => index === activeProduct ? { ...item, [key]: value } : item));
   const updateSupplierOffer = (offerIndex, key, value) => setProducts(current => current.map((item, index) => index === activeProduct ? {
@@ -174,6 +194,36 @@ export default function SourcingProfile({ codeProp }) {
   const addProduct = () => {
     setProducts(current => [...current, emptyProduct(current.length)]);
     setActiveProduct(products.length);
+  };
+
+  const addProductFromRegister = () => {
+    const nextIndex = products.length;
+    addProduct();
+    setActiveProduct(nextIndex);
+    setStep(1);
+    window.setTimeout(() => document.querySelector('.source-form-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
+
+  const editProductFromRegister = index => {
+    setActiveProduct(index);
+    setStep(2);
+    window.setTimeout(() => document.querySelector('.source-form-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
+
+  const exportRegister = () => {
+    const escapeCsv = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const headers = ['Code client', 'Nom du produit', 'Date DUM', 'Position SH', 'DD indicatif', 'Certificats requis', 'Provenance', 'Observations'];
+    const rows = registerRows.map(({ item }) => [
+      clientCode, item.nomProduit, item.dateDum, item.hsCode || item.hsCodeUltex || item.hsCodeFournisseur,
+      item.droitIndicatif, item.certificats, item.paysOrigine || item.paysFournisseur, item.observationTarifaire,
+    ]);
+    const csv = [headers, ...rows].map(row => row.map(escapeCsv).join(';')).join('\n');
+    const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `registre-produits-${clientCode || 'sourcing'}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const removeProduct = index => {
@@ -259,6 +309,11 @@ export default function SourcingProfile({ codeProp }) {
         paysOrigine: item.paysOrigine,
         paysFournisseur: item.paysFournisseur,
         villeFournisseur: item.villeFournisseur,
+        dateDum: item.dateDum,
+        hsCodeUltex: item.hsCode,
+        droitIndicatif: item.droitIndicatif,
+        certificatsDisponibles: item.certificats,
+        observationsReglementaires: item.observationTarifaire,
         incoterm: item.incoterm,
         prixUnitaire: item.prixUnitaire,
         devise: item.devise,
@@ -374,11 +429,11 @@ export default function SourcingProfile({ codeProp }) {
               <label className="source-upload-zone"><UploadCloud size={21} /><span>Ajouter une photo ou glisser-déposer</span><small>PNG, JPG jusqu’à 10 Mo</small><input type="file" accept="image/*" onChange={async event => { const [file] = await readFiles(event.target.files); if (file) updateProduct('photo', file.dataUrl); }} /></label>
               {product.photo && <div className="source-photo-preview"><img src={product.photo} alt={product.nomProduit || 'Produit'} /><button onClick={() => updateProduct('photo', '')}><X size={15} /></button></div>}
             </section>
-            <aside className="source-side-stack">
+            <div className="source-side-stack" role="complementary">
               <section className="source-card source-form-card compact"><div className="source-card-title-row"><h2>Produits de la demande</h2><button className="source-soft-button" onClick={addProduct}><Plus size={15} /> Produit</button></div><div className="source-product-list">{products.map((item, index) => <button key={item.localId} className={activeProduct === index ? 'active' : ''} onClick={() => setActiveProduct(index)}><span>{index + 1}</span><div><strong>{item.nomProduit || `Produit ${index + 1}`}</strong><small>{item.quantite || '—'} {item.unite || ''} · {item.etat}</small></div>{products.length > 1 && <i onClick={event => { event.stopPropagation(); removeProduct(index); }}>×</i>}</button>)}</div></section>
               <section className="source-card source-form-card compact"><h2>Aperçu de la progression</h2><div className="source-mini-progress">{stepLabels.map(item => <div key={item.id} className={step >= item.id ? 'done' : ''}><span /><b>{item.title}</b><small>{step === item.id ? 'En cours' : step > item.id ? 'Complété' : 'À venir'}</small></div>)}</div></section>
               <section className="source-advice"><strong>Conseil</strong><p>Les spécifications et le suivi sont enregistrés séparément pour chaque produit de la demande.</p></section>
-            </aside>
+            </div>
           </div>
         )}
 
@@ -394,6 +449,13 @@ export default function SourcingProfile({ codeProp }) {
                 <label><span>Certificats requis</span><input value={product.certificats} onChange={event => updateProduct('certificats', event.target.value)} /></label>
                 <label><span>Emballage</span><input value={product.emballage} onChange={event => updateProduct('emballage', event.target.value)} /></label>
               </div>
+              <div className="source-card-title-row source-customs-heading"><div><h2>Position tarifaire (SH) & certifications</h2><p>Ces données alimentent automatiquement le registre central du client.</p></div></div>
+              <div className="source-fields three">
+                <label><span>Date DUM / déclaration</span><input type="date" value={product.dateDum || ''} onChange={event => updateProduct('dateDum', event.target.value)} /></label>
+                <label><span>Position SH</span><input value={product.hsCode || ''} onChange={event => updateProduct('hsCode', event.target.value)} placeholder="Ex. 8517.62.00" /></label>
+                <label><span>DD indicatif (%)</span><input type="number" min="0" step="0.01" value={product.droitIndicatif ?? ''} onChange={event => updateProduct('droitIndicatif', event.target.value)} /></label>
+              </div>
+              <label className="source-field-full"><span>Observations / remarques tarifaires</span><textarea rows="3" value={product.observationTarifaire || ''} onChange={event => updateProduct('observationTarifaire', event.target.value)} placeholder="Classification à confirmer, autorisation requise…" /></label>
               <label className="source-field-full"><span>Autres caractéristiques techniques</span><textarea rows="4" value={product.autresCaracteristiques} onChange={event => updateProduct('autresCaracteristiques', event.target.value)} /></label>
               <div className="source-card-title-row supplier-offers-heading">
                 <div><h2>Fournisseurs à comparer</h2><p>Ajoutez plusieurs offres pour ce produit, puis retenez la meilleure.</p></div>
@@ -426,10 +488,10 @@ export default function SourcingProfile({ codeProp }) {
                 })}
               </div>
             </section>
-            <aside className="source-side-stack">
+            <div className="source-side-stack" role="complementary">
               <section className="source-card source-form-card compact"><h2>Origine du produit</h2><label><span>Pays d’origine</span><input value={product.paysOrigine} onChange={event => updateProduct('paysOrigine', event.target.value)} /></label></section>
               <section className="source-card source-form-card compact"><h2>Produit concerné</h2><div className="source-selected-product"><span>{activeProduct + 1}</span><div><strong>{product.nomProduit || 'Produit sans nom'}</strong><small>{product.quantite || '—'} {product.unite}</small></div></div><div className="supplier-offer-summary"><strong>{(product.offresFournisseurs || []).length}</strong><span>fournisseur{(product.offresFournisseurs || []).length > 1 ? 's' : ''} à comparer</span></div></section>
-            </aside>
+            </div>
           </div>
         )}
 
@@ -441,6 +503,46 @@ export default function SourcingProfile({ codeProp }) {
             <section className="source-card source-form-card"><div className="source-card-title-row"><div><h2>Échanges avec les fournisseurs</h2><p>Historique des contacts, décisions et prochaines actions.</p></div></div><div className="source-exchange-input"><textarea value={exchangeText} onChange={event => setExchangeText(event.target.value)} placeholder="Ajouter le compte-rendu d’un appel, email ou WhatsApp…" /><button onClick={addExchange}><Send size={16} /> Ajouter</button></div><div className="source-timeline">{exchanges.map(item => <article key={item.id}><span /><div><strong>{new Date(item.date).toLocaleDateString('fr-FR')} · {item.auteur || 'Sourcing'}</strong><p>{item.texte}</p></div></article>)}{!exchanges.length && <p className="source-empty">Aucun échange enregistré.</p>}</div><div className="source-fields two"><label><span>Prochaine action</span><input value={nextAction} onChange={event => setNextAction(event.target.value)} /></label><label><span>Échéance</span><input type="date" value={nextDate} onChange={event => setNextDate(event.target.value)} /></label><label><span>Statut sourcing</span><select value={status} onChange={event => setStatus(event.target.value)}>{['À traiter', 'En cours', 'Recherche', 'Offre reçue', 'Échantillon', 'Recommandé', 'Validé', 'Clôturé'].map(value => <option key={value}>{value}</option>)}</select></label></div></section>
           </div>
         )}
+
+        <section className="source-card source-product-register">
+          <div className="source-register-heading">
+            <div>
+              <h2>Registre central : produits, position tarifaire (SH) & certifications</h2>
+              <p>Chaque produit est rattaché au Code client et possède ses propres données douanières et exigences.</p>
+            </div>
+            <button className="source-primary-button" onClick={addProductFromRegister}><Plus size={16} /> Ajouter un produit</button>
+          </div>
+
+          <div className="source-register-filters">
+            <label className="source-search"><Search size={15} /><input value={registerSearch} onChange={event => setRegisterSearch(event.target.value)} placeholder="Rechercher par produit, code SH ou certificat…" /></label>
+            <select value={registerOrigin} onChange={event => setRegisterOrigin(event.target.value)}><option value="">Toutes les provenances</option>{registerOrigins.map(origin => <option key={origin}>{origin}</option>)}</select>
+            <button className="source-secondary-button" onClick={exportRegister} disabled={!registerRows.length}><Download size={15} /> Exporter le registre</button>
+          </div>
+
+          <div className="source-table-wrap">
+            <table className="source-table source-register-table">
+              <thead><tr><th>Code client<small>Clé de liaison</small></th><th>Nom du produit</th><th>Date DUM<small>Déclaration</small></th><th>Position SH<small>Code tarifaire</small></th><th>DD indicatif</th><th>Certificats requis</th><th>Provenance</th><th>Observations / remarques</th><th>Actions</th></tr></thead>
+              <tbody>
+                {registerRows.map(({ item, index }) => {
+                  const origin = item.paysOrigine || item.paysFournisseur || '';
+                  return <tr key={item.localId || index}>
+                    <td><button className="source-link" onClick={() => { if (clientCode) window.location.hash = `ficheClient:${clientCode}`; }}>{clientCode || 'À sélectionner'}</button></td>
+                    <td><strong>{item.nomProduit || `Produit ${index + 1}`}</strong><small>{item.categorie || item.usage || '—'}</small></td>
+                    <td>{item.dateDum || <span className="source-muted">À renseigner</span>}</td>
+                    <td>{item.hsCode || item.hsCodeUltex || item.hsCodeFournisseur || <span className="source-muted">À renseigner</span>}</td>
+                    <td>{item.droitIndicatif !== '' && item.droitIndicatif != null ? `${item.droitIndicatif} %` : '—'}</td>
+                    <td>{item.certificats || '—'}</td>
+                    <td>{origin ? <span className="source-status is-success">{origin}</span> : '—'}</td>
+                    <td>{item.observationTarifaire || '—'}</td>
+                    <td><button className="source-soft-button" onClick={() => editProductFromRegister(index)}>Modifier</button></td>
+                  </tr>;
+                })}
+                {!registerRows.length && <tr><td className="source-empty" colSpan="9">Aucun produit ne correspond à ces filtres.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div className="source-register-footer"><span>{registerRows.length} produit(s) affiché(s)</span><span>Données rattachées au Code client {clientCode || 'à sélectionner'}</span></div>
+        </section>
 
         <footer className="source-form-footer">
           <span>* Champs obligatoires</span>
