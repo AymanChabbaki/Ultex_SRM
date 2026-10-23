@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock3, FileSearch, Plus, RefreshCcw, Search, Users } from 'lucide-react';
 import Topbar from '../layout/Topbar';
 import { useDB } from '../../context/DBContext';
+import { subscribeDataDashboard } from '../../services/api';
 import './SourcingWorkspace.css';
 
 const norm = value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -68,12 +69,39 @@ function firstSupplier(sourcing) {
 }
 
 export default function SourcingDashboard() {
-  const { db } = useDB();
+  const { db, chargerCollections } = useDB();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [country, setCountry] = useState('');
   const [sort, setSort] = useState('recent');
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const collections = ['clients', 'demandes', 'demandeLignes', 'sourcings', 'fournisseurs'];
+    const controller = new AbortController();
+    let active = true;
+    let refreshTimer = null;
+
+    // The route loader may hold an older in-memory snapshot if this screen
+    // was already visited. Refresh it on entry, then use the existing CRM
+    // live-change stream so a Workflow sync appears without a hard reload.
+    chargerCollections(collections, { maxAgeMs: 10_000 }).catch(() => {});
+    subscribeDataDashboard(() => {
+      if (!active) return;
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        chargerCollections(collections, { force: true }).catch(() => {});
+      }, 250);
+    }, { signal: controller.signal }).catch(error => {
+      if (error?.name !== 'AbortError') console.warn('Actualisation temps réel sourcing indisponible:', error);
+    });
+
+    return () => {
+      active = false;
+      clearTimeout(refreshTimer);
+      controller.abort();
+    };
+  }, [chargerCollections]);
 
   const allRows = useMemo(() => {
     const clients = new Map((db.clients || []).map(item => [item.code, item]));
@@ -209,11 +237,11 @@ export default function SourcingDashboard() {
 
           <div className="source-table-wrap">
             <table className="source-table">
-              <thead><tr><th>Code / Produit</th><th>Date demande</th><th>Fournisseur</th><th>Origine</th><th>FOB / MOQ</th><th>Délai</th><th>Statut</th><th>Prochaine action</th><th></th></tr></thead>
+              <thead><tr><th>Code / Code client / Produit</th><th>Date demande</th><th>Fournisseur</th><th>Origine</th><th>FOB / MOQ</th><th>Délai</th><th>Statut</th><th>Prochaine action</th><th></th></tr></thead>
               <tbody>
                 {rows.map(row => (
                   <tr key={row.demande.code} onDoubleClick={() => openRow(row)}>
-                    <td><button className="source-link" onClick={() => openRow(row)}>{row.sourcing?.code || row.demande.referenceMetier || row.demande.code}</button><small>{row.products || 'Produit à préciser'}</small></td>
+                    <td><button className="source-link" onClick={() => openRow(row)}>{row.sourcing?.code || row.demande.referenceMetier || row.demande.code}</button><small>Client : {row.client?.codeClientUltex || row.client?.code || row.demande.codeClientUltex || row.demande.client || '—'}</small><small>{row.products || 'Produit à préciser'}</small></td>
                     <td><strong>{displayDate(row.createdDate)}</strong><small>{row.demande.sourceSynchronisation || row.sourcing?.source || 'CRM'}</small></td>
                     <td><strong>{row.supplierName}</strong><small>{row.responsible}</small></td>
                     <td>{row.origin}</td>

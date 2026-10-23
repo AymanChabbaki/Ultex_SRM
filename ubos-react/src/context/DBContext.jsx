@@ -138,12 +138,16 @@ export const DBProvider = ({ children }) => {
     }
   }, []);
 
-  const chargerCollections = useCallback(async (collectionNames) => {
+  const chargerCollections = useCallback(async (collectionNames, options = {}) => {
     const names = [...new Set((collectionNames || []).filter(name => TRACKED_ARRAYS.includes(name)))];
+    const force = options.force === true;
+    const maxAgeMs = Math.max(0, Number(options.maxAgeMs) || 0);
     const loaded = await Promise.all(names.map(async name => {
       const existing = collectionLoadsRef.current.get(name);
-      if (existing?.status === 'loaded') return [name, null];
-      let pending = existing?.promise;
+      const stillFresh = existing?.status === 'loaded'
+        && (!maxAgeMs || (Date.now() - Number(existing.loadedAt || 0)) <= maxAgeMs);
+      if (!force && stillFresh) return [name, null];
+      let pending = existing?.status === 'loading' ? existing.promise : null;
       if (!pending) {
         pending = (async () => {
           const records = [];
@@ -163,7 +167,7 @@ export const DBProvider = ({ children }) => {
       }
       try {
         const records = await pending;
-        collectionLoadsRef.current.set(name, { status: 'loaded' });
+        collectionLoadsRef.current.set(name, { status: 'loaded', loadedAt: Date.now() });
         return [name, records];
       } catch (error) {
         collectionLoadsRef.current.delete(name);
