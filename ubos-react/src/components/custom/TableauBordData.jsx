@@ -159,13 +159,10 @@ export default function TableauBordData({ user, isAdminView }) {
       .map(demande => ({ ...demande, _retardTraitement: true }));
     const todayCodes = new Set(todayLeads.map(demande => demande.code));
     const merged = [...todayLeads, ...delayed.filter(demande => !todayCodes.has(demande.code))];
-    // leadWorkDay() rolls a lead received at/after 18:00 into the NEXT day's
-    // workload, so it lands in todayLeads even though it physically arrived
-    // yesterday, outside working hours — flagged separately below. Leads
-    // already worked (dataTag/statut/contact set, usually on the linked
-    // client rather than the demande itself) stay in the list but get
-    // marked "Traité" instead of disappearing, so the tag stays visible and
-    // no one re-treats a lead that's already handled.
+    // The live queue deliberately keeps every lead from today and yesterday.
+    // leadWorkDay() also rolls a lead received at/after 18:00 into the next
+    // workday. Leads already worked stay visible and are marked "Traité";
+    // their synchronization source must never decide whether they disappear.
     return merged.map(demande => {
       const patch = {};
       if (!demande._retardTraitement) {
@@ -192,7 +189,7 @@ export default function TableauBordData({ user, isAdminView }) {
     ? 'Tous les leads reçus'
     : leadView === 'date'
       ? `Leads reçus le ${leadDate.split('-').reverse().join('/')}`
-      : "Leads reçus aujourd'hui + hier (hors horaires ou non traités)";
+      : "Leads reçus aujourd'hui + hier";
   const leadsAujourdhuiTous = nouveauxLeads.filter(lead => !lead._retardTraitement && !lead._hierHorsHoraires);
   const leadsAujourdhui = leadsAujourdhuiTous.filter(lead => !lead._traite);
   const leadsAujourdhuiTraites = leadsAujourdhuiTous.filter(lead => lead._traite);

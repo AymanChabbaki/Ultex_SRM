@@ -1323,14 +1323,12 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
         SELECT id, code, data, "createdAt" FROM collection_items
         WHERE collection = 'demandes' AND ${demandeAssignment} AND (
           ${leadWorkDay} = ${today}
-          OR (
-            ${leadWorkDay} = ${yesterday}
-            AND COALESCE(data->>'dataTag', '') = ''
-            AND COALESCE(data->>'actionSuivante', '') = ''
-            AND COALESCE(data->>'dernierContact', '') = ''
-            AND COALESCE(data->>'dernierSuiviData', '') = ''
-            AND COALESCE(data->>'statut', 'Nouvelle') IN ('', 'Nouvelle', 'Nouveau', 'À traiter', 'Brouillon')
-          )
+          -- Always return yesterday's leads too, whether their Data state is
+          -- stored on the demande (Workflow) or on the client (Sheets/manual
+          -- follow-up). Filtering treated demandes here made the same lead
+          -- visible or invisible solely according to its synchronization
+          -- source. The UI marks treated/untreated without hiding either.
+          OR ${leadWorkDay} = ${yesterday}
           OR (COALESCE(data->>'echeanceActionSuivante', '') <> '' AND LEFT(data->>'echeanceActionSuivante', 10) <= ${today})
           OR (
             LEFT(COALESCE(data->>'dateDemande', data->>'dateHeureReception', data->>'dateEntreeData', ''), 10) >= ${followupStart}
