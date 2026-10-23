@@ -8,6 +8,7 @@ import Modal from '../common/Modal';
 import FormField from '../common/FormField';
 import { pill, pillStatut, fmtMAD } from '../../utils/format';
 import { MODS } from '../../data/modules';
+import { joursAvant, mad } from '../../utils/partnerFinance';
 const ONGLETS = ['À préparer', 'Prêt à payer', 'Soumis Direction', 'Autorisé', 'Payé', 'Tous'];
 
 function calculerAlertesPaiement(p) {
@@ -36,6 +37,8 @@ export default function PaiementsEcheances() {
   const paiements = db.paiements || [];
   const filtres = onglet === 'Tous' ? paiements : paiements.filter(p => p.statut === onglet || (!p.statut && onglet === 'À préparer'));
   const docsCasa = db.documentsComptablesCasa || [];
+  const lcnAlertes = (db.lcnPartenaire || []).filter(l => l.statut === 'Impayée'
+    || (l.statut === 'Remise' && joursAvant(l.dateEcheance) >= 0 && joursAvant(l.dateEcheance) <= 7));
 
   const handleChange = (k, v) => setFormData(prev => ({ ...prev, [k]: v }));
 
@@ -89,6 +92,12 @@ export default function PaiementsEcheances() {
   return (
     <div>
       <Topbar titre="Paiements & Échéances" />
+      {lcnAlertes.length > 0 && <div className="panneau" style={{borderColor:'#e4a73d',marginBottom:12}}>
+        <h3>Alertes LCN partenaires ({lcnAlertes.length})</h3>
+        {lcnAlertes.map(l => { const p = (db.partenaires || []).find(item => item.code === l.partenaireId); return <div key={l.code} style={{marginBottom:7,color:l.statut === 'Impayée'?'#ad2831':'#946006'}}>
+          <a href={`#fichePartenaire:${l.partenaireId}`}>{p?.nom || l.partenaireId}</a> · {l.numeroLcn} · {mad(l.montant)} · {l.statut} · Échéance {l.dateEcheance}
+        </div>; })}
+      </div>}
 
       <div className="outils">
         {ONGLETS.map(o => (

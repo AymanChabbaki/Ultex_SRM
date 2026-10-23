@@ -15,6 +15,7 @@ import { MODS } from '../../data/modules';
 import { pill } from '../../utils/format';
 import { categorieDepuisFichier, lireFichierDataUrl } from '../../utils/fileData';
 import { applyImaneComplementResponses } from '../../utils/arrivageDirectionAnalysis';
+import { INTERVENANT_ROLES, PARTNER_ROLES_ACTIVE, rolesDuPartenaire, indicateursPartenaire, datePlusJours, joursAvant } from '../../utils/partnerFinance';
 import {
   ACTIONS_REVUE_ARRIVAGE, actionsRevueArrivage, destinataireImane, destinataireYasser,
   ETATS_REVUE_ARRIVAGE, prefillArrivageDepuisCommandes, roleRevueArrivage,
@@ -30,7 +31,7 @@ const FRAIS_CHAMPS = [
 
 const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   const { db, updateDB, genCode, audit, notifier, userCourant } = useDB();
-  const { peut, session } = useAuth();
+  const { peut, session, estDirection } = useAuth();
   const { toast } = useToast();
   const initialCode = codeProp || codeFromProp || '';
   const [code, setCode] = useState(initialCode);
@@ -120,6 +121,22 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
   const demandeCodes = new Set(commandes.map(c => c.demande || c.source_demande_id).filter(Boolean));
   const commandeCodes = new Set(commandes.map(c => c.code));
   const documents = (db.documents || []).filter(d => d.arrivage === code || commandeCodes.has(d.commande) || demandeCodes.has(d.demande));
+  const intervenants = arrivage.intervenants || [];
+  const partenaires = db.partenaires || [];
+  const updateIntervenant = async (role, partenaireId) => {
+    const partner = partenaires.find(p => p.code === partenaireId);
+    if (partner && !PARTNER_ROLES_ACTIVE.includes(partner.statut)) return toast('Partenaire suspendu ou archivé.');
+    if (partner && !rolesDuPartenaire(partner).includes(role)) return toast('Ce partenaire ne possède pas ce rôle.');
+    if (partner) {
+      const metrics = indicateursPartenaire(partner, db.arrivages || [], db.facturesPartenaire || [], db.lcnPartenaire || []);
+      if (metrics.plafondUtilise >= 100 && !estDirection()) return toast('Plafond dépassé : validation de la Direction requise.');
+      if (metrics.plafondUtilise >= 100 && !window.confirm('Plafond dépassé. Valider exceptionnellement cette affectation ?')) return;
+    }
+    const next = intervenants.filter(item => item.role !== role);
+    if (partenaireId) next.push({ role, partenaireId });
+    const ok = await updateDB({ ...db, arrivages: (db.arrivages || []).map(a => a.code === code ? { ...a, intervenants: next } : a) });
+    if (ok) audit('Arrivages', 'Intervenant', code, role, intervenants.find(i => i.role === role)?.partenaireId || '—', partenaireId || '—');
+  };
   const roleCircuit = roleRevueArrivage(session);
   const actionsCircuit = actionsRevueArrivage(arrivage, roleCircuit);
   const historiqueCircuit = arrivage.circuitHistorique || [];
@@ -554,6 +571,34 @@ const FicheArrivage = ({ codeProp, code: codeFromProp }) => {
             </div>
           </Modal>
         )}
+
+        <div className="bloc-fiche large">
+          <h4>Intervenants logistiques</h4>
+          <p>Chaque rôle est relié à une seule fiche partenaire. La sélection alimente automatiquement son dossier.</p>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:12}}>
+            {INTERVENANT_ROLES.map(role => {
+              const selected = intervenants.find(i => i.role === role)?.partenaireId || '';
+              const candidates = partenaires.filter(p => rolesDuPartenaire(p).includes(role)
+                && (PARTNER_ROLES_ACTIVE.includes(p.statut) || p.code === selected));
+              const partner = partenaires.find(p => p.code === selected);
+              const metrics = partner ? indicateursPartenaire(partner, db.arrivages || [], db.facturesPartenaire || [], db.lcnPartenaire || []) : null;
+              return <div className="champ" key={role}><label>{role}</label>
+                <select value={selected} disabled={!peut('modifier')} onChange={e => updateIntervenant(role, e.target.value)}>
+                  <option value="">— Aucun —</option>{candidates.map(p => <option key={p.code} value={p.code}>{p.nom} · {p.code}{p.statut === 'En test' ? ' · En test' : ''}</option>)}
+                </select>
+                {partner && <div style={{fontSize:12,marginTop:5}}><a href={`#fichePartenaire:${partner.code}`}>Voir la fiche</a>
+                  {' · '}<a href={`#fichePartenaire:${partner.code}:${code}`}>+ Facture partenaire</a>
+                  {partner.statut === 'En test' && <span style={{color:'#a36600'}}> · ⚠ En test</span>}
+                  {metrics?.plafondUtilise >= 80 && <span style={{color:metrics.plafondUtilise >= 100?'#b22222':'#a36600'}}> · Plafond utilisé {metrics.plafondUtilise.toFixed(1)} %</span>}
+                  {metrics?.lcnImpayees > 0 && <span style={{color:'#b22222'}}> · ⚠ {metrics.lcnImpayees} LCN impayée(s)</span>}
+                  {joursAvant(datePlusJours(arrivage.dateArriveePort || arrivage.dateArriveeReelle, partner.freeTimeJours)) <= 3
+                    && (arrivage.dateArriveePort || arrivage.dateArriveeReelle) && <span style={{color:'#a36600'}}> · Free time proche</span>}
+                </div>}
+              </div>;
+            })}
+          </div>
+          <div className="champ" style={{maxWidth:260,marginTop:12}}><label>Date d'arrivée au port</label><input type="date" value={arrivage.dateArriveePort || ''} disabled={!peut('modifier')} onChange={e => sauverArrivage({dateArriveePort:e.target.value})} /></div>
+        </div>
 
         <div className="bloc-fiche large">
           <h4>

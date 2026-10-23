@@ -61,6 +61,7 @@ const SourcingDashboard = lazy(() => import('./components/custom/SourcingDashboa
 const SourcingProfile = lazy(() => import('./components/custom/SourcingProfile'));
 const SupplierBank = lazy(() => import('./components/custom/SupplierBank'));
 const SupplierProfile = lazy(() => import('./components/custom/SupplierProfile'));
+const Partner360 = lazy(() => import('./components/custom/Partner360'));
 const GenericModule = lazy(() => import('./components/modules/GenericModule'));
 
 const IMPORT_COLLECTIONS = [
@@ -239,7 +240,7 @@ const Router = () => {
       case 'maJourneeImane': return wrap(<PersonalPageRoute Component={MaJourneeImane} identifiant={params} />, ['actionsLimex', 'arrivages', 'commandes', 'suivisLimex']);
       case 'suiviLimex': return wrap(<PersonalPageRoute Component={SuiviLimex} identifiant={params} />, ['suivisLimex', 'paiements']);
       case 'etudesCalcul': return wrap(<EtudesCalcul />, ['taches']);
-      case 'paiementsEcheances': return wrap(<PaiementsEcheances />, ['paiements', 'documentsComptablesCasa']);
+      case 'paiementsEcheances': return wrap(<PaiementsEcheances />, ['paiements', 'documentsComptablesCasa', 'lcnPartenaire', 'partenaires']);
       case 'etatClosing': return wrap(<EtatClosing />, ['suivisClosing']);
       case 'ficheSuiviClosing': return wrap(<FicheSuiviClosing codeProp={params} code={params} />, ['audit', 'suivisClosing', 'taches']);
       case 'ficheClientClosing': return wrap(<FicheClientClosing codeProp={params} code={params} />, ['suivisClosing']);
@@ -251,7 +252,9 @@ const Router = () => {
       case 'ficheDemande': return wrap(<FicheDemande codeProp={params} code={params} />, ['audit', 'clients', 'commandes', 'demandeLignes', 'demandeRoutages', 'demandes', 'documents', 'paiements']);
       case 'ficheDemandeLigne': return wrap(<FicheDemandeLigne codeProp={params} code={params} />, ['demandeLignes', 'demandeRoutages', 'demandes', 'produits', 'taches']);
       case 'ficheCommande': return wrap(<FicheCommande codeProp={params} code={params} />, ['arrivages', 'clients', 'commandes', 'demandes', 'documents', 'paiements']);
-      case 'ficheArrivage': return wrap(<FicheArrivage codeProp={params} code={params} />, ['analysesLimex', 'arrivages', 'clients', 'commandes', 'documents', 'fournisseurs', 'paiements', 'produits']);
+      case 'ficheArrivage': return wrap(<FicheArrivage codeProp={params} code={params} />, ['analysesLimex', 'arrivages', 'clients', 'commandes', 'documents', 'fournisseurs', 'paiements', 'produits', 'partenaires', 'facturesPartenaire', 'lcnPartenaire']);
+      case 'partenaires': return wrap(<Partner360 />, ['partenaires', 'arrivages', 'facturesPartenaire', 'lcnPartenaire']);
+      case 'fichePartenaire': return wrap(<Partner360 codeProp={params} arrivalCode={sousPage} />, ['partenaires', 'arrivages', 'facturesPartenaire', 'lcnPartenaire']);
       case 'ficheDocument': return wrap(<FicheDocument codeProp={params} code={params} />, ['documents']);
       case 'ficheFF': return wrap(<FicheFF codeProp={params} code={params} />, ['clients', 'documents', 'dossiers', 'facturesFinales']);
       case 'ficheChecklistLimex': return wrap(<FicheChecklistLimex codeProp={params} code={params} />, ['controlesLimex', 'dossierControlesLimex', 'dossiers', 'limexPortesValidation']);

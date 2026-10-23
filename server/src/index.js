@@ -350,7 +350,7 @@ const COLLS = [
   "erreurs", "utilisateurs", "facturesFinales", "avoirsFF", "abandons", "impayes",
   "remboursements", "contacts", "demandes", "commandes", "arrivages", "analysesLimex",
   "bonsLancement", "stocks", "mouvementsStock", "livraisons", "transfertsServices",
-  "communicationsDossier", "partenaires", "importJobs", "importFiles", "importModels",
+  "communicationsDossier", "partenaires", "facturesPartenaire", "lcnPartenaire", "importJobs", "importFiles", "importModels",
   "importMappings", "importRows", "importErrors", "importHistory", "importDetectedTypes",
   "importExtractedData", "importAttachments", "importRollbacks",
   "controlesLimex", "dossierControlesLimex", "limexDiagnosticOumaima",
@@ -1577,12 +1577,14 @@ app.get('/api/dashboard/data/leads', authMiddleware, async (req, res) => {
       item.data?.client,
       item.data?.codeClientUltex,
     ]).map(value => String(value || '').trim()).filter(Boolean))];
+    // One array parameter, not one per code: "Voir tous" can reference tens of
+    // thousands of clients, past Postgres's 32767 bind-variable limit.
     const clientRows = clientRefs.length ? await prisma.$queryRaw(Prisma.sql`
       SELECT id, code, data, "createdAt" FROM collection_items
       WHERE collection = 'clients' AND (
-        code IN (${Prisma.join(clientRefs)})
-        OR data->>'code' IN (${Prisma.join(clientRefs)})
-        OR data->>'codeClientUltex' IN (${Prisma.join(clientRefs)})
+        code = ANY(${clientRefs}::text[])
+        OR data->>'code' = ANY(${clientRefs}::text[])
+        OR data->>'codeClientUltex' = ANY(${clientRefs}::text[])
       )
       ORDER BY "createdAt" DESC
     `) : [];
@@ -2215,6 +2217,14 @@ app.delete('/api/security/records/:collection/:code', authMiddleware, requireEle
   const { collection, code } = req.params;
   if (!COLLS.includes(collection)) return res.status(400).json({ error: 'Collection inconnue' });
   try {
+    if (collection === 'partenaires') {
+      const [arrivage, facture, lcn] = await Promise.all([
+        prisma.collectionItem.findFirst({ where: { collection: 'arrivages', data: { path: ['intervenants'], array_contains: [{ partenaireId: code }] } } }),
+        prisma.collectionItem.findFirst({ where: { collection: 'facturesPartenaire', data: { path: ['partenaireId'], equals: code } } }),
+        prisma.collectionItem.findFirst({ where: { collection: 'lcnPartenaire', data: { path: ['partenaireId'], equals: code } } }),
+      ]);
+      if (arrivage || facture || lcn) return res.status(409).json({ error: 'Partenaire lié à des dossiers ou paiements : archivez-le au lieu de le supprimer.' });
+    }
     if (collection === 'clients') {
       const client = await prisma.collectionItem.findFirst({ where: { collection: 'clients', code } });
       if (client?.data?.sourceDonnees === 'Google Sheets' && client?.data?.sheetLeadId) {
