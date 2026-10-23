@@ -1284,10 +1284,10 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
       ? Prisma.sql`(
           data->>'responsableCommercial' = ${targetName}
           OR data->>'responsableCommercial' IN (${serviceList})
-          OR (${isData} AND COALESCE(data->>'responsableCommercial', '') = '' AND (
-            data->>'sourceDonnees' IN ('Workflow', 'Google Sheets')
-            OR COALESCE(data->>'ultexDossierId', '') <> ''
-          ))
+          -- Every recent unassigned client belongs in the Data inbox. Source
+          -- names evolve (Workflow, Sheets, landing, imports, V2), so using a
+          -- hard-coded source allow-list made valid leads disappear.
+          OR (${isData} AND COALESCE(data->>'responsableCommercial', '') = '')
         )`
       : Prisma.sql`data->>'responsableCommercial' = ${targetName}`;
     const demandeAssignment = services.length
@@ -1382,6 +1382,62 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
       `)
     ]);
 
+    // A recent client can exist without a usable demande link after an older
+    // import/synchronization bug. The Data dashboard is a lead inbox, so it
+    // must not silently lose that person. Build a read-only lead projection
+    // for today/yesterday when no returned demande references the client.
+    // This does not create or mutate business data; it keeps the record
+    // visible until its demande is repaired by the normal synchronization.
+    const returnedDemandClientAliases = new Set(demandeRows.flatMap(item => [
+      item.data?.client, item.data?.codeClientUltex,
+    ]).map(value => String(value || '').trim()).filter(Boolean));
+    const clientLeadDay = item => String(
+      item.data?.dateDerniereDemande
+      || item.data?.dateEntreeData
+      || item.data?.dateCreation
+      || item.data?.datePremierContact
+      || (item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt)
+      || ''
+    ).slice(0, 10);
+    const clientLeadReceivedAt = item => {
+      const exact = [item.data?.dateEntreeData, item.data?.dateCreation, item.data?.datePremierContact]
+        .find(value => String(value || '').includes('T'));
+      return exact || (item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt) || clientLeadDay(item);
+    };
+    const orphanLeadRows = clientRows
+      .filter(item => [today, yesterday].includes(clientLeadDay(item)))
+      .filter(item => {
+        const aliases = [item.id, item.code, item.data?.id, item.data?.code, item.data?.codeClientUltex]
+          .map(value => String(value || '').trim()).filter(Boolean);
+        return !aliases.some(alias => returnedDemandClientAliases.has(alias));
+      })
+      .map(item => {
+        const clientCode = String(item.code || item.id || item.data?.codeClientUltex || '').trim();
+        const receivedAt = clientLeadReceivedAt(item);
+        return {
+          id: `client-lead:${item.id}`,
+          code: `CLIENT-LEAD-${clientCode}`,
+          createdAt: item.createdAt,
+          data: {
+            client: clientCode,
+            codeClientUltex: item.data?.codeClientUltex || clientCode,
+            dateDemande: String(receivedAt || '').slice(0, 10),
+            dateHeureReception: receivedAt,
+            objectifGeneral: item.data?.produitsSouhaites || item.data?.projetActuel || item.data?.objectif || item.data?.email || '—',
+            source: item.data?.sourcePremierContact || item.data?.sourceDonnees || 'Fiche client',
+            sourceSynchronisation: item.data?.sourceDonnees || 'Fiche client',
+            responsableData: targetName,
+            dataTag: item.data?.dataTag || '',
+            etatVersion: item.data?.etatVersion,
+            statut: 'Nouvelle',
+            createdManually: false,
+            _clientFallback: true,
+          }
+        };
+      });
+    const completeDemandeRows = [...demandeRows, ...orphanLeadRows]
+      .sort((a, b) => String(b.data?.dateHeureReception || b.createdAt || '').localeCompare(String(a.data?.dateHeureReception || a.createdAt || '')));
+
     // The operational client query is intentionally narrow for performance,
     // but every returned demande must still have its exact client available.
     // Otherwise the UI falls back to a stale snapshot such as displaying
@@ -1389,7 +1445,7 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
     const loadedClientAliases = new Set(clientRows.flatMap(item => [
       item.id, item.code, item.data?.id, item.data?.code, item.data?.codeClientUltex,
     ]).map(value => String(value || '').trim()).filter(Boolean));
-    const missingClientRefs = [...new Set(demandeRows.flatMap(item => [
+    const missingClientRefs = [...new Set(completeDemandeRows.flatMap(item => [
       item.data?.client, item.data?.codeClientUltex,
     ]).map(value => String(value || '').trim()).filter(Boolean))]
       .filter(code => !loadedClientAliases.has(code));
@@ -1422,7 +1478,7 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
 
     const payload = {
       db: {
-        clients: serializeCollectionRows(completeClientRows), demandes: serializeCollectionRows(demandeRows),
+        clients: serializeCollectionRows(completeClientRows), demandes: serializeCollectionRows(completeDemandeRows),
         demandeLignes: serializeCollectionRows(lineRows), taches: serializeCollectionRows(taskRows),
         objectifsData: serializeCollectionRows(objectiveRows),
         audit: auditRows.map(a => ({

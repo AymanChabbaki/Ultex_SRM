@@ -309,6 +309,7 @@ export default function TableauBordData({ user, isAdminView }) {
                 ? pill('Hier — non traité', 'p-rouge')
                 : (o._hierHorsHoraires ? pill('Hier — hors horaires', 'p-ambre') : pill("Aujourd'hui", 'p-vert')) },
             { key: 'actionsTest', label: 'Actions', render: (_, o) => {
+              if (o._clientFallback) return pill('Demande à relier', 'p-ambre');
               const codeClient = o.codeClientUltex || o.client || '';
               const estTestSheets = (o.sourceSynchronisation === 'Google Sheets' || o.source === 'Google Sheets') && /^L\d+$/.test(codeClient);
               const estTestWorkflow = o.sourceSynchronisation === 'Workflow' && /^\d+$/.test(codeClient);
