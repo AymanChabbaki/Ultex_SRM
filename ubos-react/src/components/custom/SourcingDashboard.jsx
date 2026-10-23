@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock3, FileSearch, Plus, RefreshCcw, Search, Users } from 'lucide-react';
 import Topbar from '../layout/Topbar';
 import { useDB } from '../../context/DBContext';
@@ -7,6 +7,54 @@ import './SourcingWorkspace.css';
 const norm = value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const sourcingType = value => ['Sourcing (B)', 'Négociation (A2)'].includes(value);
 const pageSize = 8;
+
+function businessTimestamp(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return 0;
+    return value > 0 && value < 1e12 ? value * 1000 : value;
+  }
+  const raw = String(value).trim();
+  if (!raw) return 0;
+  if (/^\d+$/.test(raw)) {
+    const numeric = Number(raw);
+    return numeric > 0 && numeric < 1e12 ? numeric * 1000 : numeric;
+  }
+  const frenchDate = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (frenchDate) {
+    const [, day, month, year, hour = '0', minute = '0', second = '0'] = frenchDate;
+    return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)).getTime();
+  }
+  const parsed = Date.parse(raw);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function demandeDate(demande, sourcing) {
+  const values = [
+    demande?.dateHeureReception,
+    demande?.dateDemande,
+    demande?.dateCreation,
+    demande?.createdAt,
+    demande?.ts,
+    sourcing?.dateHeureReception,
+    sourcing?.dateDemande,
+    sourcing?.createdAt,
+    sourcing?.ts,
+  ];
+  for (const value of values) {
+    const timestamp = businessTimestamp(value);
+    if (timestamp) return { value, timestamp };
+  }
+  return { value: '', timestamp: 0 };
+}
+
+function displayDate(value) {
+  const timestamp = businessTimestamp(value);
+  if (!timestamp) return 'Date à préciser';
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  }).format(new Date(timestamp));
+}
 
 function statusClass(value) {
   if (value === 'Validé' || value === 'Clôturé') return 'is-success';
@@ -55,6 +103,7 @@ export default function SourcingDashboard() {
         const moq = supplier?.moq || sourcing?.moq || '—';
         const delay = supplier?.delaiProduction || sourcing?.delai || '—';
         const state = sourcing?.statut || 'À traiter';
+        const created = demandeDate(demande, sourcing);
         return {
           demande,
           sourcing,
@@ -70,10 +119,23 @@ export default function SourcingDashboard() {
           state,
           nextAction: sourcing?.prochaineAction || (state === 'Validé' ? 'Préparer la commande' : state === 'Offre reçue' ? 'Comparer les offres' : 'Poursuivre la recherche'),
           nextDate: sourcing?.echeanceAction || '',
-          timestamp: sourcing?.ts || demande.ts || Date.parse(demande.dateHeureReception || demande.dateDemande || '') || 0,
+          createdDate: created.value,
+          timestamp: created.timestamp,
         };
       });
   }, [db]);
+
+  const newestRecordSignature = useMemo(() => {
+    const newest = allRows.reduce((best, row) => row.timestamp > (best?.timestamp || 0) ? row : best, null);
+    return newest ? `${newest.demande.code}:${newest.timestamp}:${allRows.length}` : `empty:${allRows.length}`;
+  }, [allRows]);
+
+  // A Workflow sync can arrive while the dashboard is already open. Return
+  // to page one only when a genuinely newer demande appears, so the user sees
+  // it immediately instead of remaining on a stale pagination page.
+  useEffect(() => {
+    setPage(1);
+  }, [newestRecordSignature]);
 
   const countries = useMemo(() => [...new Set(allRows.map(row => row.origin).filter(v => v && v !== '—'))].sort(), [allRows]);
   const filtered = useMemo(() => {
@@ -87,9 +149,12 @@ export default function SourcingDashboard() {
         && (!country || row.origin === country);
     });
     return rows.sort((a, b) => {
-      if (sort === 'oldest') return a.timestamp - b.timestamp;
+      const codeA = a.sourcing?.code || a.demande.referenceMetier || a.demande.code;
+      const codeB = b.sourcing?.code || b.demande.referenceMetier || b.demande.code;
+      const codeTieBreak = String(codeB).localeCompare(String(codeA), 'fr', { numeric: true });
+      if (sort === 'oldest') return a.timestamp - b.timestamp || -codeTieBreak;
       if (sort === 'status') return String(a.state).localeCompare(String(b.state), 'fr');
-      return b.timestamp - a.timestamp;
+      return b.timestamp - a.timestamp || codeTieBreak;
     });
   }, [allRows, search, status, country, sort]);
 
@@ -144,11 +209,12 @@ export default function SourcingDashboard() {
 
           <div className="source-table-wrap">
             <table className="source-table">
-              <thead><tr><th>Code / Produit</th><th>Fournisseur</th><th>Origine</th><th>FOB / MOQ</th><th>Délai</th><th>Statut</th><th>Prochaine action</th><th></th></tr></thead>
+              <thead><tr><th>Code / Produit</th><th>Date demande</th><th>Fournisseur</th><th>Origine</th><th>FOB / MOQ</th><th>Délai</th><th>Statut</th><th>Prochaine action</th><th></th></tr></thead>
               <tbody>
                 {rows.map(row => (
                   <tr key={row.demande.code} onDoubleClick={() => openRow(row)}>
                     <td><button className="source-link" onClick={() => openRow(row)}>{row.sourcing?.code || row.demande.referenceMetier || row.demande.code}</button><small>{row.products || 'Produit à préciser'}</small></td>
+                    <td><strong>{displayDate(row.createdDate)}</strong><small>{row.demande.sourceSynchronisation || row.sourcing?.source || 'CRM'}</small></td>
                     <td><strong>{row.supplierName}</strong><small>{row.responsible}</small></td>
                     <td>{row.origin}</td>
                     <td><strong>{row.price != null ? `${Number(row.price).toLocaleString('fr-FR')} ${row.currency}` : '—'}</strong><small>MOQ {row.moq}</small></td>
@@ -158,7 +224,7 @@ export default function SourcingDashboard() {
                     <td><button className="source-icon-button" onClick={() => openRow(row)} aria-label="Ouvrir">•••</button></td>
                   </tr>
                 ))}
-                {!rows.length && <tr><td colSpan="8" className="source-empty">Aucune demande correspondant aux filtres.</td></tr>}
+                {!rows.length && <tr><td colSpan="9" className="source-empty">Aucune demande correspondant aux filtres.</td></tr>}
               </tbody>
             </table>
           </div>
