@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, Check, ChevronRight, ClipboardList, Download, FileUp, Plus, Save,
   Search, Send, UploadCloud, X,
@@ -112,9 +112,12 @@ export default function SourcingProfile({ codeProp }) {
   const [registerOrigin, setRegisterOrigin] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const initializedRoute = useRef(null);
 
   useEffect(() => {
+    if (initializedRoute.current === routeCode) return;
     const { sourcing, demande, client, lines } = context;
+    if (routeCode !== 'nouveau' && !sourcing && !demande) return;
     setClientCode(sourcing?.client || demande?.client || client?.code || '');
     setResponsable(sourcing?.responsable || demande?.responsable || userCourant || 'Sourcing');
     setTypeDemande(sourcing?.typeDemande || demande?.typeDemande || 'Sourcing (B)');
@@ -133,7 +136,8 @@ export default function SourcingProfile({ codeProp }) {
     setNextDate(sourcing?.echeanceAction || '');
     setStep(Math.min(3, Math.max(1, Number(sourcing?.etapeActive || 1))));
     setActiveProduct(0);
-  }, [context, userCourant]);
+    initializedRoute.current = routeCode;
+  }, [context, routeCode, userCourant]);
 
   const client = (db.clients || []).find(item => item.code === clientCode);
   const product = products[activeProduct] || products[0];
