@@ -34,7 +34,7 @@ const lienWhatsAppClient = (numero, client) => {
   if (!telephone) return '';
   const nom = String(client?.nom || '').trim();
   const salutation = nom ? `السلام عليكم السيد/السيدة ${nom}،` : 'السلام عليكم السيد/السيدة،';
-  const message = `${salutation} حنا ULTEx، كنتواصلو معاكم بخصوص الطلب ديالكم.`;
+  const message = `${salutation} حنا ULTEx، كنتواصلو معاكم بخصوص طلب التصدير ديالكم.`;
   return `https://wa.me/${telephone}?text=${encodeURIComponent(message)}`;
 };
 
