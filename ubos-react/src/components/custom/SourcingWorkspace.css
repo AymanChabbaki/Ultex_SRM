@@ -190,7 +190,11 @@
 .source-form-grid.wide-left { grid-template-columns: minmax(0, 2fr) minmax(290px, .8fr); }
 .source-form-card { display: grid; align-content: start; gap: 15px; padding: 23px 25px; }
 .source-form-card.compact { padding: 19px; }
-.source-form-card label { display: grid; gap: 6px; color: #526779; font-size: 10px; font-weight: 700; }
+.source-form-card label { display: grid; gap: 6px; min-width: 0; color: #526779; font-size: 10px; font-weight: 700; }
+.source-form-card select,
+.source-form-card .ref-select { min-width: 0; max-width: 100%; }
+.source-form-card .ref-select-dropdown { width: 100%; overflow-x: hidden; }
+.source-form-card .ref-select-option { overflow-wrap: anywhere; }
 .source-form-card textarea { resize: vertical; }
 .source-fields { display: grid; gap: 14px; }
 .source-fields.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }

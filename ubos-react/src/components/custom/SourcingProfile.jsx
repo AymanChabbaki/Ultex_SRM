@@ -4,6 +4,7 @@ import {
   Search, Send, UploadCloud, X,
 } from 'lucide-react';
 import Topbar from '../layout/Topbar';
+import SearchableSelect from '../common/SearchableSelect';
 import { useDB } from '../../context/DBContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -436,7 +437,7 @@ export default function SourcingProfile({ codeProp }) {
             <section className="source-card source-form-card">
               <div className="source-card-title-row"><div><h2>Identification</h2><p>Informations générales de la demande et des produits.</p></div></div>
               <div className="source-fields three">
-                <label><span>Code client *</span><select value={clientCode} onChange={event => setClientCode(event.target.value)}><option value="">Sélectionner un client</option>{(db.clients || []).map(item => <option key={item.code} value={item.code}>{item.code} · {item.nom || 'Sans nom'}</option>)}</select></label>
+                <label><span>Code client *</span><SearchableSelect id="sourcing-client" options={db.clients || []} value={clientCode} onChange={setClientCode} placeholder="Rechercher un code ou un client…" /></label>
                 <label><span>Nom du client</span><input readOnly value={client?.nom || ''} /></label>
                 <label><span>Responsable *</span><input value={responsable} onChange={event => setResponsable(event.target.value)} /></label>
                 <label><span>Nom du produit *</span><input value={product.nomProduit} onChange={event => updateProduct('nomProduit', event.target.value)} /></label>
