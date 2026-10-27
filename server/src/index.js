@@ -1511,6 +1511,56 @@ app.get('/api/dashboard/data', authMiddleware, async (req, res) => {
   }
 });
 
+// Everything the client page shows, for one client only. Replaces downloading
+// the full demandes / demandeLignes / contacts / documents collections
+// (tens of MB) just to filter them in the browser.
+app.get('/api/clients/:code/context', authMiddleware, async (req, res) => {
+  const code = String(req.params.code || '').trim();
+  if (!code) return res.status(400).json({ error: 'Code client manquant' });
+  try {
+    const clientRows = await prisma.$queryRaw(Prisma.sql`
+      SELECT id, code, data, "createdAt" FROM collection_items
+      WHERE collection = 'clients' AND (code = ${code} OR id = ${code} OR data->>'codeClientUltex' = ${code})
+    `);
+    const codes = [...new Set([code, ...clientRows.flatMap(row => [row.code, row.data?.codeClientUltex])]
+      .map(value => String(value || '').trim()).filter(Boolean))];
+    const rowsWhere = (collection, condition) => prisma.$queryRaw(Prisma.sql`
+      SELECT id, code, data, "createdAt" FROM collection_items WHERE collection = ${collection} AND (${condition})
+    `);
+    const [demandes, contacts, commandes, dossiers] = await Promise.all([
+      rowsWhere('demandes', Prisma.sql`data->>'client' = ANY(${codes}::text[]) OR data->>'codeClientUltex' = ANY(${codes}::text[])`),
+      rowsWhere('contacts', Prisma.sql`data->>'codeClientAssocie' = ANY(${codes}::text[]) OR data->>'client' = ANY(${codes}::text[])`),
+      rowsWhere('commandes', Prisma.sql`data->>'client' = ANY(${codes}::text[])`),
+      rowsWhere('dossiers', Prisma.sql`data->>'client' = ANY(${codes}::text[])`),
+    ]);
+    const demandeCodes = demandes.map(row => row.code).filter(Boolean);
+    const [demandeLignes, documents, audit] = await Promise.all([
+      demandeCodes.length ? rowsWhere('demandeLignes', Prisma.sql`data->>'demande' = ANY(${demandeCodes}::text[])`) : [],
+      rowsWhere('documents', demandeCodes.length
+        ? Prisma.sql`data->>'client' = ANY(${codes}::text[]) OR data->>'demande' = ANY(${demandeCodes}::text[])`
+        : Prisma.sql`data->>'client' = ANY(${codes}::text[])`),
+      prisma.auditLog.findMany({ where: { objet: { in: codes } }, orderBy: { createdAt: 'desc' }, take: 1000 }),
+    ]);
+    res.json({
+      clients: serializeCollectionRows(clientRows),
+      demandes: serializeCollectionRows(demandes),
+      demandeLignes: serializeCollectionRows(demandeLignes),
+      contacts: serializeCollectionRows(contacts),
+      commandes: serializeCollectionRows(commandes),
+      dossiers: serializeCollectionRows(dossiers),
+      documents: serializeCollectionRows(documents),
+      audit: audit.map(a => ({
+        id: a.id, ts: Number(a.ts), date: a.date, heure: a.heure,
+        utilisateur: a.utilisateur, module: a.module, action: a.action,
+        objet: a.objet, champ: a.champ, avant: a.avant, apres: a.apres, dossier: a.dossier
+      })),
+    });
+  } catch (error) {
+    console.error('Client context error:', error);
+    res.status(500).json({ error: 'Chargement de la fiche client impossible' });
+  }
+});
+
 // Loaded only when Data explicitly asks for the lifetime history or one
 // calendar day. Keeping this separate preserves the small, fast operational
 // dashboard payload used on every normal page load.
@@ -1565,8 +1615,22 @@ app.get('/api/dashboard/data/leads', authMiddleware, async (req, res) => {
     END`;
     const dateFilter = scope === 'date' ? Prisma.sql`AND ${calendarDay} = ${requestedDate}` : Prisma.empty;
 
+    // Only the fields the leads table and its "already treated" check read.
+    // Full records made "Voir tous" ship ~37 MB of JSON to the browser.
     const demandeRows = await prisma.$queryRaw(Prisma.sql`
-      SELECT id, code, data, "createdAt" FROM collection_items
+      SELECT id, code, "createdAt", jsonb_strip_nulls(jsonb_build_object(
+        'code', data->'code', 'client', data->'client', 'codeClientUltex', data->'codeClientUltex',
+        'clientNom', data->'clientNom', 'nomClient', data->'nomClient',
+        'sheetSourceData', jsonb_build_object('nom', data->'sheetSourceData'->'nom'),
+        'sourceRecord', jsonb_build_object('nom', data->'sourceRecord'->'nom'),
+        'objectifGeneral', data->'objectifGeneral', 'dateHeureReception', data->'dateHeureReception',
+        'dateDemande', data->'dateDemande', 'source', data->'source', 'sourceSynchronisation', data->'sourceSynchronisation',
+        'statut', data->'statut', 'dataTag', data->'dataTag', 'etatVersion', data->'etatVersion',
+        'actionSuivante', data->'actionSuivante', 'dernierContact', data->'dernierContact', 'dernierSuiviData', data->'dernierSuiviData',
+        'responsableData', data->'responsableData', 'createdManually', data->'createdManually',
+        'created_manually', data->'created_manually', 'ts', data->'ts'
+      )) AS data
+      FROM collection_items
       WHERE collection = 'demandes'
         AND ${demandeAssignment}
         ${dateFilter}
@@ -1580,7 +1644,12 @@ app.get('/api/dashboard/data/leads', authMiddleware, async (req, res) => {
     // One array parameter, not one per code: "Voir tous" can reference tens of
     // thousands of clients, past Postgres's 32767 bind-variable limit.
     const clientRows = clientRefs.length ? await prisma.$queryRaw(Prisma.sql`
-      SELECT id, code, data, "createdAt" FROM collection_items
+      SELECT id, code, "createdAt", jsonb_strip_nulls(jsonb_build_object(
+        'code', data->'code', 'codeClientUltex', data->'codeClientUltex', 'nom', data->'nom',
+        'dataTag', data->'dataTag', 'etatVersion', data->'etatVersion', 'actionSuivante', data->'actionSuivante',
+        'dernierContact', data->'dernierContact', 'dernierSuiviData', data->'dernierSuiviData'
+      )) AS data
+      FROM collection_items
       WHERE collection = 'clients' AND (
         code = ANY(${clientRefs}::text[])
         OR data->>'code' = ANY(${clientRefs}::text[])

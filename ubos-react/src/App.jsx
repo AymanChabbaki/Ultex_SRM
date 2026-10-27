@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DBProvider, useDB } from './context/DBContext';
+import { fetchClientContext } from './services/api';
 import { ToastProvider } from './context/ToastContext';
 import { SecurityProvider } from './context/SecurityContext';
 import Layout from './components/layout/Layout';
@@ -71,20 +72,35 @@ const IMPORT_COLLECTIONS = [
   'dossiers', 'controlesLimex'
 ];
 
-const DataBoundary = ({ collections, children, label = 'Chargement des données…' }) => {
-  const { chargerCollections } = useDB();
-  const collectionKey = [...new Set(collections || [])].sort().join(',');
+const CLIENT_CONTEXT_FALLBACK = ['audit', 'clients', 'commandes', 'contacts', 'demandeLignes', 'demandes', 'documents', 'dossiers'];
+
+const DataBoundary = ({ collections, children, label = 'Chargement des données…', scopedClient }) => {
+  const { chargerCollections, hydraterEnregistrements } = useDB();
+  const collectionKey = [...new Set(collections || [])].sort().join(',') + (scopedClient ? `|client:${scopedClient}` : '');
   const [state, setState] = useState({ key: '', loading: true, error: '' });
 
   useEffect(() => {
     let mounted = true;
-    const names = collectionKey ? collectionKey.split(',') : [];
+    const names = (collections || []).filter(Boolean);
     setState({ key: collectionKey, loading: true, error: '' });
-    chargerCollections(names)
+    // A client page only needs that client's records: fetch them in one
+    // request instead of the full collections, which are tens of MB.
+    const loadScoped = async () => {
+      try {
+        const context = await fetchClientContext(scopedClient);
+        Object.entries(context).forEach(([name, records]) => hydraterEnregistrements(name, records));
+        return chargerCollections(names.filter(name => !(name in context)));
+      } catch (error) {
+        if (error?.status !== 404) throw error;
+        return chargerCollections([...names, ...CLIENT_CONTEXT_FALLBACK]);
+      }
+    };
+    (scopedClient ? loadScoped() : chargerCollections(names))
       .then(() => { if (mounted) setState({ key: collectionKey, loading: false, error: '' }); })
       .catch(error => { if (mounted) setState({ key: collectionKey, loading: false, error: error?.message || 'Chargement impossible' }); });
     return () => { mounted = false; };
-  }, [chargerCollections, collectionKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chargerCollections, hydraterEnregistrements, collectionKey]);
 
   if (state.key !== collectionKey || state.loading) return <div className="panneau"><div className="vide"><b>{label}</b></div></div>;
   if (state.error) return <div className="panneau"><div className="note-verrou">{state.error}</div></div>;
@@ -247,7 +263,11 @@ const Router = () => {
       case 'ficheSuiviLimex': return wrap(<FicheSuiviLimex codeProp={params} code={params} />, ['actionsLimex', 'audit', 'suivisLimex', 'taches']);
       case 'ajouterTache': return wrap(<AjouterTache />, ['taches']);
       case 'ficheTache': return wrap(<FicheTache codeProp={params} code={params} />, ['actionsLimex', 'audit', 'suivisClosing', 'suivisLimex', 'tacheEtapes', 'taches']);
-      case 'ficheClient': return wrap(<FicheClient codeProp={params} code={params} ongletInitial={sousPage} />, ['audit', 'clients', 'commandes', 'contacts', 'demandeLignes', 'demandes', 'documents', 'dossiers', 'sourcings', 'suivisClosing']);
+      case 'ficheClient': return (
+        <DataBoundary key={`${route}:${params || ''}`} collections={['sourcings', 'suivisClosing']} scopedClient={params}>
+          <FicheClient codeProp={params} code={params} ongletInitial={sousPage} />
+        </DataBoundary>
+      );
       case 'ficheDossier': return wrap(<FicheDossier codeProp={params} code={params} />, ['dossiers', 'clients', 'suivisClosing']);
       case 'ficheDemande': return wrap(<FicheDemande codeProp={params} code={params} />, ['audit', 'clients', 'commandes', 'demandeLignes', 'demandeRoutages', 'demandes', 'documents', 'paiements']);
       case 'ficheDemandeLigne': return wrap(<FicheDemandeLigne codeProp={params} code={params} />, ['demandeLignes', 'demandeRoutages', 'demandes', 'produits', 'taches']);

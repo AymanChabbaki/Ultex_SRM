@@ -42,6 +42,30 @@ export async function fetchDB() {
   return await res.json();
 }
 
+// The client page can mount twice in quick succession (session check), so a
+// request for the same client within a few seconds reuses the one in flight.
+const clientContextRequests = new Map();
+
+export function fetchClientContext(code) {
+  const cached = clientContextRequests.get(code);
+  if (cached && Date.now() - cached.startedAt < 5000) return cached.promise;
+  const promise = (async () => {
+    const res = await fetch(`${API_URL}/clients/${encodeURIComponent(code)}/context`, {
+      headers: { ...authHeaders() }
+    });
+    if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+    if (!res.ok) {
+      const error = new Error('Chargement de la fiche client impossible');
+      error.status = res.status;
+      throw error;
+    }
+    return await res.json();
+  })();
+  clientContextRequests.set(code, { promise, startedAt: Date.now() });
+  promise.catch(() => clientContextRequests.delete(code));
+  return promise;
+}
+
 export async function fetchCollectionPage(collection, params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {

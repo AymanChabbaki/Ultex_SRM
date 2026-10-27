@@ -7,7 +7,7 @@ export function serializeCollectionRows(rows = []) {
   return rows.map(item => ({
     ...(item.data && typeof item.data === 'object' ? item.data : {}),
     id: item.id,
-    code: item.code,
+    code: item.code ?? item.data?.code ?? null,
     createdAt: item.createdAt instanceof Date
       ? item.createdAt.toISOString()
       : item.createdAt,
