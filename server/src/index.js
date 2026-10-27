@@ -745,6 +745,51 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+app.post('/api/auth/change-password', authMiddleware, async (req, res) => {
+  const ancien = String(req.body?.ancienMotDePasse || '');
+  const nouveau = String(req.body?.nouveauMotDePasse || '');
+  if (!ancien || nouveau.length < 4) {
+    return res.status(400).json({ error: 'Le nouveau mot de passe est trop court (4 caractères minimum).' });
+  }
+  try {
+    const user = await authPrisma.user.findUnique({ where: { id: req.auth.id } });
+    if (!user || !user.actif) return res.status(404).json({ error: 'Utilisateur introuvable' });
+    const valide = BCRYPT_HASH_RE.test(user.motDePasse)
+      ? bcrypt.compareSync(ancien, user.motDePasse)
+      : user.motDePasse === ancien;
+    if (!valide) {
+      await ecrireJournalSecurite({ action: 'Changement de mot de passe', utilisateur: user.nomComplet, module: 'Sécurité', resultat: 'Échec — mot de passe actuel incorrect', ip: req.ip });
+      return res.status(400).json({ error: 'Mot de passe actuel incorrect.' });
+    }
+    await authPrisma.user.update({ where: { id: user.id }, data: { motDePasse: bcrypt.hashSync(nouveau, 10) } });
+    await ecrireJournalSecurite({ action: 'Changement de mot de passe', utilisateur: user.nomComplet, module: 'Sécurité', resultat: 'Réussi', ip: req.ip });
+    res.json({ status: 'ok' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ error: 'Changement de mot de passe impossible' });
+  }
+});
+
+// Self-service profile: only the user's own display name and job title.
+// Role, services and permissions stay behind the OTP-gated admin routes.
+app.post('/api/auth/profile', authMiddleware, async (req, res) => {
+  const nomComplet = String(req.body?.nomComplet || '').trim().slice(0, 120);
+  const poste = String(req.body?.poste || '').trim().slice(0, 120);
+  if (!nomComplet) return res.status(400).json({ error: 'Le nom complet est obligatoire.' });
+  try {
+    const user = await authPrisma.user.findUnique({ where: { id: req.auth.id } });
+    if (!user || !user.actif) return res.status(404).json({ error: 'Utilisateur introuvable' });
+    await authPrisma.user.update({
+      where: { id: user.id },
+      data: { nomComplet, modulesAutorises: { ...(user.modulesAutorises || {}), poste } }
+    });
+    res.json({ status: 'ok' });
+  } catch (error) {
+    console.error('Profile update error:', error);
+    res.status(500).json({ error: 'Mise à jour du profil impossible' });
+  }
+});
+
 // Rehydrate the current session from a stored token, without resending the
 // password — used on app load to restore who's logged in.
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
@@ -901,7 +946,6 @@ app.get('/api/db', authMiddleware, async (req, res) => {
       code: u.code,
       identifiant: u.identifiant,
       nomComplet: u.nomComplet,
-      motDePasse: u.motDePasse,
       role: u.role,
       poste: u.modulesAutorises?.poste || '',
       departement: u.modulesAutorises?.departement || u.service,
@@ -1913,7 +1957,8 @@ app.post('/api/db/patch', authMiddleware, async (req, res) => {
 
   const partialState = {};
   if (payload.seq && typeof payload.seq === 'object' && !Array.isArray(payload.seq)) partialState.seq = payload.seq;
-  if (Array.isArray(payload.utilisateurs)) partialState.utilisateurs = payload.utilisateurs;
+  // Users are only written through the OTP-gated /api/security/users routes;
+  // accepting them here let any logged-in user grant themselves Direction.
   if (Array.isArray(payload.audit)) partialState.audit = payload.audit;
   if (Array.isArray(payload.notifs)) partialState.notifs = payload.notifs;
   Object.entries(collections).forEach(([col, items]) => { partialState[col] = items; });
@@ -1936,7 +1981,9 @@ app.post('/api/db/sync', authMiddleware, async (req, res) => {
   const fullState = req.body;
   if (!fullState) return res.status(400).json({ error: 'Données invalides' });
   try {
-    await synchroniserEtatComplet(fullState);
+    // Same rule as /api/db/patch: users only change through the OTP-gated routes.
+    const { utilisateurs: _ignored, ...withoutUsers } = fullState;
+    await synchroniserEtatComplet(withoutUsers);
     res.json({ status: 'success', message: 'Synchro PostgreSQL réussie' });
   } catch (error) {
     console.error('Batch sync error:', error);
