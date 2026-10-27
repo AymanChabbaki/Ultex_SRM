@@ -470,6 +470,8 @@ td .acts{display:flex;gap:6px;flex-wrap:wrap}
 .filter-table-table th{vertical-align:top}
 .filter-table-table .table-cell-truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .filter-table-table .table-cell-truncate>a,.filter-table-table .table-cell-truncate>span:not(.pill){display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;white-space:nowrap}
+.filter-table-table .table-cell-wrap{overflow:visible;text-overflow:clip;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45;vertical-align:top}
+.filter-table-table .table-cell-wrap>a,.filter-table-table .table-cell-wrap>span:not(.pill){display:inline;max-width:none;overflow:visible;text-overflow:clip;white-space:pre-wrap;overflow-wrap:anywhere}
 .filter-table-table .table-cell-truncate>.audit-notes-full{display:block;max-width:100%;overflow:visible;text-overflow:clip;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45}
 .filter-table-table .table-actions-cell{overflow:visible;white-space:normal}
 .filter-table-table .table-actions-cell .btn{margin:2px 4px 2px 0}
@@ -895,7 +897,7 @@ h3.titre-sec{font-family:'Cormorant Garamond',serif;font-weight:700;font-size:21
 .kv > div{display:flex;flex-direction:column;gap:4px;padding:12px 18px;background:var(--carte);font-size:13.5px;color:var(--encre);transition:background .12s ease}
 .kv > div:hover{background:#FBFCFA}
 .kv > div > label{font-size:10.5px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:.06em}
-.kv > div > span{font-weight:500}
+.kv > div > span{min-width:0;font-weight:500;white-space:pre-wrap;overflow-wrap:anywhere}
 a.lien{color:var(--vert);font-weight:600;text-decoration:none;border-bottom:1px dotted var(--or)}
 a.lien:hover{color:var(--or)}
 td.code a{color:inherit;text-decoration:none;border-bottom:1px dotted var(--or)}

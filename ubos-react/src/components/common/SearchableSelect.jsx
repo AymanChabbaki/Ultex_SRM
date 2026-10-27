@@ -5,10 +5,17 @@ import React, { useState, useRef, useEffect } from 'react';
  * (clients, dossiers, fournisseurs…). Used by FormField's "ref" field type —
  * fixing it here fixes every ref dropdown in the app at once.
  */
-export default function SearchableSelect({ id, options, value, onChange, labelKey = 'nom', placeholder, disabled }) {
+export default function SearchableSelect({ id, options, value, onChange, onQueryChange, loading, labelKey = 'nom', placeholder, disabled }) {
   const list = options || [];
   const selected = list.find(o => o.code === value) || null;
-  const [query, setQuery] = useState('');
+  const [query, setQueryState] = useState('');
+  const setQuery = (next) => {
+    setQueryState(next);
+    if (onQueryChange) onQueryChange(next);
+  };
+  // With onQueryChange the caller searches the server, which also matches
+  // fields not shown in the label (phone, email...), so don't re-filter here.
+  const serverSearch = typeof onQueryChange === 'function';
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
@@ -25,7 +32,7 @@ export default function SearchableSelect({ id, options, value, onChange, labelKe
 
   const displayLabel = (o) => (o[labelKey] || o.code) + ' · ' + o.code;
 
-  const filtered = query.trim()
+  const filtered = query.trim() && !serverSearch
     ? list.filter(o => displayLabel(o).toLowerCase().includes(query.trim().toLowerCase()))
     : list;
 
@@ -71,7 +78,7 @@ export default function SearchableSelect({ id, options, value, onChange, labelKe
               {displayLabel(o)}
             </div>
           )) : (
-            <div className="ref-select-empty">Aucun résultat.</div>
+            <div className="ref-select-empty">{loading ? 'Recherche…' : 'Aucun résultat.'}</div>
           )}
           {filtered.length > 50 && (
             <div className="ref-select-empty">{filtered.length - 50} résultat(s) de plus — affinez la recherche.</div>

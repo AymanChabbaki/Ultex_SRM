@@ -8,6 +8,8 @@ import { useToast } from './ToastContext';
 const DBContext = createContext();
 
 const TRACKED_ARRAYS = [...new Set([...COLLS, 'audit', 'notifs'])];
+const BULK_PAGE_SIZE = 1000;
+const PARALLEL_PAGE_REQUESTS = 4;
 
 function recordKey(record) {
   return String(record?.id || record?.code || '');
@@ -150,18 +152,33 @@ export const DBProvider = ({ children }) => {
       let pending = existing?.status === 'loading' ? existing.promise : null;
       if (!pending) {
         pending = (async () => {
-          const records = [];
-          let page = 1;
-          let totalPages = 1;
-          do {
-            const result = name === 'audit'
-              ? await fetchAuditPage(page, 500)
-              : await fetchCollectionPage(name, { page, pageSize: 500 });
-            records.push(...(result.items || []));
-            totalPages = Math.max(1, Number(result.totalPages || 1));
-            page += 1;
-          } while (page <= totalPages);
-          return records;
+          // Page 1 tells us the page count; the rest load a few at a time in
+          // parallel instead of ~35 sequential round trips for a big collection.
+          const pageSize = name === 'audit' ? 500 : BULK_PAGE_SIZE;
+          const fetchPage = page => (name === 'audit'
+            ? fetchAuditPage(page, pageSize)
+            : fetchCollectionPage(name, { page, pageSize }));
+          const first = await fetchPage(1);
+          const totalPages = Math.max(1, Number(first.totalPages || 1));
+          const pages = new Array(totalPages);
+          pages[0] = first.items || [];
+          let nextPage = 2;
+          const worker = async () => {
+            while (nextPage <= totalPages) {
+              const page = nextPage++;
+              pages[page - 1] = (await fetchPage(page)).items || [];
+            }
+          };
+          await Promise.all(Array.from({ length: Math.min(PARALLEL_PAGE_REQUESTS, totalPages - 1) }, worker));
+          // Offset pages can overlap if records are added mid-load.
+          const seen = new Set();
+          return pages.flat().filter(record => {
+            const id = recordKey(record);
+            if (!id) return true;
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          });
         })();
         collectionLoadsRef.current.set(name, { status: 'loading', promise: pending });
       }

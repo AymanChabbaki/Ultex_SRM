@@ -964,7 +964,7 @@ app.get('/api/collections/:collection', authMiddleware, async (req, res) => {
   }
 
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
-  const pageSize = Math.min(500, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 25));
+  const pageSize = Math.min(1000, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 25));
   const q = String(req.query.q || '').trim().slice(0, 200);
   const codeGroup = String(req.query.codeGroup || '').toUpperCase();
   const filterKey = String(req.query.filterKey || '');

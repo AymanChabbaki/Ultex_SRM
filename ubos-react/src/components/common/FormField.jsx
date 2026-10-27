@@ -3,6 +3,9 @@ import { useDB } from '../../context/DBContext';
 import { INCOTERMS_2020, PAYS_MONDE, PORTS_MONDE, AEROPORTS_MONDE } from '../../data/constants';
 import SearchableSelect from './SearchableSelect';
 import { localDateTime } from '../../utils/dataFollowup';
+import { fetchCollectionPage } from '../../services/api';
+
+const LARGE_REF_COLLECTIONS = new Set(['clients', 'demandes', 'demandeLignes', 'contacts']);
 
 const BulleAide = ({ texte }) => {
   if (!texte) return null;
@@ -14,7 +17,7 @@ const BulleAide = ({ texte }) => {
 };
 
 const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, options, formData = {} }) => {
-  const { db, chargerCollections } = useDB();
+  const { db, chargerCollections, hydraterEnregistrements } = useDB();
 
   // Normalize field definition object
   const fieldDef = f || fieldConfig || {
@@ -24,16 +27,56 @@ const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, opt
     opts: options || []
   };
 
-  // Pages only load the collections their route lists, so a ref field to
-  // another collection (e.g. fournisseurs from a client fiche) would show an
-  // empty list. chargerCollections is cached and deduplicated.
-  const refColl = ['ref', 'multiref'].includes(fieldDef.t) ? fieldDef.coll : null;
-  useEffect(() => {
-    if (refColl && chargerCollections) chargerCollections([refColl]).catch(() => {});
-  }, [refColl, chargerCollections]);
-
   const val = value ?? '';
   const [refSearch, setRefSearch] = useState('');
+
+  // Small referenced collections are loaded whole (cached, deduplicated).
+  // Large ones are searched on the server as the user types — loading 17k
+  // clients just to fill one dropdown made every such modal slow.
+  const refColl = ['ref', 'multiref'].includes(fieldDef.t) ? fieldDef.coll : null;
+  const remoteRef = fieldDef.t === 'ref' && LARGE_REF_COLLECTIONS.has(refColl);
+  const parentValue = fieldDef.dependsOn ? String(formData[fieldDef.dependsOn] || '') : '';
+  const [remoteQuery, setRemoteQuery] = useState('');
+  const [remoteItems, setRemoteItems] = useState([]);
+  const [remoteLoading, setRemoteLoading] = useState(false);
+
+  useEffect(() => {
+    if (refColl && !remoteRef && chargerCollections) chargerCollections([refColl]).catch(() => {});
+  }, [refColl, remoteRef, chargerCollections]);
+
+  useEffect(() => {
+    if (!remoteRef) return undefined;
+    let cancelled = false;
+    const typed = remoteQuery.trim();
+    const q = typed || parentValue;
+    const timer = window.setTimeout(async () => {
+      setRemoteLoading(true);
+      try {
+        const result = await fetchCollectionPage(refColl, { q, pageSize: typed ? 30 : (parentValue ? 100 : 30) });
+        if (!cancelled) setRemoteItems(result.items || []);
+      } catch {
+        if (!cancelled) setRemoteItems([]);
+      } finally {
+        if (!cancelled) setRemoteLoading(false);
+      }
+    }, typed ? 250 : 0);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [remoteRef, refColl, remoteQuery, parentValue]);
+
+  // The selected record must be in db so its label shows and form logic
+  // (dependent fields, apresChangement) can read it.
+  const selectedMissing = remoteRef && val && !(db?.[refColl] || []).some(item => item.code === val);
+  useEffect(() => {
+    if (!selectedMissing) return undefined;
+    let cancelled = false;
+    fetchCollectionPage(refColl, { q: val, pageSize: 20 })
+      .then(result => {
+        const match = (result.items || []).filter(item => item.code === val);
+        if (!cancelled && match.length) hydraterEnregistrements(refColl, match);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedMissing, refColl, val, hydraterEnregistrements]);
 
   const handleChange = (e) => {
     const v = e && e.target !== undefined ? e.target.value : e;
@@ -143,16 +186,32 @@ const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, opt
       </div>
     );
   } else if (fieldType === "ref") {
-    const allOptions = db && fieldDef.coll && db[fieldDef.coll] ? db[fieldDef.coll] : [];
+    const local = db && fieldDef.coll && db[fieldDef.coll] ? db[fieldDef.coll] : [];
+    let allOptions = local;
+    if (remoteRef) {
+      const selectedRecord = local.find(item => item.code === val);
+      const seen = new Set();
+      allOptions = [...(selectedRecord ? [selectedRecord] : []), ...remoteItems]
+        .filter(item => item?.code && !seen.has(item.code) && seen.add(item.code));
+    }
     const options = typeof fieldDef.filterOptions === 'function'
       ? allOptions.filter(item => fieldDef.filterOptions(item, formData, db))
       : allOptions;
+    const handleRefChange = (code) => {
+      if (remoteRef && code) {
+        const record = remoteItems.find(item => item.code === code);
+        if (record) hydraterEnregistrements(refColl, [record]);
+      }
+      handleChange(code);
+    };
     inputEl = (
       <SearchableSelect
         id={`f_${fieldDef.k}`}
         options={options}
         value={val}
-        onChange={handleChange}
+        onChange={handleRefChange}
+        onQueryChange={remoteRef ? setRemoteQuery : undefined}
+        loading={remoteRef && remoteLoading}
         labelKey={fieldDef.cle}
         placeholder={`Rechercher ${fieldDef.l ? fieldDef.l.toLowerCase() : 'un élément'}…`}
         disabled={disabled}

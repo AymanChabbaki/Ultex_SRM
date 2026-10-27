@@ -78,6 +78,7 @@ export default function FilterTable({
   const headerRow = head && flatten(head.props.children).find(row => row.type === 'tr');
   const headers = headerRow ? flatten(headerRow.props.children) : [];
   const actionColumns = new Set(headers.map((header, index) => (/^(Actions?|Fichier)$/i.test(text(header).trim()) ? index : -1)).filter(index => index >= 0));
+  const wrapColumns = new Set(headers.map((header, index) => (/^(Notes?|Produit|Besoin\s*\/\s*produit)$/i.test(text(header).trim()) ? index : -1)).filter(index => index >= 0));
   const valueAt = (row, index) => text(flatten(row.props.children)[index]);
 
   useEffect(() => {
@@ -125,7 +126,7 @@ export default function FilterTable({
   const decorateRow = row => React.cloneElement(row, {}, flatten(row.props.children).map((cell, column) => {
     if (!React.isValidElement(cell)) return cell;
     const fullText = text(cell).replace(/\s+/g, ' ').trim();
-    const className = [cell.props.className, actionColumns.has(column) ? 'table-actions-cell' : 'table-cell-truncate'].filter(Boolean).join(' ');
+    const className = [cell.props.className, actionColumns.has(column) ? 'table-actions-cell' : wrapColumns.has(column) ? 'table-cell-wrap' : 'table-cell-truncate'].filter(Boolean).join(' ');
     return React.cloneElement(cell, {
       className,
       title: cell.props.title || (!actionColumns.has(column) && fullText.length > 24 ? fullText : undefined),
@@ -156,7 +157,7 @@ export default function FilterTable({
       {flatten(section.props.children).map((row, index) => index !== 0 ? row : React.cloneElement(row, { key: index }, headers.map((header, column) => {
         const label = text(header);
         const enabled = !/^(Actions?|Fichier)$/i.test(label.trim()) && !header.props.colSpan;
-        return React.cloneElement(header, { key: column, title: header.props.title || label }, <>
+        return React.cloneElement(header, { key: column, title: header.props.title || label, style: wrapColumns.has(column) ? { ...header.props.style, width: header.props.style?.width || 250 } : header.props.style }, <>
           {enabled ? <><span className="table-print-label">{header.props.children}</span><button type="button" className="table-sort-button" onClick={() => {
             const nextSort = { index: column, direction: sort.index === column ? -sort.direction : 1 };
             if (remoteSort) onSortChange(nextSort);
