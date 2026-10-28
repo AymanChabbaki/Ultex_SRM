@@ -38,7 +38,7 @@ contacts:{label:"Contacts", ic:Contact2, grp:"Commercial", coll:"contacts", pfx:
  champs:[
   {k:"nom",l:"Nom",t:"text",req:1,aide:"Toute personne qui contacte ULTEx est enregistrée ici de façon permanente, qu'elle devienne cliente ou non."},
   {k:"telephone",l:"Téléphone",t:"text"},{k:"whatsapp",l:"WhatsApp",t:"text"},{k:"email",l:"E-mail",t:"text"},
-  {k:"source",l:"Source du contact",t:"select",opts:["Meta","Google","YouTube","WhatsApp","Téléphone","Site web","Référence","Salon","Autre"]},
+  {k:"source",l:"Source du contact",t:"select",opts:["Meta","Google","funnel hamza","YouTube","WhatsApp","Téléphone","Site web","Référence","Salon","Autre"]},
   {k:"remarque",l:"Remarque",t:"textarea",large:1},
   {k:"statut",l:"Statut",t:"select",opts:["Nouveau","En échange","Sans suite","Converti en client"]}
  ],
@@ -88,7 +88,7 @@ clients:{label:"Clients", ic:Building2, grp:"Commercial", coll:"clients", pfx:"C
   {k:"frequenceAchat",l:"Fréquence d'achat",t:"select",opts:["Ponctuelle","Mensuelle","Trimestrielle","Semestrielle","Annuelle","Irrégulière"],groupe:"Profil commercial"},
   {k:"budgetMoyen",l:"Budget moyen par commande (MAD)",t:"number",groupe:"Profil commercial"},
   {k:"urgence",l:"Urgence habituelle",t:"select",opts:["Faible","Normale","Élevée","Urgente"],groupe:"Profil commercial"},
-  {k:"sourcePremierContact",l:"Source du premier contact",t:"select",opts:["Meta","Google","YouTube","WhatsApp","Téléphone","Site web","Référence","Salon","Autre"],groupe:"Profil commercial"},
+  {k:"sourcePremierContact",l:"Source du premier contact",t:"select",opts:["Meta","Google","funnel hamza","YouTube","WhatsApp","Téléphone","Site web","Référence","Salon","Autre"],groupe:"Profil commercial"},
   {k:"datePremierContact",l:"Date du premier contact",t:"date",groupe:"Profil commercial"},
   // Profil import -- "3. Profil import"
   {k:"niveauImport",l:"Niveau import",t:"select",opts:["Débutant","Intermédiaire","Expérimenté","Expert"],groupe:"Profil import"},
@@ -165,7 +165,7 @@ demandes:{label:"Demandes", ic:ClipboardEdit, grp:"Commercial", coll:"demandes",
   {k:"dateHeureReception",l:"Date et heure de réception",t:"text",aide:"Format libre si l'heure exacte est connue, ex. 05/08/2026 14:30.",groupe:"Client & origine"},
   {k:"responsableData",l:"Responsable Data",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB),groupe:"Client & origine"},
   {k:"responsable",l:"Responsable de la demande",t:"select",opts:(DB)=>PERS_ET_SERVICES(DB),req:1,groupe:"Client & origine"},
-  {k:"source",l:"Source",t:"select",opts:["Meta","Google","YouTube","WhatsApp","Téléphone","Site web","Référence","Salon","Autre"],groupe:"Client & origine"},
+  {k:"source",l:"Source",t:"select",opts:["Meta","Google","funnel hamza","YouTube","WhatsApp","Téléphone","Site web","Référence","Salon","Autre"],groupe:"Client & origine"},
   {k:"canalReception",l:"Canal de réception",t:"select",opts:CANAUX_RECEPTION_DEMANDE,groupe:"Client & origine"},
   {k:"typeDemande",l:"Type de demande (ULTEX)",t:"select",opts:["Sourcing (B)","Proforma (A1)","Négociation (A2)"],groupe:"Projet & besoin"},
   {k:"sensOperation",l:"Sens de l'opération",t:"select",opts:["Import","Export","Accompagnement"],groupe:"Projet & besoin"},

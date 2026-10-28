@@ -178,12 +178,21 @@ async function createItem(tx, collection, prefix, values, minimum) {
 
 export async function syncLLead(prisma, body) {
   const lead = validateSheetLead(body);
+  const leadSource = lead.sheetFormat === 'funnel_hamza' ? 'funnel hamza' : 'Google';
   return prisma.$transaction(async tx => {
     // PostgreSQL lock is shared across server processes and held until commit.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(6912, 2026)`;
     const previous = await tx.collectionItem.findFirst({ where: bySource('demandes', lead.sheetLeadId) });
     if (previous) {
-      return { status: 'ok', reused: true, client: { code: previous.data.client }, demande: { code: previous.code } };
+      if (lead.sheetFormat === 'funnel_hamza' && previous.data.source !== leadSource) {
+        await tx.collectionItem.update({
+          where: { collection_id: { collection: 'demandes', id: previous.id } },
+          data: { data: { ...previous.data, source: leadSource,
+            sheetSourceData: { ...previous.data.sheetSourceData, sheetFormat: lead.sheetFormat } } },
+        });
+      }
+      return { status: 'ok', reused: true, source: leadSource,
+        client: { code: previous.data.client }, demande: { code: previous.code } };
     }
 
     const clients = await tx.collectionItem.findMany({ where: { collection: 'clients' } });
@@ -194,6 +203,7 @@ export async function syncLLead(prisma, body) {
       client = await createItem(tx, 'clients', 'L', {
         nom: lead.nom, telephone: lead.telephone, email: lead.email, societe: lead.societe,
         pays: lead.pays, segment: 'Prospect', sourceDonnees: 'Google Sheets',
+        ...(lead.sheetFormat === 'funnel_hamza' ? { sourcePremierContact: leadSource } : {}),
         datePremierContact: date, dateDerniereDemande: date, dateEntreeData: date,
         nbRelances: 0, dataTag: '', sheetLeadId: lead.sheetLeadId,
       }, 6912);
@@ -219,6 +229,7 @@ export async function syncLLead(prisma, body) {
     if (!contact) contact = await createItem(tx, 'contacts', 'CT', {
       nom: lead.nom, telephone: lead.telephone, email: lead.email,
       typeContact: 'Client', codeClientAssocie: client.code, sourceDonnees: 'Google Sheets',
+      source: leadSource,
     });
 
     const labels = { societe: 'Société', pays: 'Pays', volumeImportation: "Volume d’importation",
@@ -227,7 +238,8 @@ export async function syncLLead(prisma, body) {
     const demande = await createItem(tx, 'demandes', 'DMD', {
       sheetLeadId: lead.sheetLeadId, client: client.code, codeClientUltex: client.code,
       dateDemande: date, dateHeureReception: lead.dateReception,
-      source: 'Google', canalReception: 'Google Sheets', sourceSynchronisation: 'Google Sheets',
+      source: leadSource,
+      canalReception: 'Google Sheets', sourceSynchronisation: 'Google Sheets',
       createdManually: false, responsableData: 'Data', objectifGeneral: lead.produit,
       statut: 'Nouvelle', urgence: 'Normale', remarqueGenerale: notes,
       sheetSourceData: lead,
@@ -236,7 +248,8 @@ export async function syncLLead(prisma, body) {
       sheetLeadId: lead.sheetLeadId, demande: demande.code, referenceMetier: `P1-${client.code}`,
       nomProduit: lead.produit, statut: 'Brouillon', sourceSynchronisation: 'Google Sheets', ts: Date.now(),
     });
-    return { status: 'ok', reused: false, client: { code: client.code }, contact: { code: contact.code }, demande: { code: demande.code } };
+    return { status: 'ok', reused: false, source: leadSource,
+      client: { code: client.code }, contact: { code: contact.code }, demande: { code: demande.code } };
   }, { maxWait: 15000, timeout: 30000 });
 }
 

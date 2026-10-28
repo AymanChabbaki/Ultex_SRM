@@ -297,7 +297,7 @@ export default function TableauBordData({ user, isAdminView }) {
             { key: '_clientNomAffiche', label: 'Nom du client' },
             { key: 'objectifGeneral', label: 'Besoin / produit' },
             { key: 'dateHeureReception', label: 'Reçu le (GMT)', render: (v, o) => formatGMTDateTime(v || o.dateDemande) || '—' },
-            { key: 'sourceSynchronisation', label: 'Source', render: (v, o) => pill(v || o.source || '—', 'p-gris') },
+            { key: 'sourceSynchronisation', label: 'Source', render: (v, o) => pill(o.source === 'funnel hamza' ? o.source : (v || o.source || '—'), 'p-gris') },
             { key: '_dataTagAffiche', label: 'Data Tag', render: (v, o) => v ? pill((o._etatVersionAffiche ? 'V' + o._etatVersionAffiche + ' · ' : '') + v, 'p-bleu') : '—' },
             { key: 'statut', label: 'État', render: (v) => pill(v || 'Nouvelle', 'p-gris') },
             { key: '_retardTraitement', label: 'Alerte', render: (v, o) => o._traite
