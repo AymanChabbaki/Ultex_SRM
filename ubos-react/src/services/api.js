@@ -372,6 +372,26 @@ export async function loginBackend(identifiant, motDePasse) {
   throw new Error(err.error || 'Identifiants invalides');
 }
 
+async function postAuthAction(path, body, fallbackError) {
+  const res = await fetch(`${API_URL}/auth/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || fallbackError);
+  return data;
+}
+
+export function changerMonMotDePasse(ancienMotDePasse, nouveauMotDePasse) {
+  return postAuthAction('change-password', { ancienMotDePasse, nouveauMotDePasse }, 'Changement de mot de passe impossible');
+}
+
+export function mettreAJourMonProfil(nomComplet, poste) {
+  return postAuthAction('profile', { nomComplet, poste }, 'Mise à jour du profil impossible');
+}
+
 export async function parsePdfBackend(base64) {
   try {
     const res = await fetch(`${API_URL}/ocr/pdf`, {

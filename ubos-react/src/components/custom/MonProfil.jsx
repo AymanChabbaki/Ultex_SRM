@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import Topbar from '../layout/Topbar';
 import { pill } from '../../utils/format';
-import { hashPassword, verifyPassword } from '../../utils/passwordHash';
+import { changerMonMotDePasse, mettreAJourMonProfil } from '../../services/api';
 import { renommerUtilisateur } from '../../data/db';
 import { EyeIcon, EyeOffIcon } from '../common/Icons';
 
@@ -31,9 +31,15 @@ export default function MonProfil() {
     );
   }
 
-  const handleEnregistrerIdentite = () => {
+  const handleEnregistrerIdentite = async () => {
     const nom = nomComplet.trim();
     if (!nom) { toast('Le nom complet est obligatoire.'); return; }
+    try {
+      await mettreAJourMonProfil(nom, poste);
+    } catch (error) {
+      toast(error.message);
+      return;
+    }
 
     let nextDb = db;
     let renameCount = 0;
@@ -52,13 +58,17 @@ export default function MonProfil() {
     toast(renameCount > 0 ? `Profil mis à jour — ${renameCount} référence(s) mises à jour dans l'application.` : 'Profil mis à jour.');
   };
 
-  const handleChangerMotDePasse = () => {
+  const handleChangerMotDePasse = async () => {
     if (!ancienMdp || !nouveauMdp || !confirmMdp) { toast('Tous les champs mot de passe sont obligatoires.'); return; }
-    if (!verifyPassword(ancienMdp, moi.motDePasse)) { toast('Mot de passe actuel incorrect.'); return; }
     if (nouveauMdp !== confirmMdp) { toast('La confirmation ne correspond pas au nouveau mot de passe.'); return; }
     if (nouveauMdp.length < 4) { toast('Le nouveau mot de passe est trop court (4 caractères minimum).'); return; }
-
-    updateDB({ ...db, utilisateurs: (db.utilisateurs || []).map(u => u.code === moi.code ? { ...u, motDePasse: hashPassword(nouveauMdp) } : u) });
+    // Verified and stored by the server — the browser no longer receives password hashes.
+    try {
+      await changerMonMotDePasse(ancienMdp, nouveauMdp);
+    } catch (error) {
+      toast(error.message);
+      return;
+    }
     audit('Utilisateurs', 'Changement de mot de passe', moi.code, 'motDePasse', '—', 'Modifié par l\'utilisateur');
     toast('Mot de passe modifié.');
     setAncienMdp(''); setNouveauMdp(''); setConfirmMdp('');
