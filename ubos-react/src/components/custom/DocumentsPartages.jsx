@@ -3,9 +3,13 @@ import { useAuth } from '../../context/AuthContext';
 import { useDB } from '../../context/DBContext';
 import { useToast } from '../../context/ToastContext';
 import DataTable from '../common/DataTable';
+import FormField from '../common/FormField';
 import Topbar from '../layout/Topbar';
-import { categorieDepuisFichier, lireFichierDataUrl } from '../../utils/fileData';
+import { lireFichierDataUrl } from '../../utils/fileData';
 import { pill } from '../../utils/format';
+import { CATEGORIES_DOCUMENT } from '../../data/constants';
+
+const CHAMP_CLIENT = { k: 'client', l: 'Client', t: 'ref', coll: 'clients', cle: 'nom' };
 
 export default function DocumentsPartages() {
   const { db, updateDB, genCode, audit, notifier } = useDB();
@@ -21,8 +25,12 @@ export default function DocumentsPartages() {
     return [...valeurs].sort();
   }, [db.utilisateurs, estDirection, servicesUtilisateur]);
   const [serviceCible, setServiceCible] = useState(servicesUtilisateur[0] || 'Commercial');
+  const [clientCode, setClientCode] = useState('');
+  const [typeDocument, setTypeDocument] = useState('');
   const [commentaire, setCommentaire] = useState('');
   const [uploadEnCours, setUploadEnCours] = useState(false);
+  const pretAAjouter = Boolean(clientCode && typeDocument);
+  const clientChoisi = (db.clients || []).find(client => client.code === clientCode);
 
   const documents = (db.documents || [])
     .filter(document => document.partageService && (estDirection() || servicesUtilisateur.includes(document.servicePartage)))
@@ -32,12 +40,19 @@ export default function DocumentsPartages() {
     const fichiers = [...(event.target.files || [])];
     event.target.value = '';
     if (!fichiers.length) return;
+    if (!pretAAjouter) {
+      toast('Choisissez le client et le type de document avant d’ajouter un fichier.');
+      return;
+    }
     setUploadEnCours(true);
     try {
       const ajoutes = await Promise.all(fichiers.map(async fichier => ({
         code: genCode('DOC'),
         nom: fichier.name,
-        type: categorieDepuisFichier(fichier),
+        type: typeDocument,
+        client: clientCode,
+        // Kept on the document so the list shows the name without loading every client.
+        clientNom: clientChoisi?.nom || '',
         typeFichier: fichier.type || 'Fichier',
         fichier: await lireFichierDataUrl(fichier),
         taille: fichier.size,
@@ -52,7 +67,7 @@ export default function DocumentsPartages() {
         ts: Date.now(),
       })));
       updateDB({ ...db, documents: [...ajoutes, ...(db.documents || [])] });
-      ajoutes.forEach(document => audit('Documents partagés', 'Ajout', document.code, 'service', '—', `${serviceCible} · ${document.nom}`));
+      ajoutes.forEach(document => audit('Documents partagés', 'Ajout', document.code, 'client', '—', `${clientCode} · ${typeDocument} · ${document.nom} → ${serviceCible}`));
 
       const destinataires = (db.utilisateurs || []).filter(utilisateur =>
         utilisateur.actif && utilisateur.nomComplet !== userCourant &&
@@ -60,11 +75,11 @@ export default function DocumentsPartages() {
       );
       destinataires.forEach(utilisateur => notifier(
         utilisateur.nomComplet,
-        `${userCourant} a partagé ${ajoutes.length} nouveau(x) document(s) avec le service ${serviceCible}.\nLien: #documentsPartages`,
+        `${userCourant} a ajouté ${ajoutes.length} document(s) « ${typeDocument} » pour le client ${clientCode}${clientChoisi?.nom ? ` (${clientChoisi.nom})` : ''}.\nLien: #documentsPartages`,
         'Documents partagés'
       ));
       setCommentaire('');
-      toast(`${ajoutes.length} document(s) partagé(s) avec ${serviceCible}.`);
+      toast(`${ajoutes.length} document(s) ajouté(s) au client ${clientCode}.`);
     } catch (error) {
       toast(error.message || 'Impossible de partager les documents.');
     } finally {
@@ -74,12 +89,20 @@ export default function DocumentsPartages() {
 
   return (
     <>
-      <Topbar titre="Documents partagés" />
+      <Topbar titre="Documents clients" />
       <div className="panneau" style={{padding:'16px', marginBottom:'14px'}}>
-        <h4>Partager avec mon service</h4>
-        <div style={{display:'grid', gridTemplateColumns:'minmax(180px, 280px) minmax(240px, 1fr)', gap:'12px', alignItems:'end'}}>
+        <h4>Ajouter un document client</h4>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:'12px', alignItems:'end'}}>
+          <FormField fieldConfig={{ ...CHAMP_CLIENT, l: 'Client *' }} value={clientCode} onChange={setClientCode} />
           <div className="champ">
-            <label>Service destinataire</label>
+            <label>Type de document *</label>
+            <select value={typeDocument} onChange={event => setTypeDocument(event.target.value)}>
+              <option value="">— Choisir —</option>
+              {CATEGORIES_DOCUMENT.map(categorie => <option key={categorie} value={categorie}>{categorie}</option>)}
+            </select>
+          </div>
+          <div className="champ">
+            <label>Service à notifier</label>
             <select value={serviceCible} onChange={event => setServiceCible(event.target.value)}>
               {servicesDisponibles.map(service => <option key={service} value={service}>{service}</option>)}
             </select>
@@ -90,18 +113,26 @@ export default function DocumentsPartages() {
           </div>
         </div>
         {peut('ajouter') && (
-          <label className="btn or" style={{display:'inline-flex', marginTop:'12px', cursor:uploadEnCours ? 'wait' : 'pointer'}}>
-            {uploadEnCours ? 'Partage en cours…' : '+ Ajouter et partager des fichiers'}
-            <input type="file" multiple onChange={handleUpload} disabled={uploadEnCours} style={{display:'none'}} />
+          <label
+            className={`btn or ${pretAAjouter ? '' : 'desactive'}`}
+            title={pretAAjouter ? '' : 'Choisissez d’abord le client et le type de document'}
+            style={{display:'inline-flex', marginTop:'12px', cursor: uploadEnCours ? 'wait' : pretAAjouter ? 'pointer' : 'not-allowed', opacity: pretAAjouter ? 1 : 0.55}}
+          >
+            {uploadEnCours ? 'Ajout en cours…' : '+ Ajouter des fichiers'}
+            <input type="file" multiple onChange={handleUpload} disabled={uploadEnCours || !pretAAjouter} style={{display:'none'}} />
           </label>
         )}
         <small style={{display:'block', marginTop:'8px', opacity:0.72}}>
-          Les membres du service reçoivent une notification. Tous les formats de fichiers sont acceptés.
+          Le document est rattaché au client choisi (visible aussi dans sa fiche, onglet Documents). Les membres du service choisi reçoivent une notification.
         </small>
       </div>
 
       <DataTable
         columns={[
+          {key:'client', label:'Client', render:(value, row) => value
+            ? <a href={`#ficheClient:${value}`}>{value}{row.clientNom ? ` · ${row.clientNom}` : ''}</a>
+            : '—'},
+          {key:'type', label:'Type', render:value => value ? pill(value, 'p-or') : '—'},
           {key:'nom', label:'Document'},
           {key:'servicePartage', label:'Service', render:value => pill(value, 'p-bleu')},
           {key:'auteur', label:'Ajouté par'},
