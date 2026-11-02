@@ -61,7 +61,7 @@ const Topbar = ({ titre, toggleSidebar: propToggle }) => {
         onClick={handleManualSync}
       >
         <DatabaseIcon size={15} color={isPostgresConnected ? '#059669' : '#d97706'} />
-        <span>{isPostgresConnected ? 'PostgreSQL Actif' : 'Mode Cache'}</span>
+        <span>{isPostgresConnected ? 'Synchronisé' : 'Hors connexion'}</span>
         {syncing && <SyncIcon size={14} color={isPostgresConnected ? '#059669' : '#d97706'} className="animate-spin" />}
       </div>
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
 import Sidebar from './Sidebar';
+import './CrmDesignSystem.css';
 import LoginScreen from '../auth/LoginScreen';
 import { useAuth } from '../../context/AuthContext';
 import { useDB } from '../../context/DBContext';

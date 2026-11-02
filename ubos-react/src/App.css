@@ -56,23 +56,23 @@ input,select,textarea{font-family:inherit;font-size:14px}
   width: 32px !important;
   margin: 0 auto;
 }
-.sidebar-collapsed #aside nav .grp,
-#aside.collapsed nav .grp {
+.sidebar-collapsed #aside #nav .grp,
+#aside.collapsed #nav .grp {
   display: none;
 }
 .sidebar-collapsed #aside .sidebar-page-search,
 #aside.collapsed .sidebar-page-search {
   display: none;
 }
-.sidebar-collapsed #aside nav a,
-#aside.collapsed nav a {
+.sidebar-collapsed #aside #nav a,
+#aside.collapsed #nav a {
   padding: 12px 0;
   justify-content: center;
 }
-.sidebar-collapsed #aside nav a .nav-text,
-.sidebar-collapsed #aside nav a .bulle,
-#aside.collapsed nav a .nav-text,
-#aside.collapsed nav a .bulle {
+.sidebar-collapsed #aside #nav a .nav-text,
+.sidebar-collapsed #aside #nav a .bulle,
+#aside.collapsed #nav a .nav-text,
+#aside.collapsed #nav a .bulle {
   display: none;
 }
 .sidebar-collapsed #aside .aside-pied,
@@ -98,7 +98,7 @@ input,select,textarea{font-family:inherit;font-size:14px}
   padding: 20px 20px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
-nav {
+#nav {
   flex: 1;
   overflow-y: auto;
   padding: 10px 0;
@@ -150,7 +150,7 @@ nav {
   font-size: 12px;
   text-align: center;
 }
-nav .grp {
+#nav .grp {
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -158,7 +158,7 @@ nav .grp {
   padding: 16px 20px 6px;
   font-weight: 700;
 }
-nav a {
+#nav a {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -171,7 +171,7 @@ nav a {
   border-left: 3px solid transparent;
   transition: all 0.18s ease;
 }
-nav a .ic {
+#nav a .ic {
   width: 20px;
   display: flex;
   align-items: center;
@@ -179,11 +179,11 @@ nav a .ic {
   color: var(--or-clair);
   flex-shrink: 0;
 }
-nav a:hover {
+#nav a:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
 }
-nav a.on {
+#nav a.on {
   background: linear-gradient(90deg, rgba(255, 201, 13, 0.18), rgba(255, 201, 13, 0.06));
   border-left-color: var(--or-clair);
   color: #ffffff;

@@ -89,7 +89,16 @@ const Sidebar = ({ ouvert }) => {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLocaleLowerCase('fr');
-  const navigationGroups = ORDRE_NAV.map(([grp, ids]) => ({
+  const architectureGroups = [
+    ['Référentiels', ['espaceCrm', 'clients', 'fournisseurs', 'partenaires', 'produits', 'servicesCatalogue']],
+    ['Relation commerciale', ['contacts', 'demandes', 'demandesConverties', 'sourcings', 'etudes', 'offres', 'commandes', 'reclamations']],
+    ['Opérations & logistique', ['dashboardLimex', 'arrivages', 'groupageArrivages', 'analyses', 'transports', 'transits', 'certifs', 'transportsNat', 'stockage', 'suivisLimex', 'actionsLimex', 'instructionsLimex']],
+    ['Finance & facturation', ['paiements', 'pmtIntl', 'facturation', 'facturationRecus', 'documentsComptablesCasa']],
+    ['Documents & collaboration', ['documents', 'documentsPartages', 'messagerie', 'taches']],
+  ];
+  const assigned = new Set(architectureGroups.flatMap(([, ids]) => ids));
+  const remaining = ORDRE_NAV.map(([name, ids]) => [name, ids.filter(id => !assigned.has(id))]);
+  const navigationGroups = [...remaining.filter(([name]) => name === 'Mon espace'), ...architectureGroups, ...remaining.filter(([name]) => name !== 'Mon espace')].map(([grp, ids]) => ({
     grp,
     ids: ids.filter(id => {
       if (!moduleVisible(id) || id === 'tableauBordData') return false;
@@ -125,8 +134,8 @@ const Sidebar = ({ ouvert }) => {
       <nav id="nav">
         {navigationGroups.map(({ grp, ids: visibles }) => {
           return (
-            <React.Fragment key={grp}>
-              <div className="grp">{grp}</div>
+            <details key={grp} className="crm-nav-group" open={!!normalizedSearch || visibles.includes(currentHash) || grp === 'Référentiels'}>
+              <summary className="grp">{grp}</summary>
               {visibles.map(id => {
                 const M = MODS[id];
                 if (!M) return null;
@@ -140,7 +149,7 @@ const Sidebar = ({ ouvert }) => {
                   </a>
                 );
               })}
-            </React.Fragment>
+            </details>
           );
         })}
         {normalizedSearch && navigationGroups.length === 0 && (

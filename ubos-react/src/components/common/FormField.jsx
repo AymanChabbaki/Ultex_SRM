@@ -257,7 +257,7 @@ const FormField = ({ fieldConfig, f, value, onChange, disabled, label, type, opt
 
   return (
     <div className={`champ ${fieldDef.large ? "large" : ""}`}>
-      <label>
+      <label htmlFor={`f_${fieldDef.k}`}>
         {fieldDef.l}{fieldDef.req ? " *" : ""}
         <BulleAide texte={fieldDef.aide} />
       </label>
