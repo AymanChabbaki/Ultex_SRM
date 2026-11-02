@@ -807,6 +807,8 @@ partenaires:{label:"Partenaires logistiques", ic:Handshake, grp:"Référentiels"
  actions:[{txt:"Fiche", cls:"btn mini or", fn:"ouvrirFichePartenaire"}]},
 
 groupageArrivages:{label:"Groupage arrivages", ic:Ship, grp:"LIMEX"},
+espaceCrm:{label:"Espace CRM",ic:Factory,grp:"Référentiels"},
+servicesCatalogue:{label:"Catalogue de services",ic:Factory,grp:"Référentiels",coll:"servicesCatalogue",pfx:"SVC",statut:"statut",champs:[{k:"nom",l:"Nom du service",t:"text",req:1},{k:"categorie",l:"Catégorie",t:"select",opts:["Logistique","Juridique","Finance","Assurance","Digital","Télécom / abonnements","Locaux / énergie","Travaux","Autre"]},{k:"description",l:"Description",t:"textarea"},{k:"partenaires",l:"Partenaires liés",t:"multiref",coll:"partenaires",cle:"nom"},{k:"fournisseurs",l:"Fournisseurs liés",t:"multiref",coll:"fournisseurs",cle:"nom"},{k:"zone",l:"Zone de service",t:"text"},{k:"conditions",l:"Conditions",t:"textarea"},{k:"statut",l:"Statut",t:"select",opts:["Actif","Inactif"]}],cols:[["nom","Service"],["categorie","Catégorie"],["zone","Zone"],["statut","Statut"]]},
 fournisseurs:{label:"Banque fournisseurs", ic:Factory, grp:"Référentiels", coll:"fournisseurs", pfx:"F", statut:"statut",
  champs:[
   {k:"categorieBanque",l:"Catégorie",t:"select",opts:["Confirmé","Collecté"],req:1},
@@ -1113,7 +1115,7 @@ export const ORDRE_NAV = [
  ["LIMEX",["dashboardLimex","arrivages","groupageArrivages","rapportLimexDirection","suivisLimex","actionsLimex","instructionsLimex"]],
  ["Opérations",["analyses","transports","transits","certifs","transportsNat"]],
  ["Finance",["paiements","pmtIntl","facturation","documentsComptablesCasa"]],
- ["Référentiels",["fournisseurs","partenaires","produits","stockage"]],
+ ["Référentiels",["espaceCrm","produits","servicesCatalogue","fournisseurs","partenaires","stockage"]],
  ["Transverse",["documents","messagerie","taches"]],
  ["Archives",["leads"]]
 ];

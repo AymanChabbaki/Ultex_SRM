@@ -21,7 +21,7 @@ input,select,textarea{font-family:inherit;font-size:14px}
   display: flex;
   min-height: 100vh;
 }
-aside {
+#aside {
   width: 250px;
   background: linear-gradient(180deg, var(--vert-fonce), var(--vert-nuit));
   color: #e2e8f0;
@@ -35,7 +35,7 @@ aside {
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
 }
-main {
+#main {
   flex: 1;
   margin-left: 250px;
   padding: 24px 30px 60px;
@@ -44,53 +44,53 @@ main {
 }
 
 /* Collapsed Desktop Sidebar Animation State */
-.sidebar-collapsed aside,
-aside.collapsed {
+.sidebar-collapsed #aside,
+#aside.collapsed {
   width: 72px;
 }
-.sidebar-collapsed main {
+.sidebar-collapsed #main {
   margin-left: 72px;
 }
-.sidebar-collapsed aside .logo-aside-container img,
-aside.collapsed .logo-aside-container img {
+.sidebar-collapsed #aside .logo-aside-container img,
+#aside.collapsed .logo-aside-container img {
   width: 32px !important;
   margin: 0 auto;
 }
-.sidebar-collapsed aside nav .grp,
-aside.collapsed nav .grp {
+.sidebar-collapsed #aside nav .grp,
+#aside.collapsed nav .grp {
   display: none;
 }
-.sidebar-collapsed aside .sidebar-page-search,
-aside.collapsed .sidebar-page-search {
+.sidebar-collapsed #aside .sidebar-page-search,
+#aside.collapsed .sidebar-page-search {
   display: none;
 }
-.sidebar-collapsed aside nav a,
-aside.collapsed nav a {
+.sidebar-collapsed #aside nav a,
+#aside.collapsed nav a {
   padding: 12px 0;
   justify-content: center;
 }
-.sidebar-collapsed aside nav a .nav-text,
-.sidebar-collapsed aside nav a .bulle,
-aside.collapsed nav a .nav-text,
-aside.collapsed nav a .bulle {
+.sidebar-collapsed #aside nav a .nav-text,
+.sidebar-collapsed #aside nav a .bulle,
+#aside.collapsed nav a .nav-text,
+#aside.collapsed nav a .bulle {
   display: none;
 }
-.sidebar-collapsed aside .aside-pied,
-aside.collapsed .aside-pied {
+.sidebar-collapsed #aside .aside-pied,
+#aside.collapsed .aside-pied {
   flex-direction: column;
   padding: 10px 6px;
   gap: 6px;
 }
-.sidebar-collapsed aside .aside-pied .btn-aside-action,
-aside.collapsed .aside-pied .btn-aside-action {
+.sidebar-collapsed #aside .aside-pied .btn-aside-action,
+#aside.collapsed .aside-pied .btn-aside-action {
   padding: 10px 0;
 }
-.sidebar-collapsed aside .aside-pied .btn-aside-action .btn-text,
-aside.collapsed .aside-pied .btn-aside-action .btn-text {
+.sidebar-collapsed #aside .aside-pied .btn-aside-action .btn-text,
+#aside.collapsed .aside-pied .btn-aside-action .btn-text {
   display: none;
 }
-.sidebar-collapsed aside .sauve-info,
-aside.collapsed .sauve-info {
+.sidebar-collapsed #aside .sauve-info,
+#aside.collapsed .sauve-info {
   display: none;
 }
 
@@ -519,7 +519,7 @@ td .acts{display:flex;gap:6px;flex-wrap:wrap}
 }
 
 /* ---------- Modale ---------- */
-/* left offset mirrors main's margin-left so the modal centers within the
+/* left offset mirrors #main's margin-left so the modal centers within the
    visible content area, not the full viewport (which would look shoved
    left behind the fixed sidebar) */
 .voile{position:fixed;top:0;right:0;bottom:0;left:250px;background:rgba(14,42,32,.5);backdrop-filter:blur(3px);display:none;align-items:flex-start;justify-content:center;z-index:100;padding:30px 14px;overflow-y:auto;transition:left 0.3s cubic-bezier(0.4, 0, 0.2, 1)}
@@ -929,8 +929,8 @@ td.code a{color:inherit;text-decoration:none;border-bottom:1px dotted var(--or)}
 @media print{
   .table-column-filter { display: none !important; }
   .table-print-label { display: inline; }
-  aside,.top,.outils,.btn,.cloche,.burger,.acts,.toast{display:none!important}
-  main{margin:0!important;padding:0!important}
+  #aside,.top,.outils,.btn,.cloche,.burger,.acts,.toast{display:none!important}
+  #main{margin:0!important;padding:0!important}
   body{background:#fff}
   .bloc-fiche,.panneau,.chemin{box-shadow:none;border:1px solid #ccc;break-inside:avoid}
   .fiche-grille{display:block}
@@ -942,9 +942,9 @@ td.code a{color:inherit;text-decoration:none;border-bottom:1px dotted var(--or)}
 
 @media(max-width:900px){
   .gsearch{width:100%;order:9}
-  aside{transform:translateX(-100%)}
-  aside.ouvert{transform:none;box-shadow:0 0 0 100vmax rgba(0,0,0,.35)}
-  main{margin-left:0;padding:14px 12px 60px}
+  #aside{transform:translateX(-100%)}
+  #aside.ouvert{transform:none;box-shadow:0 0 0 100vmax rgba(0,0,0,.35)}
+  #main{margin-left:0;padding:14px 12px 60px}
   .voile,.sidebar-collapsed .voile{left:0}
   .burger{display:block}
   .modale .corps,.panneau .corps{grid-template-columns:1fr}

@@ -352,7 +352,7 @@ const COLLS = [
   "offres", "paiements", "analyses", "transports", "transits", "documents", "taches",
   "rapports", "reclamations", "stockage", "certifs", "transportsNat", "pmtIntl",
   "erreurs", "utilisateurs", "facturesFinales", "avoirsFF", "abandons", "impayes",
-  "remboursements", "contacts", "demandes", "commandes", "arrivages", "groupageCommandes", "groupageTarifs", "groupages", "analysesLimex",
+  "remboursements", "contacts", "demandes", "commandes", "arrivages", "groupageCommandes", "groupageTarifs", "groupages", "servicesCatalogue", "analysesLimex",
   "bonsLancement", "stocks", "mouvementsStock", "livraisons", "transfertsServices",
   "communicationsDossier", "partenaires", "facturesPartenaire", "lcnPartenaire", "partnerSettings", "importJobs", "importFiles", "importModels",
   "importMappings", "importRows", "importErrors", "importHistory", "importDetectedTypes",

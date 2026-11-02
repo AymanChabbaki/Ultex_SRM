@@ -9,6 +9,7 @@ import Layout from './components/layout/Layout';
 // Route components are split into independent chunks. PDF/OCR/Excel and the
 // dozens of operational screens no longer block the login/dashboard bundle.
 const Dashboard = lazy(() => import('./components/dashboard/Dashboard'));
+const ArchitectureWorkspace = lazy(() => import('./components/custom/ArchitectureWorkspace'));
 const PersonalDashboard = lazy(() => import('./components/dashboard/PersonalDashboard'));
 const FicheClient = lazy(() => import('./components/fiches/FicheClient'));
 const FicheDossier = lazy(() => import('./components/fiches/FicheDossier'));
@@ -239,6 +240,7 @@ const Router = () => {
       : ['dossiers', 'taches'];
 
     switch (route) {
+      case 'espaceCrm': return wrap(<ArchitectureWorkspace />, ['clients', 'fournisseurs', 'partenaires']);
       case 'dashboard': return isDataUser
         ? <Dashboard />
         : wrap(<Dashboard />, dashboardCollections, 'Préparation de votre tableau de bord…');

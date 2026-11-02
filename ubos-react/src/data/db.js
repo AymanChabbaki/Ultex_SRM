@@ -21,7 +21,7 @@ export function baseVide() {
     tacheEtapes: [], rapportsJournaliers: [], journalSecurite: [],
     suivisClosing: [],
     suivisLimex: [], actionsLimex: [], instructionsLimex: [], documentsComptablesCasa: [],
-    facturationRecus: [], groupageCommandes: [], groupageTarifs: [], groupages: []
+    facturationRecus: [], groupageCommandes: [], groupageTarifs: [], groupages: [], servicesCatalogue: []
   };
 }
 

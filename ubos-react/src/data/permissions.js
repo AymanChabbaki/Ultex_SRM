@@ -73,6 +73,8 @@ export function moduleVisible(session, id) {
             || identite.includes('imane') || identite.includes('yasser') || identite.includes('yassir');
     }
     if (id === 'groupageArrivages') return estDirection(session) || moduleVisible(session, 'arrivages');
+    if (id === 'espaceCrm') return moduleVisible(session, 'clients') || moduleVisible(session, 'fournisseurs') || moduleVisible(session, 'partenaires');
+    if (id === 'servicesCatalogue') return estDirection(session) || moduleVisible(session, 'partenaires');
     if (estCoordinateurClosing(session) && MODULES_FUSIONNES_CLOSING.includes(id)) return false;
     if (estCoordinateurLimex(session) && MODULES_FUSIONNES_LIMEX.includes(id)) return false;
     if (MODULES_LIBRES.includes(id)) return true;
