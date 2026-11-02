@@ -40,7 +40,12 @@ export default function PaiementsEcheances() {
   const lcnAlertes = (db.lcnPartenaire || []).filter(l => l.statut === 'Impayée'
     || (l.statut === 'Remise' && joursAvant(l.dateEcheance) >= 0 && joursAvant(l.dateEcheance) <= 7));
 
-  const handleChange = (k, v) => setFormData(prev => ({ ...prev, [k]: v }));
+  const handleChange = (k, v) => setFormData(prev => {
+    if (k !== 'fournisseur') return { ...prev, [k]: v };
+    const supplier = (db.fournisseurs || []).find(item => item.code === v);
+    const bank = (supplier?.comptesBancaires || []).find(item => item.actif !== false);
+    return { ...prev, fournisseur: v, beneficiaire: bank?.beneficiaire || supplier?.nom || '', banque: bank?.banque || '', iban: bank?.compte || '' };
+  });
 
   const handleAjouter = () => {
     if (!formData.montant || !formData.beneficiaire) { toast('Bénéficiaire et montant sont obligatoires.'); return; }
@@ -54,6 +59,10 @@ export default function PaiementsEcheances() {
   };
 
   const changerStatut = (p, statut) => {
+    const supplier = (db.fournisseurs || []).find(item => item.code === p.fournisseur);
+    if (supplier && ['Autorisé', 'Payé'].includes(statut) && (['Suspendu', 'Blacklisté'].includes(supplier.statut) || !(supplier.comptesBancaires || []).some(bank => bank.actif !== false && bank.confirmeParAppel))) {
+      toast(`Paiement bloqué : coordonnées bancaires de ${supplier.nom} non confirmées par appel.`); return;
+    }
     updateDB({ ...db, paiements: paiements.map(x => x.code === p.code ? { ...x, statut } : x) });
     audit('Paiements', 'Changement de statut', p.code, 'statut', p.statut, statut);
     if (statut === 'Soumis Direction') notifier('Direction', `Paiement à valider — ${p.beneficiaire} (${fmtMAD(p.montant)})\nLien : #paiementsEcheances`, 'Paiements');

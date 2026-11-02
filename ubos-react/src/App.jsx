@@ -62,6 +62,10 @@ const SourcingDashboard = lazy(() => import('./components/custom/SourcingDashboa
 const SourcingProfile = lazy(() => import('./components/custom/SourcingProfile'));
 const SupplierBank = lazy(() => import('./components/custom/SupplierBank'));
 const SupplierProfile = lazy(() => import('./components/custom/SupplierProfile'));
+const SupplierProfile360 = lazy(() => import('./components/custom/SupplierProfile360'));
+const ProductDirectory = lazy(() => import('./components/custom/ProductDirectory'));
+const ProductProfile360 = lazy(() => import('./components/custom/ProductProfile360'));
+const GroupageArrivages = lazy(() => import('./components/custom/GroupageArrivages'));
 const Partner360 = lazy(() => import('./components/custom/Partner360'));
 const GenericModule = lazy(() => import('./components/modules/GenericModule'));
 
@@ -256,7 +260,7 @@ const Router = () => {
       case 'maJourneeImane': return wrap(<PersonalPageRoute Component={MaJourneeImane} identifiant={params} />, ['actionsLimex', 'arrivages', 'commandes', 'suivisLimex']);
       case 'suiviLimex': return wrap(<PersonalPageRoute Component={SuiviLimex} identifiant={params} />, ['suivisLimex', 'paiements']);
       case 'etudesCalcul': return wrap(<EtudesCalcul />, ['taches']);
-      case 'paiementsEcheances': return wrap(<PaiementsEcheances />, ['paiements', 'documentsComptablesCasa', 'lcnPartenaire', 'partenaires']);
+      case 'paiementsEcheances': return wrap(<PaiementsEcheances />, ['paiements', 'documentsComptablesCasa', 'lcnPartenaire', 'partenaires', 'fournisseurs']);
       case 'etatClosing': return wrap(<EtatClosing />, ['suivisClosing']);
       case 'ficheSuiviClosing': return wrap(<FicheSuiviClosing codeProp={params} code={params} />, ['audit', 'suivisClosing', 'taches']);
       case 'ficheClientClosing': return wrap(<FicheClientClosing codeProp={params} code={params} />, ['suivisClosing']);
@@ -297,14 +301,17 @@ const Router = () => {
       case 'sourcings': return wrap(<SourcingDashboard />, ['clients', 'demandes', 'demandeLignes', 'sourcings', 'fournisseurs']);
       case 'ficheSourcing': return wrap(<SourcingProfile codeProp={params} />, ['audit', 'clients', 'demandes', 'demandeLignes', 'sourcings', 'fournisseurs']);
       case 'fournisseurs': return wrap(<SupplierBank />, ['clients', 'demandes', 'sourcings', 'fournisseurs']);
-      case 'ficheFournisseur': return wrap(<SupplierProfile codeProp={params} />, ['audit', 'clients', 'demandes', 'sourcings', 'fournisseurs']);
+      case 'ficheFournisseur': return wrap(<SupplierProfile360 codeProp={params} />, ['audit', 'clients', 'demandes', 'sourcings', 'fournisseurs', 'commandes', 'arrivages', 'produits', 'documents']);
+      case 'produits': return wrap(<ProductDirectory />, ['clients', 'demandes', 'demandeLignes', 'commandes', 'produits']);
+      case 'ficheProduit': return wrap(<ProductProfile360 codeProp={params} supplierCode={sousPage} />, ['audit', 'clients', 'demandes', 'demandeLignes', 'commandes', 'arrivages', 'fournisseurs', 'produits', 'documents']);
+      case 'groupageArrivages': return wrap(<GroupageArrivages />, ['clients', 'demandes', 'demandeLignes', 'commandes', 'documents', 'paiements', 'arrivages', 'groupageCommandes', 'groupageTarifs', 'groupages']);
 
       default:
         // Check if it's a generic module (clients, contacts, demandes, dossiers, documents, etc.)
         const moduleConfig = MODS[route];
         if (moduleConfig && moduleConfig.coll) {
           const references = (moduleConfig.champs || []).map(field => field.coll).filter(Boolean);
-          return wrap(<GenericModule moduleId={route} />, references);
+          return wrap(<GenericModule moduleId={route} creationSource={route === 'demandes' && params === 'nouveau' ? sousPage : ''} />, references);
         }
         return wrap(<Dashboard />, dashboardCollections);
     }

@@ -27,6 +27,14 @@ function authHeaders() {
 
 export class AuthError extends Error {}
 
+export async function searchAdiiNomenclature(query) {
+  const res = await fetch(`${API_URL}/adil/nomenclature?q=${encodeURIComponent(query)}`, { headers: { ...authHeaders() } });
+  if (res.status === 401) throw new AuthError('Session invalide ou expirée');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'Recherche ADII indisponible');
+  return body.items || [];
+}
+
 export async function checkBackendHealth() {
   try {
     const res = await fetch(`${API_URL}/health`);

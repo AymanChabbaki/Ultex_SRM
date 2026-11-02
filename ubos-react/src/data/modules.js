@@ -160,6 +160,8 @@ leads:{label:"Leads / Data (archive historique)", ic:Archive, grp:"Archives", co
 demandes:{label:"Demandes", ic:ClipboardEdit, grp:"Commercial", coll:"demandes", pfx:"DMD", statut:"statut",
  champs:[
   {k:"client",l:"Client",t:"ref",coll:"clients",cle:"nom",req:1,groupe:"Client & origine"},
+  {k:"fournisseur",l:"Fournisseur lié",t:"ref",coll:"fournisseurs",cle:"nom",groupe:"Client & origine"},
+  {k:"contactFournisseur",l:"Contact fournisseur",t:"text",groupe:"Client & origine"},
   {k:"codeClientUltex",l:"Code client ULTEX",t:"text",aide:"Synchronisé automatiquement depuis ULTEX.",groupe:"Client & origine"},
   {k:"dateDemande",l:"Date",t:"date",groupe:"Client & origine"},
   {k:"dateHeureReception",l:"Date et heure de réception",t:"text",aide:"Format libre si l'heure exacte est connue, ex. 05/08/2026 14:30.",groupe:"Client & origine"},
@@ -377,6 +379,9 @@ commandes:{label:"Commandes", ic:ShoppingCart, grp:"Commercial", coll:"commandes
   {k:"statut",l:"Statut",t:"select",opts:["Confirmée","En traitement","En arrivage","Livrée","Annulée"]}
  ],
  avantSauve:(DB,o)=>{
+  const demandeSource=(DB.demandes||[]).find(item=>item.code===o.demande);
+  const fournisseurSource=(DB.fournisseurs||[]).find(item=>item.code===(o.fournisseur||demandeSource?.fournisseur));
+  if(fournisseurSource && ["Suspendu","Blacklisté"].includes(fournisseurSource.statut)){window.alert(`Commande bloquée : ${fournisseurSource.nom} est ${fournisseurSource.statut}.`);return false;}
   if(o.code) return;
   const paiement=(DB.paiements||[]).find(p=>p.code===o.paiement);
   if(!o.demande){ window.alert("Une commande doit obligatoirement provenir d'une demande."); return false; }
@@ -433,6 +438,8 @@ dossiers:{label:"Dossiers", ic:FolderKanban, grp:"Commercial", coll:"dossiers", 
   {k:"remarque",l:"Remarques",t:"textarea",large:1,groupe:"Suivi & statut"}
  ],
  avantSauve: (DB, o, ctx) => {
+   const fournisseur=(DB.fournisseurs||[]).find(item=>item.code===o.fournisseur);
+   if(fournisseur && ["Suspendu","Blacklisté"].includes(fournisseur.statut)){ctx.toast(`Dossier LIMEX bloqué : ${fournisseur.nom} est ${fournisseur.statut}.`);return false;}
    if(!o.client && !o.nouveauClient){ ctx.toast("Indiquez un client existant ou un nouveau client."); return false; }
    if(!o.client && o.nouveauClient){
      const cl = {code: ctx.genCode("C"), nom: o.nouveauClient, segment:"Prospect", ts: Date.now()};
@@ -512,6 +519,7 @@ paiements:{label:"Paiements", ic:Wallet, grp:"Finance", coll:"paiements", pfx:"P
   {k:"commande",l:"Commande",t:"ref",coll:"commandes",cle:"code"},
   {k:"codeReference",l:"Code LIMEX (si suivi provisoire)",t:"text"},
   {k:"nature",l:"Nature",t:"select",opts:["Acompte","Avance fournisseur","Solde","Reliquat","Reliquat fournisseur","Paiement fournisseur","Paiement total","Droits de douane","Douane","Fret","Transport international","Transport national","Transitaire","Certification","Laboratoire","Port / magasinage","Assurance","Autre"]},
+  {k:"fournisseur",l:"Fournisseur lié",t:"ref",coll:"fournisseurs",cle:"nom"},
   {k:"beneficiaire",l:"Bénéficiaire",t:"text"},
   {k:"banque",l:"Banque",t:"text"},
   {k:"iban",l:"Compte / IBAN",t:"text"},
@@ -528,6 +536,10 @@ paiements:{label:"Paiements", ic:Wallet, grp:"Finance", coll:"paiements", pfx:"P
   {k:"remarque",l:"Référence bancaire / notes",t:"textarea",large:1}
  ],
  avantSauve: (DB, o) => {
+   const supplier=(DB.fournisseurs||[]).find(item=>item.code===o.fournisseur || (o.beneficiaire && String(item.nom||'').trim().toLowerCase()===String(o.beneficiaire).trim().toLowerCase()));
+   if(supplier && ["Autorisé","Payé"].includes(o.statut) && (["Suspendu","Blacklisté"].includes(supplier.statut) || !(supplier.comptesBancaires||[]).some(bank=>bank.actif!==false && bank.confirmeParAppel))){
+     window.alert(`Paiement bloqué : le fournisseur ${supplier.nom} est suspendu ou ses coordonnées bancaires ne sont pas confirmées par appel.`);return false;
+   }
    if(o.montantFournisseurTotal){
      o.reliquat = Math.max(0, (+o.montantFournisseurTotal||0) - (+o.avancePayee||0));
    }
@@ -794,6 +806,7 @@ partenaires:{label:"Partenaires logistiques", ic:Handshake, grp:"Référentiels"
  cols:[["type","Type",v=>pill(v||"—","p-gris")],["pays","Pays"],["contact","Contact"],["statut","Statut",v=>["Blacklisté","Suspendu"].includes(v)?pill(v,"p-rouge"):v==="Préféré"?pill(v,"p-vert"):pillStatut(v)]],
  actions:[{txt:"Fiche", cls:"btn mini or", fn:"ouvrirFichePartenaire"}]},
 
+groupageArrivages:{label:"Groupage arrivages", ic:Ship, grp:"LIMEX"},
 fournisseurs:{label:"Banque fournisseurs", ic:Factory, grp:"Référentiels", coll:"fournisseurs", pfx:"F", statut:"statut",
  champs:[
   {k:"categorieBanque",l:"Catégorie",t:"select",opts:["Confirmé","Collecté"],req:1},
@@ -873,6 +886,7 @@ documents:{label:"Documents", ic:FolderOpen, grp:"Transverse", coll:"documents",
   {k:"client",l:"Client lié",t:"ref",coll:"clients",cle:"nom"},
   {k:"demande",l:"Demande liée",t:"ref",coll:"demandes",cle:"code"},
   {k:"ligneDemande",l:"Ligne de demande liée (code)",t:"text"},
+  {k:"produit",l:"Produit permanent lié",t:"ref",coll:"produits",cle:"designation"},
   {k:"commande",l:"Commande liée",t:"ref",coll:"commandes",cle:"code"},
   {k:"arrivage",l:"Arrivage lié",t:"ref",coll:"arrivages",cle:"nomInterne"},
   {k:"fournisseur",l:"Fournisseur lié",t:"ref",coll:"fournisseurs",cle:"nom"},
@@ -1096,7 +1110,7 @@ export const ORDRE_NAV = [
  ["Pilotage",["pilotageEquipe","quiFaitQuoi","ajouterTache","rapportDirection","risquesClients","performance","importCentre","objectifsData","rapports","erreurs","utilisateurs","auditGlobal","journalSecurite","etatClosing","suivisClosing"]],
  ["Commercial",["clients","contacts","demandes","demandesConverties","commandes","offres","reclamations","facturationRecus","documentsPartages"]],
  ["Études",["sourcings","etudes"]],
- ["LIMEX",["dashboardLimex","arrivages","rapportLimexDirection","suivisLimex","actionsLimex","instructionsLimex"]],
+ ["LIMEX",["dashboardLimex","arrivages","groupageArrivages","rapportLimexDirection","suivisLimex","actionsLimex","instructionsLimex"]],
  ["Opérations",["analyses","transports","transits","certifs","transportsNat"]],
  ["Finance",["paiements","pmtIntl","facturation","documentsComptablesCasa"]],
  ["Référentiels",["fournisseurs","partenaires","produits","stockage"]],

@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { Check, Link2, Plus, Search, Users } from 'lucide-react';
 import Topbar from '../layout/Topbar';
-import ModuleForm from '../modules/ModuleForm';
 import { useDB } from '../../context/DBContext';
+import { useToast } from '../../context/ToastContext';
+import { PAYS_MONDE } from '../../data/constants';
 import './SourcingWorkspace.css';
 
 const norm = value => String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -14,13 +15,33 @@ function unique(values) {
 }
 
 export default function SupplierBank() {
-  const { db } = useDB();
+  const { db, updateDB, genCode } = useDB();
+  const { toast } = useToast();
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
   const [country, setCountry] = useState('');
   const [activeState, setActiveState] = useState('');
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
+  const [draft, setDraft] = useState({ nom: '', typeFournisseur: 'Fabricant', pays: '', ville: '', contact: '', whatsapp: '', wechat: '', email: '', produitsFournis: '', plateforme: '' });
+  const [saving, setSaving] = useState(false);
+  const duplicates = (db.fournisseurs || []).filter(item =>
+    ['nom', 'whatsapp', 'wechat', 'email'].some(key => {
+      const input = norm(draft[key]); const stored = norm(item[key]);
+      return input && stored && (input === stored || (key === 'nom' && input.length >= 5 && stored.length >= 5 && (input.includes(stored) || stored.includes(input))));
+    }));
+  const createSupplier = async () => {
+    if (!draft.nom.trim() || !draft.pays.trim() || !draft.ville.trim() || !draft.contact.trim() || !(draft.whatsapp || draft.wechat || draft.email)) {
+      toast('Raison sociale, pays, ville, contact et au moins un moyen de contact sont obligatoires.'); return;
+    }
+    if (duplicates.length) { toast('Un fournisseur similaire existe déjà. Ouvrez sa fiche avant de créer un doublon.'); return; }
+    const code = genCode('F');
+    const record = { ...draft, code, codeFournisseur: genCode('FRS'), categorieBanque: 'Collecté', statut: 'Nouveau', sourceBanque: 'Saisie CRM', ts: Date.now(), updatedAt: new Date().toISOString(), contactsProfil: [{ id: `${code}-contact-1`, nom: draft.contact, whatsapp: draft.whatsapp, wechat: draft.wechat, email: draft.email, principal: true, archive: false }] };
+    setSaving(true);
+    const ok = await updateDB({ ...db, fournisseurs: [...(db.fournisseurs || []), record] });
+    setSaving(false);
+    if (ok) { setShowCreate(false); window.location.hash = `ficheFournisseur:${code}`; toast('Fournisseur créé. Complétez maintenant son profil.'); }
+  };
 
   const groups = useMemo(() => {
     const byName = new Map();
@@ -146,7 +167,7 @@ export default function SupplierBank() {
           <div className="source-pagination"><span>{filtered.length} fournisseur{filtered.length > 1 ? 's' : ''} unique{filtered.length > 1 ? 's' : ''}</span><div><button disabled={safePage === 1} onClick={() => setPage(value => Math.max(1, value - 1))}>‹</button>{Array.from({ length: totalPages }, (_, index) => index + 1).map(value => <button key={value} className={value === safePage ? 'active' : ''} onClick={() => setPage(value)}>{value}</button>)}<button disabled={safePage === totalPages} onClick={() => setPage(value => Math.min(totalPages, value + 1))}>›</button></div></div>
         </section>
       </div>
-      {showCreate && <ModuleForm moduleId="fournisseurs" initialData={{ categorieBanque: 'Collecté', statut: 'En test', devise: 'USD', sourceBanque: 'Saisie CRM' }} onClose={() => setShowCreate(false)} />}
+      {showCreate && <div className="supplier-quick-overlay"><div className="supplier-quick-dialog"><div className="supplier-quick-header"><div><h2>Ajouter un fournisseur</h2><p>Création rapide · le profil complet s’ouvre après l’enregistrement.</p></div><button onClick={() => setShowCreate(false)}>Fermer</button></div><div className="supplier-quick-fields">{[['Raison sociale *','nom'],['Type *','typeFournisseur'],['Pays *','pays'],['Ville *','ville'],['Contact principal *','contact'],['WhatsApp','whatsapp'],['WeChat','wechat'],['E-mail','email'],['Produits fournis','produitsFournis'],['Plateforme / source','plateforme']].map(([label,key]) => <label key={key}>{label}{['typeFournisseur','plateforme','pays'].includes(key) ? <select value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value, ...(key === 'pays' ? { ville: '' } : {}) })}>{(key === 'typeFournisseur' ? ['Fabricant','Trader','Agent','Grossiste'] : key === 'pays' ? ['', ...PAYS_MONDE.map(item => item.n)] : ['','Alibaba','1688','Made-in-China','Salon','Direct','Recommandation','Autre']).map(value => <option key={value} value={value}>{value || 'Sélectionner'}</option>)}</select> : <><input value={draft[key]} list={key === 'ville' ? 'supplier-city-options' : undefined} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />{key === 'ville' && <datalist id="supplier-city-options">{[...new Set((db.fournisseurs || []).filter(item => item.pays === draft.pays).map(item => item.ville).filter(Boolean))].map(value => <option key={value} value={value} />)}</datalist>}</>}</label>)}</div>{duplicates.length > 0 && <div className="supplier-duplicate"><strong>Fournisseur similaire trouvé</strong>{duplicates.slice(0, 3).map(item => <button key={item.code} onClick={() => { setShowCreate(false); window.location.hash = `ficheFournisseur:${item.code}`; }}>{item.nom} · {item.codeFournisseur || item.code} →</button>)}</div>}<div className="supplier-quick-actions"><button onClick={() => setShowCreate(false)}>Annuler</button><button disabled={saving || duplicates.length > 0} onClick={createSupplier}>Créer et ouvrir le profil →</button></div></div></div>}
     </>
   );
 }

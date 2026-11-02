@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Prisma, PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
 import { createClient } from 'redis';
 import { createRequire } from 'module';
 import { lLeadHandler } from './sheetsLLeads.js';
@@ -29,6 +30,9 @@ const AUTH_DATABASE_URL = String(process.env.AUTH_DATABASE_URL || '').trim();
 const authPrisma = AUTH_DATABASE_URL && AUTH_DATABASE_URL !== process.env.DATABASE_URL
   ? new PrismaClient({ datasources: { db: { url: AUTH_DATABASE_URL } } })
   : prisma;
+const nomenclaturePool = process.env.ULTEX_DATABASE_URL
+  ? new Pool({ connectionString: process.env.ULTEX_DATABASE_URL, max: 2, connectionTimeoutMillis: 5000, statement_timeout: 7000 })
+  : null;
 const PORT = process.env.PORT || 5000;
 const REDIS_URL = process.env.REDIS_URL || '';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -348,7 +352,7 @@ const COLLS = [
   "offres", "paiements", "analyses", "transports", "transits", "documents", "taches",
   "rapports", "reclamations", "stockage", "certifs", "transportsNat", "pmtIntl",
   "erreurs", "utilisateurs", "facturesFinales", "avoirsFF", "abandons", "impayes",
-  "remboursements", "contacts", "demandes", "commandes", "arrivages", "analysesLimex",
+  "remboursements", "contacts", "demandes", "commandes", "arrivages", "groupageCommandes", "groupageTarifs", "groupages", "analysesLimex",
   "bonsLancement", "stocks", "mouvementsStock", "livraisons", "transfertsServices",
   "communicationsDossier", "partenaires", "facturesPartenaire", "lcnPartenaire", "partnerSettings", "importJobs", "importFiles", "importModels",
   "importMappings", "importRows", "importErrors", "importHistory", "importDetectedTypes",
@@ -605,6 +609,33 @@ async function requireFacturationAccess(req, res, next) {
     return res.status(500).json({ error: 'Impossible de vérifier l’accès à la facturation' });
   }
 }
+
+// Read the same Moroccan nomenclature used by Workflow; never accept a
+// manually typed customs label as proof that a code exists in ADII.
+app.get('/api/adil/nomenclature', authMiddleware, async (req, res) => {
+  if (!nomenclaturePool) return res.status(503).json({ error: 'Référentiel ADII Workflow non configuré sur le CRM' });
+  const query = String(req.query.q || '').trim().slice(0, 100);
+  if (query.length < 2) return res.json({ items: [] });
+  try {
+    const term = `%${query.replace(/[.%_]/g, '')}%`;
+    const rows = await nomenclaturePool.query(`
+      SELECT v.target_hs_code AS code, hc.description_fr AS libelle,
+             ch.code AS chapitre_code, ch.title_fr AS chapitre,
+             sec.id AS section_code, sec.title_fr AS section,
+             v.contextual_payload AS chemin
+      FROM v_llm_nomenclature_search v
+      JOIN hs_codes hc ON hc.code = v.target_hs_code
+      JOIN hs_chapters ch ON ch.code = hc.chapter_code
+      JOIN hs_sections sec ON sec.id = ch.section_id
+      WHERE v.target_hs_code LIKE $1 OR hc.description_fr ILIKE $1 OR v.contextual_payload ILIKE $1
+      ORDER BY CASE WHEN v.target_hs_code = $2 THEN 0 ELSE 1 END, v.target_hs_code
+      LIMIT 30`, [term, query.replace(/\D/g, '')]);
+    return res.json({ items: rows.rows });
+  } catch (error) {
+    console.error('ADII nomenclature lookup failed:', error.message);
+    return res.status(503).json({ error: 'Référentiel ADII indisponible. Réessayez plus tard.' });
+  }
+});
 
 // Isolated, read-only CRM inbox for Workflow V2. It deliberately bypasses
 // the normal clients/demandes collections, so staged tests cannot allocate

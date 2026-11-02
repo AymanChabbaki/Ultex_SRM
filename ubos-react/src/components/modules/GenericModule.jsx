@@ -23,7 +23,7 @@ const PERMISSION_REQUISE = {
   creerFactureDepuisDossier: 'ajouter'
 };
 
-export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
+export default function GenericModule({ moduleId, MODS = MODS_DATA, creationSource = '' }) {
   const { db, updateDB, audit, genCode, notifier, userCourant, chargerCollections, hydraterEnregistrements } = useDB();
   const { peut, moduleVisible } = useAuth();
   const { toast } = useToast();
@@ -34,6 +34,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
   const [filtreClosing, setFiltreClosing] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editCode, setEditCode] = useState(null);
+  const [initialData, setInitialData] = useState(null);
   const [groupeClients, setGroupeClients] = useState('L');
   const [remoteRows, setRemoteRows] = useState([]);
   const [remoteTotal, setRemoteTotal] = useState(0);
@@ -47,6 +48,21 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
 
   const M = MODS[moduleId];
   const collectionRevision = M ? db[M.coll] : null;
+
+  useEffect(() => {
+    if (moduleId !== 'demandes' || !creationSource) return undefined;
+    let cancelled = false;
+    chargerCollections(['fournisseurs', 'demandes']).then(data => {
+      if (cancelled) return;
+      const supplier = (data.fournisseurs || []).find(item => item.code === creationSource);
+      if (!supplier) { toast('Fournisseur introuvable.'); return; }
+      const principal = (supplier.contactsProfil || []).find(item => item.principal && !item.archive);
+      setInitialData({ fournisseur: supplier.code, contactFournisseur: principal?.nom || supplier.contact || '' });
+      setEditCode(null);
+      setShowForm(true);
+    }).catch(error => { if (!cancelled) toast(error?.message || 'Chargement du fournisseur impossible.'); });
+    return () => { cancelled = true; };
+  }, [moduleId, creationSource, chargerCollections, toast]);
 
   useEffect(() => {
     if (!M?.coll) return undefined;
@@ -151,6 +167,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
     try {
       await chargerCollections([M.coll]);
       setEditCode(null);
+      setInitialData(null);
       setShowForm(true);
     } catch (error) {
       toast(error?.message || 'Chargement impossible.');
@@ -359,6 +376,7 @@ export default function GenericModule({ moduleId, MODS = MODS_DATA }) {
           moduleId={moduleId} 
           MODS={MODS}
           recordCode={editCode} 
+          initialData={initialData}
           onClose={() => setShowForm(false)} 
         />
       )}

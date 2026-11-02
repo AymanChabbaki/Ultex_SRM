@@ -72,6 +72,7 @@ export function moduleVisible(session, id) {
             || (session.services || []).includes('Sourcing')
             || identite.includes('imane') || identite.includes('yasser') || identite.includes('yassir');
     }
+    if (id === 'groupageArrivages') return estDirection(session) || moduleVisible(session, 'arrivages');
     if (estCoordinateurClosing(session) && MODULES_FUSIONNES_CLOSING.includes(id)) return false;
     if (estCoordinateurLimex(session) && MODULES_FUSIONNES_LIMEX.includes(id)) return false;
     if (MODULES_LIBRES.includes(id)) return true;
