@@ -3316,8 +3316,8 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         referenceCode: referenceWorkflow || demande.data.referenceCode,
         client: client.code,
         codeClientUltex: codeClientSynchronise || demande.data.codeClientUltex,
-        typeDemande: typeDemande || demande.data.typeDemande,
-        sensOperation: sensOperation || demande.data.sensOperation,
+        typeDemande: Object.hasOwn(req.body, 'typeDemande') ? typeDemande : demande.data.typeDemande,
+        sensOperation: Object.hasOwn(req.body, 'sensOperation') ? sensOperation : demande.data.sensOperation,
         etapeUltex: etape || demande.data.etapeUltex,
         ...(dataTagRecu ? { dataTag: dataTagLisible } : {}),
         tagsPipeline: tagsPipeline || demande.data.tagsPipeline,
@@ -3349,15 +3349,16 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         responsableData: demande.data.responsableData || 'Data',
         responsable: responsableDemande || demande.data.responsable || responsableParDefaut,
         sourceSynchronisation: 'Workflow',
+        ...(Array.isArray(req.body.products) ? { workflowProductSnapshot: true } : {}),
         ...(typeof createdManually === 'boolean' ? { createdManually } : {}),
-        modeTransport: modeTransport || demande.data.modeTransport,
+        modeTransport: Object.hasOwn(req.body, 'modeTransport') ? modeTransport : demande.data.modeTransport,
         montantVente: montantVente != null ? montantVente : demande.data.montantVente,
         montantAchat: montantAchat != null ? montantAchat : demande.data.montantAchat,
-        objectifGeneral: objectifGeneral || demande.data.objectifGeneral,
+        objectifGeneral: Object.hasOwn(req.body, 'objectifGeneral') ? objectifGeneral : demande.data.objectifGeneral,
         typeProjet: typeProjet || demande.data.typeProjet,
         urgence: urgence || demande.data.urgence,
-        budgetGlobalEstime: budgetGlobalEstime != null ? budgetGlobalEstime : demande.data.budgetGlobalEstime,
-        remarqueGenerale: remarque || demande.data.remarqueGenerale
+        budgetGlobalEstime: Object.hasOwn(req.body, 'budgetGlobalEstime') ? budgetGlobalEstime : demande.data.budgetGlobalEstime,
+        remarqueGenerale: Object.hasOwn(req.body, 'remarque') ? remarque : demande.data.remarqueGenerale
       };
       versionnerEtatSynchronise(demande.data, merged, 'Workflow');
       demande = await prisma.collectionItem.update({
@@ -3367,7 +3368,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
     } else {
       const code = await genererCodeAtomique('DMD');
       const data = {
-        ultexDossierId, referenceCode: referenceWorkflow || undefined,
+        ultexDossierId, workflowProductSnapshot: Array.isArray(req.body.products), referenceCode: referenceWorkflow || undefined,
         id: code, code, client: client.code,
         codeClientUltex: codeClientSynchronise || '',
         typeDemande: typeDemande || undefined, sensOperation: sensOperation || undefined,
@@ -3492,7 +3493,7 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
         if (!line && products.length === 1 && lignesNonLiees.length === 1) line = lignesNonLiees[0];
       }
       const syncedFields = Object.fromEntries(
-        Object.entries(productData).filter(([, value]) => value !== undefined && value !== null && value !== '')
+        Object.entries(productData).filter(([, value]) => value !== undefined)
       );
       syncedFields.produitBanqueId = bankProduct.code;
       if (line) {
@@ -3531,13 +3532,17 @@ app.post('/api/sync/ultex/dossier', ultexSyncAuth, async (req, res) => {
 
     // Remove only stale lines previously created by Workflow. CRM-only lines
     // added manually have no ultexProductId and are deliberately preserved.
-    const previousSyncedLines = await prisma.collectionItem.findMany({
+    const previousSyncedLines = Array.isArray(req.body.products) ? await prisma.collectionItem.findMany({
       where: {
         collection: 'demandeLignes',
-        data: { path: ['ultexDossierId'], equals: ultexDossierId }
+        OR: [
+          { data: { path: ['ultexDossierId'], equals: ultexDossierId } },
+          { data: { path: ['demande'], equals: demande.code } },
+        ]
       }
-    });
+    }) : [];
     for (const line of previousSyncedLines) {
+      if (line.data?.ultexDossierId && line.data.ultexDossierId !== ultexDossierId) continue;
       const productId = line.data?.ultexProductId;
       if (productId && !incomingProductIds.has(productId)) {
         await prisma.collectionItem.delete({

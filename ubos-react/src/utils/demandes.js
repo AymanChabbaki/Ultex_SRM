@@ -35,7 +35,7 @@ export function calculerConditionnementLigne(ligne) {
  */
 export function migrerLignesDemande(db, demande) {
   const dejaMigre = (db.demandeLignes || []).some(l => l.demande === demande.code);
-  if (dejaMigre || !demande.lignes || !demande.lignes.length) return [];
+  if (demande.workflowProductSnapshot || dejaMigre || !demande.lignes || !demande.lignes.length) return [];
 
   const statutMap = {
     'Nouvelle': 'Nouvelle', 'En consultation': 'En sourcing',
