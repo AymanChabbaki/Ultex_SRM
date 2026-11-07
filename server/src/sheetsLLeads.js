@@ -40,7 +40,7 @@ function logLLeadSyncError({ status, sheetLeadId, code, message }) {
 export function validateSheetLead(body = {}) {
   const fields = ['sheetLeadId', 'nom', 'telephone', 'dateReception', 'produit',
     'societe', 'email', 'pays', 'volumeImportation', 'fournisseurFiable',
-    'frustrationActuelle', 'browserId', 'sheetFormat'];
+    'frustrationActuelle', 'browserId', 'sheetFormat', 'projectStage', 'budget', 'campaignName', 'formName', 'platform'];
   const data = {};
   for (const field of fields) {
     const value = body[field];
@@ -178,13 +178,14 @@ async function createItem(tx, collection, prefix, values, minimum) {
 
 export async function syncLLead(prisma, body) {
   const lead = validateSheetLead(body);
-  const leadSource = lead.sheetFormat === 'funnel_hamza' ? 'funnel hamza' : 'Google';
+  const funnelSources = { funnel_hamza: 'funnel hamza', funnel_agricol: 'funnel agricol' };
+  const leadSource = funnelSources[lead.sheetFormat] || 'Google';
   return prisma.$transaction(async tx => {
     // PostgreSQL lock is shared across server processes and held until commit.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(6912, 2026)`;
     const previous = await tx.collectionItem.findFirst({ where: bySource('demandes', lead.sheetLeadId) });
     if (previous) {
-      if (lead.sheetFormat === 'funnel_hamza' && previous.data.source !== leadSource) {
+      if (funnelSources[lead.sheetFormat] && previous.data.source !== leadSource) {
         await tx.collectionItem.update({
           where: { collection_id: { collection: 'demandes', id: previous.id } },
           data: { data: { ...previous.data, source: leadSource,
@@ -203,7 +204,7 @@ export async function syncLLead(prisma, body) {
       client = await createItem(tx, 'clients', 'L', {
         nom: lead.nom, telephone: lead.telephone, email: lead.email, societe: lead.societe,
         pays: lead.pays, segment: 'Prospect', sourceDonnees: 'Google Sheets',
-        ...(lead.sheetFormat === 'funnel_hamza' ? { sourcePremierContact: leadSource } : {}),
+        ...(funnelSources[lead.sheetFormat] ? { sourcePremierContact: leadSource } : {}),
         datePremierContact: date, dateDerniereDemande: date, dateEntreeData: date,
         nbRelances: 0, dataTag: '', sheetLeadId: lead.sheetLeadId,
       }, 6912);
@@ -233,7 +234,8 @@ export async function syncLLead(prisma, body) {
     });
 
     const labels = { societe: 'Société', pays: 'Pays', volumeImportation: "Volume d’importation",
-      fournisseurFiable: 'Fournisseur fiable', frustrationActuelle: 'Frustration actuelle', browserId: 'Browser ID' };
+      fournisseurFiable: 'Fournisseur fiable', frustrationActuelle: 'Frustration actuelle', browserId: 'Browser ID', projectStage: 'Phase du projet', budget: 'Budget',
+      campaignName: 'Campagne', formName: 'Formulaire', platform: 'Plateforme' };
     const notes = Object.entries(labels).filter(([key]) => lead[key]).map(([key, label]) => `${label} : ${lead[key]}`).join('\n');
     const demande = await createItem(tx, 'demandes', 'DMD', {
       sheetLeadId: lead.sheetLeadId, client: client.code, codeClientUltex: client.code,
