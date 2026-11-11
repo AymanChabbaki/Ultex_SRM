@@ -1,443 +1,249 @@
 /**
- * ULTEX — FUNNEL ANASS : Sheet "Date et Heure / Nom Complet / ..." -> CRM.
+ * ULTEX — FUNNEL ANASS : feuille des leads Meta (Facebook / Instagram Lead Ads) -> CRM.
  *
- * Installation (une seule fois, dans le Google Sheet du funnel anass) :
+ * Colonnes lues (en-têtes de l'export Meta, dans n'importe quel ordre) :
+ *   id, created_time, campaign_name, form_name, platform, votre_projet_concerne_?,
+ *   qu’est-ce_que_vous_voulez_importer/exporter_?, quantité_de_votre_marchandises,
+ *   nombres_de_machines, nous_travaillons_uniquement_sur_des_opérations…,
+ *   quand_voulez-vous_lancer_l’opération_?, où_en_êtes-vous_aujourd’hui_?,
+ *   décrivez_votre_produit_en_une_phrase, full_name, phone_number, city
+ * Le script ajoute à droite 4 colonnes techniques (CRM_SYNC_ID, CRM_CLIENT_CODE,
+ * CRM_DEMANDE_CODE, CRM_SYNC_STATUS) : ne pas les supprimer.
+ *
+ * Installation (une seule fois, dans ce Google Sheet) :
  *  1. Extensions > Apps Script : remplacez tout le contenu par ce fichier, enregistrez.
  *  2. Paramètres du projet (roue dentée) > Propriétés du script > ajoutez
  *       CRM_SYNC_API_KEY = (la même clé que les autres feuilles funnel)
  *  3. Rechargez le Google Sheet : menu « ULTEX CRM » > « Installer la synchronisation »
  *     (acceptez les autorisations Google).
- *  4. Formulaire du site : Déployer > Nouveau déploiement > Application Web
- *     (Exécuter en tant que : moi, Accès : tout le monde) et mettez l'URL /exec dans la landing.
- *
- * Chaque lead arrive dans le CRM avec la source « funnel anass ».
+ * Ensuite chaque nouvelle ligne Meta part au CRM en moins d'une minute, avec la source
+ * « funnel anass » ; le code client (L…) et la demande (DMD…) s'écrivent sur la ligne.
  */
-const ULTEX_L_CONFIG = Object.freeze({
+const ULTEX_ANASS = Object.freeze({
   format: 'funnel_anass',
-  // Vide = le Google Sheet dans lequel ce script est installé.
-  spreadsheetId: '',
-  defaultSheetName: '',
   endpoint: 'https://crm.ultex.ma/api/sync/sheets/lead-l',
   headerRow: 1,
   maxRowsPerScan: 25,
 });
 
-/**
- * Public web-app endpoint used by the website form.
- * It only records the lead in the Sheet; the installed scanner sends it to
- * the CRM asynchronously, so the visitor does not wait for the CRM request.
- */
-function doPost(e) {
-  let backup = null;
-  const receivedAt = new Date().toISOString();
-  const raw = e?.postData?.contents || '';
-  const receipt = Utilities.getUuid();
-  // Save the incoming body before attempting the spreadsheet write.
-  try {
-    backup = backupFolder_().createFile(receipt + '.json',
-      JSON.stringify({ receipt, receivedAt, raw }), MimeType.PLAIN_TEXT);
-  } catch (error) {
-    console.error('BACKUP_FAILED ' + String(error.message || error));
-  }
-  try {
-    const data = parseSubmission_(raw, e?.parameter);
-    if (!data.submissionId) data.submissionId = receipt;
-    withLock_(() => writeSubmission_(data, receivedAt));
-    if (backup) backup.setDescription('SAVED');
-    return ContentService.createTextOutput(JSON.stringify({ status: 'success', crmSync: 'queued' }))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch (error) {
-    console.error('LEAD_SAVE_FAILED receipt=' + receipt + ' backup=' + Boolean(backup)
-      + ' reason=' + String(error.message || error));
-    // An unsuccessful write must be visible as a failed doPost execution.
-    throw error;
-  }
-}
-
-function parseSubmission_(raw, parameters) {
-  let data;
-  try { data = JSON.parse(raw); } catch (error) {
-    if (parameters?.payload) data = JSON.parse(parameters.payload);
-    else throw new Error('Requête JSON invalide ou vide.');
-  }
-  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Formulaire invalide.');
-  return data;
-}
-
-function writeSubmission_(data, receivedAt) {
-    const contact = data.contact && typeof data.contact === 'object' ? data.contact : data;
-    const sheet = targetSheet_();
-    const businessHeaders = [
-      'Date et Heure', 'Nom Complet', 'Société', 'Email', 'Téléphone',
-      "Volume d'importation", 'Fournisseur Fiable ?',
-      'Frustration Actuelle', 'Produit à Importer',
-    ];
-    ensureColumns_(sheet, businessHeaders);
-    ensureTechnicalColumns_(sheet);
-    const submissionId = String(data.submissionId || '');
-    if (submissionId && !/^[a-f0-9-]{36}$/i.test(submissionId)) throw new Error('Identifiant invalide.');
-    if (!String(contact.nom || '').trim() || !String(contact.telephone || '').trim() || !String(data.produit || '').trim()) {
-      throw new Error('Nom, téléphone et produit requis.');
-    }
-    if (submissionId && savedSubmission_(sheet, submissionId)) {
-      return;
-    }
-    const map = headerMap_(sheet);
-    const row = Array(sheet.getLastColumn()).fill('');
-    const put = (header, value) => { row[requiredColumn_(map, header) - 1] = value == null ? '' : value; };
-    put('Date et Heure', new Date(receivedAt));
-    put('Nom Complet', contact.nom);
-    put('Société', contact.societe);
-    put('Email', contact.email);
-    put('Téléphone', contact.telephone);
-    put("Volume d'importation", data.volume);
-    put('Fournisseur Fiable ?', data.fournisseur);
-    put('Frustration Actuelle', data.frustration);
-    put('Produit à Importer', data.produit);
-    if (submissionId) put('CRM_SYNC_ID', 'landing:' + submissionId);
-    const rowNumber = sheet.getLastRow() + 1;
-    sheet.getRange(rowNumber, 1, 1, row.length).setValues([row]);
-    SpreadsheetApp.flush();
-
-    console.log('LEAD_SAVED spreadsheet=' + sheet.getParent().getId() + ' tab=' + sheet.getName() + ' gid=' + sheet.getSheetId() + ' row=' + rowNumber);
-}
-
-function backupFolder_() {
-  const id = PropertiesService.getScriptProperties().getProperty('CRM_BACKUP_FOLDER_ID');
-  if (!id) throw new Error('Exécutez preparerReceptionULTEX une fois pour activer la sauvegarde.');
-  return DriveApp.getFolderById(id);
-}
-
-function arreterSynchronisationULTEX() {
-  deleteOwnTriggers_();
-  console.log('Déclencheurs CRM arrêtés. Annulez les exécutions encore en cours dans Exécutions avant de relancer la préparation.');
-}
-
-function preparerReceptionULTEX() {
-  withLock_(() => {
-    const props = PropertiesService.getScriptProperties();
-    if (!props.getProperty('CRM_BACKUP_FOLDER_ID')) {
-      const folder = DriveApp.createFolder('ULTEX - sauvegarde reception leads');
-      props.setProperty('CRM_BACKUP_FOLDER_ID', folder.getId());
-    }
-    backupFolder_().getName();
-    const sheet = targetSheet_();
-    ensureColumns_(sheet, ['Date et Heure', 'Nom Complet', 'Société', 'Email', 'Téléphone',
-      "Volume d'importation", 'Fournisseur Fiable ?', 'Frustration Actuelle', 'Produit à Importer']);
-    ensureTechnicalColumns_(sheet);
-  });
-  diagnostiquerReceptionULTEX();
-}
-
-function diagnostiquerReceptionULTEX() {
-  const book = spreadsheet_();
-  console.log('Classeur cible : ' + book.getId());
-  book.getSheets().forEach(sheet => console.log('Onglet : ' + sheet.getName()
-    + ' | gid=' + sheet.getSheetId() + ' | lignes=' + sheet.getLastRow()
-    + ' | colonnes=' + sheet.getLastColumn()));
-  const target = targetSheet_();
-  console.log('Destination des leads : ' + target.getName() + ' | gid=' + target.getSheetId());
-  console.log('Sauvegarde Drive : ' + (PropertiesService.getScriptProperties().getProperty('CRM_BACKUP_FOLDER_ID') || 'NON CONFIGURÉE'));
-}
-
-function restaurerSauvegardesReception() {
-  const files = backupFolder_().getFiles();
-  const started = Date.now();
-  let restored = 0;
-  let failed = 0;
-  while (files.hasNext() && restored + failed < 25 && Date.now() - started < 240000) {
-    const file = files.next();
-    if (file.getDescription() === 'SAVED') continue;
-    try {
-      const record = JSON.parse(file.getBlob().getDataAsString());
-      const data = parseSubmission_(record.raw, null);
-      if (!data.submissionId) data.submissionId = record.receipt;
-      withLock_(() => writeSubmission_(data, record.receivedAt));
-      file.setDescription('SAVED');
-      restored++;
-    } catch (error) {
-      failed++;
-      console.error('RESTORE_FAILED file=' + file.getId() + ' reason=' + String(error.message || error));
-    }
-  }
-  console.log('Restaurés : ' + restored + ' | erreurs : ' + failed);
-}
-
-// The landing page can verify a saved receipt across origins without exposing contact details.
-function doGet(e) {
-  const id = String(e?.parameter?.submissionId || '');
-  const callback = String(e?.parameter?.callback || '');
-  if (!/^[a-f0-9-]{36}$/i.test(id) || !/^ultexReceipt_[a-f0-9]+$/.test(callback)) {
-    return ContentService.createTextOutput('Invalid receipt request');
-  }
-  let saved = false;
-  try { saved = savedSubmission_(targetSheet_(), id); } catch (error) { console.error(String(error)); }
-  return ContentService.createTextOutput(callback + '(' + JSON.stringify({ saved }) + ');')
-    .setMimeType(ContentService.MimeType.JAVASCRIPT);
-}
-
-function savedSubmission_(sheet, id) {
-  const col = headerMap_(sheet).crm_sync_id;
-  const count = sheet.getLastRow() - headerRow_();
-  if (!col || count <= 0) return false;
-  return Boolean(sheet.getRange(headerRow_() + 1, col, count, 1)
-    .createTextFinder('landing:' + id).matchEntireCell(true).findNext());
-}
+/* Columns, found by the start of their (normalized) Meta header. */
+const COL = Object.freeze({
+  id: 'id',
+  date: 'created_time',
+  campagne: 'campaign_name',
+  formulaire: 'form_name',
+  plateforme: 'platform',
+  projet: 'votre_projet_concerne',
+  quoi: 'qu_est_ce_que_vous_voulez',
+  quantite: 'quantite_de_votre',
+  machines: 'nombres_de_machines',
+  budget: 'nous_travaillons_uniquement',
+  quand: 'quand_voulez_vous_lancer',
+  etape: 'ou_en_etes_vous',
+  description: 'decrivez_votre_produit',
+  nom: 'full_name',
+  telephone: 'phone_number',
+  ville: 'city',
+});
+const TECH = ['CRM_SYNC_ID', 'CRM_CLIENT_CODE', 'CRM_DEMANDE_CODE', 'CRM_SYNC_STATUS'];
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('ULTEX CRM')
-    .addItem('Autoriser la connexion CRM', 'autoriserConnexionCRM')
     .addItem('Installer la synchronisation', 'installerSynchronisationULTEX')
     .addItem('Tester / synchroniser la ligne active', 'synchroniserLigneActive')
-    .addItem('Importer les lignes sélectionnées', 'importerSelection')
     .addSeparator()
-    .addItem('Vérifier les nouveaux leads maintenant', 'scannerNouveauxLeads')
-    .addItem('Récupérer les leads non synchronisés', 'recupererLeadsNonSynchronises')
+    .addItem('Envoyer les nouveaux leads maintenant', 'scannerNouveauxLeads')
+    .addItem('Renvoyer les lignes en erreur', 'renvoyerErreurs')
+    .addItem('Arrêter la synchronisation', 'arreterSynchronisationULTEX')
     .addToUi();
 }
 
 function installerSynchronisationULTEX() {
-  preparerReceptionULTEX();
+  const book = SpreadsheetApp.getActiveSpreadsheet();
+  if (!book) throw new Error('Ouvrez ce script depuis le Google Sheet du funnel anass (Extensions > Apps Script).');
   const props = PropertiesService.getScriptProperties();
+  props.setProperty('CRM_SPREADSHEET_ID', book.getId());
   const sheet = targetSheet_();
-  props.setProperty('CRM_SHEET_NAME', sheet.getName());
   props.setProperty('CRM_SHEET_ID', String(sheet.getSheetId()));
-  if (!props.getProperty('CRM_SYNC_URL')) props.setProperty('CRM_SYNC_URL', ULTEX_L_CONFIG.endpoint);
-  if (!props.getProperty('CRM_HEADER_ROW')) props.setProperty('CRM_HEADER_ROW', String(ULTEX_L_CONFIG.headerRow));
-  autoriserConnexionCRM();
-  ensureTechnicalColumns_(sheet);
-
-  deleteOwnTriggers_();
-  const spreadsheet = spreadsheet_();
-  ScriptApp.newTrigger('modifierLeadULTEX').forSpreadsheet(spreadsheet).onEdit().create();
-  ScriptApp.newTrigger('nouveauLeadFormulaireULTEX').forSpreadsheet(spreadsheet).onFormSubmit().create();
-  // Required when rows are written by an API/script: Google does not fire
-  // edit/form triggers for those writes.
+  verifierConnexion_();
+  withLock_(() => ensureTechnicalColumns_(sheet));
+  arreterSynchronisationULTEX();
+  // Meta writes rows through the API: no edit trigger fires, so a 1-minute scan picks them up.
   ScriptApp.newTrigger('scannerNouveauxLeads').timeBased().everyMinutes(1).create();
-  spreadsheet_().toast(
-    'Synchronisation installée. Les nouvelles lignes recevront leur code L automatiquement.',
-    'ULTEX CRM',
-    8
-  );
+  ScriptApp.newTrigger('scannerNouveauxLeads').forSpreadsheet(book).onChange().create();
+  book.toast('Synchronisation installée : les leads partent au CRM avec la source « funnel anass ».', 'ULTEX CRM', 8);
+  scannerNouveauxLeads();
 }
 
-function autoriserConnexionCRM() {
-  const props = PropertiesService.getScriptProperties();
-  const url = props.getProperty('CRM_SYNC_URL') || ULTEX_L_CONFIG.endpoint;
-  const key = props.getProperty('CRM_SYNC_API_KEY');
-  if (!key) throw new Error('Ajoutez CRM_SYNC_API_KEY dans les propriétés du script.');
-  const response = UrlFetchApp.fetch(url, {
+function arreterSynchronisationULTEX() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'scannerNouveauxLeads')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+}
+
+function verifierConnexion_() {
+  const key = apiKey_();
+  const response = UrlFetchApp.fetch(endpoint_(), {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     headers: { 'X-ULTEX-SYNC-KEY': key }, payload: '{}',
   });
   let body = {};
   try { body = JSON.parse(response.getContentText()); } catch (ignored) {}
+  // An empty lead is refused as invalid: that proves the key is accepted.
   if (response.getResponseCode() !== 400 || body.code !== 'INVALID_SHEET_LEAD') {
-    throw new Error('Connexion CRM échouée : HTTP ' + response.getResponseCode());
+    throw new Error('Connexion CRM échouée (HTTP ' + response.getResponseCode() + ') : vérifiez CRM_SYNC_API_KEY.');
   }
-  spreadsheet_().toast('Connexion CRM vérifiée.', 'ULTEX CRM', 5);
 }
 
-function modifierLeadULTEX(event) {
-  if (!event || !event.range) return;
-  const sheet = event.range.getSheet();
-  if (!isTargetSheet_(sheet) || event.range.getRow() <= headerRow_()) return;
-  const technicalStart = firstTechnicalColumn_(sheet);
-  if (technicalStart && event.range.getColumn() >= technicalStart) return;
-  syncRows_(sheet, event.range.getRow(), event.range.getNumRows(), false);
-}
-
-function nouveauLeadFormulaireULTEX(event) {
-  if (!event || !event.range || !isTargetSheet_(event.range.getSheet())) return;
-  syncRows_(event.range.getSheet(), event.range.getRow(), event.range.getNumRows(), false);
-}
-
+/** Sends every row not sent yet (or that failed temporarily). */
 function scannerNouveauxLeads() {
   const sheet = targetSheet_();
   const snapshot = withLock_(() => {
     ensureTechnicalColumns_(sheet);
-    const map = headerMap_(sheet);
-    const count = Math.max(0, sheet.getLastRow() - headerRow_());
-    return { map, rows: count ? sheet.getRange(headerRow_() + 1, 1, count, sheet.getLastColumn()).getDisplayValues() : [] };
+    const count = Math.max(0, sheet.getLastRow() - ANASS_HEADER_ROW_());
+    return {
+      map: headerMap_(sheet),
+      display: count ? sheet.getRange(ANASS_HEADER_ROW_() + 1, 1, count, sheet.getLastColumn()).getDisplayValues() : [],
+      raw: count ? sheet.getRange(ANASS_HEADER_ROW_() + 1, 1, count, sheet.getLastColumn()).getValues() : [],
+    };
   });
-  const { map, rows } = snapshot;
-  const statusCol = requiredColumn_(map, 'crm_sync_status');
-  let processed = 0;
+  const statusCol = snapshot.map.crm_sync_status;
   const started = Date.now();
-  rows.forEach((values, index) => {
-    const status = values[statusCol - 1];
-    const hasLead = ['Nom Complet', 'Téléphone', 'Produit à Importer']
-      .some(name => String(values[requiredColumn_(map, name) - 1] || '').trim());
-    if (!hasLead || processed >= ULTEX_L_CONFIG.maxRowsPerScan || Date.now() - started > 240000) return;
-    if (!status || /^ERREUR TEMPORAIRE\b/.test(status)) {
-      syncRows_(sheet, headerRow_() + 1 + index, 1, false);
-      processed += 1;
-    }
+  let sent = 0;
+  snapshot.display.forEach((values, index) => {
+    if (sent >= ULTEX_ANASS.maxRowsPerScan || Date.now() - started > 240000) return;
+    const status = String(values[statusCol - 1] || '');
+    if (/^OK\b/.test(status) || /^IGNOR/.test(status) || /^ERREUR VALIDATION\b/.test(status)) return;
+    const rowNumber = ANASS_HEADER_ROW_() + 1 + index;
+    sendRow_(sheet, rowNumber, snapshot.map, values, snapshot.raw[index]);
+    sent += 1;
   });
 }
 
 function synchroniserLigneActive() {
   const sheet = SpreadsheetApp.getActiveSheet();
-  if (!isTargetSheet_(sheet)) throw new Error('Cette feuille n’est pas la feuille configurée.');
-  syncRows_(sheet, SpreadsheetApp.getActiveRange().getRow(), 1, true);
-}
-
-function importerSelection() {
-  const range = SpreadsheetApp.getActiveRange();
-  const sheet = range.getSheet();
-  if (!isTargetSheet_(sheet)) throw new Error('Cette feuille n’est pas la feuille configurée.');
-  const start = Math.max(range.getRow(), headerRow_() + 1);
-  const count = Math.max(0, range.getLastRow() - start + 1);
-  if (count) syncRows_(sheet, start, count, true);
-}
-
-function syncRows_(sheet, startRow, count, force) {
+  if (sheet.getSheetId() !== targetSheet_().getSheetId()) throw new Error('Cette feuille n’est pas la feuille des leads.');
+  const row = SpreadsheetApp.getActiveRange().getRow();
+  if (row <= ANASS_HEADER_ROW_()) throw new Error('Sélectionnez une ligne de lead.');
   withLock_(() => ensureTechnicalColumns_(sheet));
   const map = headerMap_(sheet);
-  const last = Math.min(sheet.getLastRow(), startRow + count - 1);
-  for (let row = Math.max(startRow, headerRow_() + 1); row <= last; row += 1) {
-    try { syncRow_(sheet, row, map, force); }
-    catch (error) {
-      sheet.getRange(row, requiredColumn_(map, 'crm_sync_status'))
-        .setValue('ERREUR VALIDATION — ' + String(error.message || error).slice(0, 300));
-    }
-  }
+  const range = sheet.getRange(row, 1, 1, sheet.getLastColumn());
+  sendRow_(sheet, row, map, range.getDisplayValues()[0], range.getValues()[0]);
 }
 
-function syncRow_(sheet, rowNumber, map, force) {
-  const prepared = withLock_(() => {
-  const display = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
-  const raw = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const get = name => {
-    const col = map[normalizeHeader_(name)];
-    return col ? display[col - 1] : '';
-  };
-  const getRaw = name => {
-    const col = map[normalizeHeader_(name)];
-    return col ? raw[col - 1] : '';
-  };
-  const statusCell = sheet.getRange(rowNumber, requiredColumn_(map, 'crm_sync_status'));
-  if (!force && /^OK\b/.test(String(statusCell.getValue()))) return;
-  if (!force && /^HISTORIQUE\b/.test(String(statusCell.getValue()))) return;
-  if (![getRaw('Date et Heure') || get('Date et Heure'), get('Nom Complet'), get('Téléphone'), get('Produit à Importer')].every(Boolean)) throw new Error('Date, nom, téléphone ou produit manquant.');
-
-  let id = get('CRM_SYNC_ID');
-  if (!id) {
-    id = `gs:${sheet.getParent().getId()}:${sheet.getSheetId()}:${Utilities.getUuid()}`;
-    sheet.getRange(rowNumber, requiredColumn_(map, 'crm_sync_id')).setValue(id);
-    SpreadsheetApp.flush();
-  }
-  const payload = {
-    sheetLeadId: id,
-    sheetFormat: ULTEX_L_CONFIG.format,
-    dateReception: isoDate_(getRaw('Date et Heure') || get('Date et Heure')),
-    nom: get('Nom Complet'),
-    societe: get('Société'),
-    email: get('Email'),
-    telephone: normalizePhone_(get('Téléphone')),
-    volumeImportation: get("Volume d'importation"),
-    fournisseurFiable: get('Fournisseur Fiable ?'),
-    frustrationActuelle: get('Frustration Actuelle'),
-    produit: get('Produit à Importer'),
-  };
-  return { payload, statusCell };
-  });
-  if (prepared) postLead_(sheet, rowNumber, map, prepared.payload, prepared.statusCell);
-}
-
-function postLead_(sheet, row, map, payload, statusCell) {
-  try {
-    const props = PropertiesService.getScriptProperties();
-    const key = props.getProperty('CRM_SYNC_API_KEY');
-    if (!key) throw new Error('Ajoutez CRM_SYNC_API_KEY dans les propriétés du script.');
-    const response = UrlFetchApp.fetch(props.getProperty('CRM_SYNC_URL') || ULTEX_L_CONFIG.endpoint, {
-      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-      headers: { 'X-ULTEX-SYNC-KEY': key }, payload: JSON.stringify(payload),
-    });
-    const body = JSON.parse(response.getContentText() || '{}');
-    const responseCode = response.getResponseCode();
-    if (responseCode < 200 || responseCode >= 300) {
-      const retryable = body.retryable === true || responseCode === 408 || responseCode === 429 || responseCode >= 500;
-      const prefix = retryable ? 'ERREUR TEMPORAIRE' : 'ERREUR VALIDATION';
-      if (/^OK\b/.test(String(statusCell.getValue()))) return;
-      statusCell.setValue(`${prefix} — ${String(body.error || `Erreur HTTP ${responseCode}`).slice(0, 300)}`);
-      return;
-    }
-    sheet.getRange(row, requiredColumn_(map, 'crm_client_code')).setValue(body.client.code);
-    sheet.getRange(row, requiredColumn_(map, 'crm_demande_code')).setValue(body.demande.code);
-    statusCell.setValue(`OK — ${body.client.code} — ${timestamp_()}`);
-  } catch (error) {
-    if (/^OK\b/.test(String(statusCell.getValue()))) return;
-    statusCell.setValue(`ERREUR TEMPORAIRE — ${String(error.message || error).slice(0, 300)}`);
-  }
-}
-
-function spreadsheet_() {
-  if (ULTEX_L_CONFIG.spreadsheetId) return SpreadsheetApp.openById(ULTEX_L_CONFIG.spreadsheetId);
-  const id = PropertiesService.getScriptProperties().getProperty('CRM_SPREADSHEET_ID');
-  if (id) return SpreadsheetApp.openById(id);
-  const book = SpreadsheetApp.getActiveSpreadsheet();
-  if (!book) throw new Error('Installez ce script depuis le Google Sheet du funnel anass (Extensions > Apps Script).');
-  // Remembered for the time-based trigger and the web app, which have no "active" sheet.
-  PropertiesService.getScriptProperties().setProperty('CRM_SPREADSHEET_ID', book.getId());
-  return book;
-}
-
-function targetSheet_() {
-  const book = spreadsheet_();
-  const props = PropertiesService.getScriptProperties();
-  const sheets = book.getSheets();
-  const savedId = props.getProperty('CRM_SHEET_ID');
-  let sheet = savedId ? sheets.find(item => String(item.getSheetId()) === savedId) : null;
-  if (!sheet) {
-    const name = props.getProperty('CRM_SHEET_NAME') || ULTEX_L_CONFIG.defaultSheetName;
-    if (name) sheet = book.getSheetByName(name);
-  }
-  if (!sheet) sheet = sheets.find(item => item.getSheetId() === 0);
-  if (!sheet) {
-    const matches = sheets.filter(item => {
-      const map = headerMap_(item);
-      return ['Date et Heure', 'Nom Complet', 'Téléphone', 'Produit à Importer']
-        .every(name => map[normalizeHeader_(name)]);
-    });
-    if (matches.length !== 1) {
-      throw new Error('Configurez CRM_SHEET_NAME avec le nom exact de l’onglet des leads. Onglets disponibles : '
-        + sheets.map(item => item.getName()).join(', '));
-    }
-    sheet = matches[0];
-  }
-  props.setProperty('CRM_SHEET_ID', String(sheet.getSheetId()));
-  props.setProperty('CRM_SHEET_NAME', sheet.getName());
-  return sheet;
-}
-
-function recupererLeadsNonSynchronises() {
+/** Clears the error statuses so the next scan sends those rows again. */
+function renvoyerErreurs() {
+  const sheet = targetSheet_();
   withLock_(() => {
-    const sheet = targetSheet_();
-    ensureTechnicalColumns_(sheet);
     const map = headerMap_(sheet);
-    const count = sheet.getLastRow() - headerRow_();
-    if (count <= 0) return;
-    const col = requiredColumn_(map, 'crm_sync_status');
-    const range = sheet.getRange(headerRow_() + 1, col, count, 1);
-    const statuses = range.getValues().map(([status]) => [
-      /^OK\b/.test(String(status)) ? status : ''
-    ]);
-    range.setValues(statuses);
+    const count = sheet.getLastRow() - ANASS_HEADER_ROW_();
+    if (count <= 0 || !map.crm_sync_status) return;
+    const range = sheet.getRange(ANASS_HEADER_ROW_() + 1, map.crm_sync_status, count, 1);
+    range.setValues(range.getValues().map(([s]) => [/^ERREUR\b/.test(String(s)) ? '' : s]));
   });
   scannerNouveauxLeads();
 }
 
-function isTargetSheet_(sheet) { const target = targetSheet_(); return Boolean(sheet && sheet.getParent().getId() === target.getParent().getId() && sheet.getSheetId() === target.getSheetId()); }
-function headerRow_() { return Number(PropertiesService.getScriptProperties().getProperty('CRM_HEADER_ROW') || ULTEX_L_CONFIG.headerRow); }
+function sendRow_(sheet, rowNumber, map, values, raw) {
+  const statusCell = sheet.getRange(rowNumber, map.crm_sync_status);
+  const get = key => {
+    const col = findColumn_(map, COL[key]);
+    return col ? String(values[col - 1] || '').trim() : '';
+  };
+  try {
+    const nom = get('nom');
+    const telephone = normalizePhone_(get('telephone'));
+    if (!nom && !telephone) return; // empty line
+    if (/test lead|dummy data/i.test(nom)) { statusCell.setValue('IGNORÉ — lead de test Meta'); return; }
+    if (!nom || !telephone) throw new Error('Nom ou téléphone manquant.');
+
+    let id = String(values[map.crm_sync_id - 1] || '');
+    if (!id) {
+      id = get('id') ? `meta:${get('id')}` : `gs:${sheet.getParent().getId()}:${sheet.getSheetId()}:${Utilities.getUuid()}`;
+      sheet.getRange(rowNumber, map.crm_sync_id).setValue(id);
+    }
+    const dateCol = findColumn_(map, COL.date);
+    const projet = /^les deux$/i.test(human_(get('projet'))) ? 'Import et export' : human_(get('projet'));
+    const quoi = human_(get('quoi'));
+    const produit = get('description') || [quoi, projet && `(${projet})`].filter(Boolean).join(' ') || 'Projet import / export (formulaire Meta)';
+    const etape = [human_(get('etape')), get('quand') && `Lancement : ${human_(get('quand'))}`, get('ville') && `Ville : ${get('ville')}`]
+      .filter(Boolean).join(' · ');
+    const payload = {
+      sheetLeadId: id,
+      sheetFormat: ULTEX_ANASS.format,
+      dateReception: isoDate_(dateCol ? raw[dateCol - 1] : '', get('date')),
+      nom,
+      telephone,
+      pays: 'Maroc',
+      produit,
+      volumeImportation: human_(get('quantite') || get('machines')) + (get('machines') && !get('quantite') ? ' machine(s)' : ''),
+      budget: human_(get('budget')),
+      projectStage: [projet && `Projet : ${projet}`, quoi && `Type : ${quoi}`, etape].filter(Boolean).join(' · '),
+      campaignName: get('campagne'),
+      formName: get('formulaire'),
+      platform: { fb: 'Facebook', ig: 'Instagram' }[get('plateforme').toLowerCase()] || get('plateforme'),
+    };
+    const response = UrlFetchApp.fetch(endpoint_(), {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { 'X-ULTEX-SYNC-KEY': apiKey_() }, payload: JSON.stringify(payload),
+    });
+    const code = response.getResponseCode();
+    let body = {};
+    try { body = JSON.parse(response.getContentText() || '{}'); } catch (ignored) {}
+    if (code < 200 || code >= 300) {
+      const retry = body.retryable === true || code === 408 || code === 429 || code >= 500;
+      statusCell.setValue(`${retry ? 'ERREUR TEMPORAIRE' : 'ERREUR VALIDATION'} — ${String(body.error || `HTTP ${code}`).slice(0, 300)}`);
+      return;
+    }
+    sheet.getRange(rowNumber, map.crm_client_code).setValue(body.client.code);
+    sheet.getRange(rowNumber, map.crm_demande_code).setValue(body.demande.code);
+    statusCell.setValue(`OK — ${body.client.code} — ${Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm')}`);
+  } catch (error) {
+    statusCell.setValue(`ERREUR VALIDATION — ${String(error.message || error).slice(0, 300)}`);
+  }
+}
+
+/* ───────── helpers ───────── */
+
+function spreadsheet_() {
+  const id = PropertiesService.getScriptProperties().getProperty('CRM_SPREADSHEET_ID');
+  if (id) return SpreadsheetApp.openById(id);
+  const book = SpreadsheetApp.getActiveSpreadsheet();
+  if (!book) throw new Error('Lancez d’abord « Installer la synchronisation » depuis le Google Sheet.');
+  return book;
+}
+
+/** The tab holding the Meta columns (the saved one, else the first tab with full_name + phone_number). */
+function targetSheet_() {
+  const book = spreadsheet_();
+  const saved = PropertiesService.getScriptProperties().getProperty('CRM_SHEET_ID');
+  const sheets = book.getSheets();
+  const byId = saved ? sheets.find(s => String(s.getSheetId()) === saved) : null;
+  if (byId) return byId;
+  const found = sheets.find(s => { const m = headerMap_(s); return findColumn_(m, COL.nom) && findColumn_(m, COL.telephone); });
+  if (!found) throw new Error('Aucun onglet avec les colonnes full_name et phone_number.');
+  return found;
+}
+
+function endpoint_() { return PropertiesService.getScriptProperties().getProperty('CRM_SYNC_URL') || ULTEX_ANASS.endpoint; }
+function apiKey_() {
+  const key = PropertiesService.getScriptProperties().getProperty('CRM_SYNC_API_KEY');
+  if (!key) throw new Error('Ajoutez CRM_SYNC_API_KEY dans les propriétés du script.');
+  return key;
+}
+function ANASS_HEADER_ROW_() { return ULTEX_ANASS.headerRow; }
 function normalizeHeader_(value) { return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
-function headerMap_(sheet) { if (!sheet) throw new Error('Onglet des leads introuvable.'); const out = {}; if (!sheet.getLastColumn()) return out; sheet.getRange(headerRow_(), 1, 1, sheet.getLastColumn()).getDisplayValues()[0].forEach((v, i) => { if (v) out[normalizeHeader_(v)] = i + 1; }); return out; }
-function requiredColumn_(map, name) { const col = map[normalizeHeader_(name)]; if (!col) throw new Error(`Colonne absente : ${name}`); return col; }
-function ensureColumns_(sheet, wanted) { let map = headerMap_(sheet); wanted.forEach(name => { if (!map[normalizeHeader_(name)]) sheet.getRange(headerRow_(), sheet.getLastColumn() + 1).setValue(name); map = headerMap_(sheet); }); }
-function ensureTechnicalColumns_(sheet) { ensureColumns_(sheet, ['CRM_SYNC_ID', 'CRM_CLIENT_CODE', 'CRM_DEMANDE_CODE', 'CRM_SYNC_STATUS']); }
-function firstTechnicalColumn_(sheet) { const map = headerMap_(sheet); return map.crm_sync_id || 0; }
-function normalizePhone_(value) { let p = String(value || '').replace(/\D/g, ''); if (p.startsWith('00')) p = p.slice(2); if (/^0[67]\d{8}$/.test(p)) p = `212${p.slice(1)}`; if (/^[67]\d{8}$/.test(p)) p = `212${p}`; return p; }
-function isoDate_(value) { if (value instanceof Date && !isNaN(value)) return value.toISOString(); const text = String(value || '').trim(); const m = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/); const date = m ? new Date(Number(m[3]), Number(m[1]) - 1, Number(m[2]), Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0)) : new Date(text); if (isNaN(date)) throw new Error('Date et Heure invalide.'); return date.toISOString(); }
-function timestamp_() { return Utilities.formatDate(new Date(), spreadsheet_().getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm:ss'); }
+function headerMap_(sheet) { const out = {}; if (!sheet.getLastColumn()) return out; sheet.getRange(ANASS_HEADER_ROW_(), 1, 1, sheet.getLastColumn()).getDisplayValues()[0].forEach((v, i) => { const k = normalizeHeader_(v); if (k && !out[k]) out[k] = i + 1; }); return out; }
+/** Exact header first (so "id" never matches "ad_id"), else the first header starting with it. */
+function findColumn_(map, start) { if (map[start]) return map[start]; const key = Object.keys(map).find(k => k.startsWith(start)); return key ? map[key] : 0; }
+function ensureTechnicalColumns_(sheet) { TECH.forEach(name => { if (!headerMap_(sheet)[normalizeHeader_(name)]) sheet.getRange(ANASS_HEADER_ROW_(), sheet.getLastColumn() + 1).setValue(name); }); }
+/** Meta answers come as "le_plus_vite_possible_(moins_d’un_mois)": readable text. */
+function human_(value) { const t = String(value || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1) : ''; }
+function normalizePhone_(value) { let p = String(value || '').replace(/^p:/i, '').replace(/\D/g, ''); if (p.startsWith('00')) p = p.slice(2); if (/^0[67]\d{8}$/.test(p)) p = `212${p.slice(1)}`; if (/^[67]\d{8}$/.test(p)) p = `212${p}`; return p; }
+function isoDate_(raw, text) {
+  if (raw instanceof Date && !isNaN(raw)) return raw.toISOString();
+  const d = new Date(String(text || raw || '').trim());
+  if (isNaN(d)) throw new Error('created_time invalide.');
+  return d.toISOString();
+}
 function withLock_(callback) { const lock = LockService.getScriptLock(); lock.waitLock(20000); try { return callback(); } finally { lock.releaseLock(); } }
-function deleteOwnTriggers_() { const own = ['modifierLeadULTEX', 'nouveauLeadFormulaireULTEX', 'scannerNouveauxLeads']; ScriptApp.getProjectTriggers().forEach(t => { if (own.includes(t.getHandlerFunction())) ScriptApp.deleteTrigger(t); }); }
