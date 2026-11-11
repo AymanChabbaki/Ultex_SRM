@@ -178,7 +178,7 @@ async function createItem(tx, collection, prefix, values, minimum) {
 
 export async function syncLLead(prisma, body) {
   const lead = validateSheetLead(body);
-  const funnelSources = { funnel_hamza: 'funnel hamza', funnel_agricol: 'funnel agricol' };
+  const funnelSources = { funnel_hamza: 'funnel hamza', funnel_agricol: 'funnel agricol', funnel_anass: 'funnel anass' };
   const leadSource = funnelSources[lead.sheetFormat] || 'Google';
   return prisma.$transaction(async tx => {
     // PostgreSQL lock is shared across server processes and held until commit.

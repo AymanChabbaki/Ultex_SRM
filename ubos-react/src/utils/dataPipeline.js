@@ -179,7 +179,7 @@ export function genererFileDeTravail(db, user) {
   const demandesAgent = demandesDeAgent(db, user);
   leadsDuJour(db, user, auj).forEach(d => ajouter({
     type: 'demande', code: d.code, libelle: `${d.codeClientUltex || d.client || d.code} — ${d.objectifGeneral || 'Nouvelle demande'}`,
-    sousLibelle: `Nouveau lead du jour · ${['funnel hamza', 'funnel agricol'].includes(d.source) ? d.source : (d.sourceSynchronisation || d.source || 'Source non précisée')}`,
+    sousLibelle: `Nouveau lead du jour · ${['funnel hamza', 'funnel agricol', 'funnel anass'].includes(d.source) ? d.source : (d.sourceSynchronisation || d.source || 'Source non précisée')}`,
     lien: `#ficheDemande:${d.code}`, retard: false, tag: 'Nouveau', score: 78,
     motif: 'lead-du-jour',
   }));
